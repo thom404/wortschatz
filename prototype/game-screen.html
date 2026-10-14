@@ -1,0 +1,667 @@
+<!doctype html>
+<!--
+  THROWAWAY PROTOTYPE — issue #8 (wayfinder:prototype)
+  Question: "What should the core game screen look and feel like?"
+
+  DECIDED so far:
+  - Desktop arrangement: two-column dashboard (from variant B).
+  - Mobile arrangement:  stacked column (from variant C).
+  - Skins are the user choice, with exactly one default.
+  - A skin is ONE coherent design across breakpoints: both layouts use the SAME
+    components (panels, player chips, found chips, ring timer, score, tiles,
+    trace). Only the ARRANGEMENT differs. No per-breakpoint component styles.
+
+  Skins: "Standard" (default) and "Arcade" (first alternative). More later, #8 sibling.
+
+  Switch skins via ?skin=default|arcade, the floating bottom bar, or <- / ->.
+  Open this file in a browser; no build, no server.
+
+  Stub caveats (deliberate, see GLOSSARY + ADR-0001):
+  - The German word list lives in-browser here. The real game keeps it server-side,
+    in a DAWG, never shipped to the client. Look-and-feel stub only.
+  - Other players are bots. Scores are cosmetic. Nothing persists.
+  - Board: fixed 4x4 with four multi-letter tiles (CH, ST, EI, ER).
+        s   ch  e   n
+        t   a   u   r
+        st  ei  l   d
+        er  e   n   t
+-->
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prototype — Wordament DE game screen (#8)</title>
+<style>
+  /* ============================================================
+     SKIN TOKENS — a skin is colour + surface + glow + radius.
+     Both layouts consume the same tokens and the same components,
+     so one skin reads as one design on desktop and mobile.
+     ============================================================ */
+  :root, body[data-skin="default"] {
+    --bg: #eef1f5;
+    --bg-glow: none;
+    --text: #0f172a;
+    --muted: #64748b;
+    --line: #dbe2ec;
+    --surface: #ffffff;
+    --accent: #2563eb;
+    --accent-text: #ffffff;
+
+    --tile-bg: #f8fafc;
+    --tile-border: #cbd5e1;
+    --tile-text: #0f172a;
+    --tile-shadow: none;
+    --tile-active-bg: #2563eb;
+    --tile-active-text: #ffffff;
+    --tile-active-glow: none;
+    --tile-adj: #93c5fd;
+
+    --chip-bg: #eff6ff;
+    --chip-text: #1d4ed8;
+    --chip-border: #bfdbfe;
+    --ring: #2563eb;
+    --trail: #2563eb;
+    --trail-glow: none;
+
+    --hit-bg: #dcf3d6;  --hit-text: #2f6b28;
+    --miss-bg: #f0eee8; --miss-text: #a49c8b;
+
+    --ring-hole: #ffffff;
+    --ping: #e11d48;
+    --panel-shadow: 0 1px 2px rgba(15,23,42,.05);
+    --reveal-bg: #ffffff;
+    --radius: 14px;
+  }
+
+  body[data-skin="arcade"] {
+    --bg: #05060a;
+    --bg-glow: radial-gradient(circle at 50% 38%, #1a1140 0%, #05060a 62%);
+    --text: #e8ecff;
+    --muted: #8b93b8;
+    --line: rgba(126,249,255,.2);
+    --surface: rgba(255,255,255,.045);
+    --accent: #ff3df0;
+    --accent-text: #ffffff;
+
+    --tile-bg: rgba(255,255,255,.045);
+    --tile-border: rgba(126,249,255,.22);
+    --tile-text: #e8ecff;
+    --tile-shadow: 0 0 14px rgba(126,249,255,.25);
+    --tile-active-bg: linear-gradient(135deg,#ff3df0,#7a2bff);
+    --tile-active-text: #ffffff;
+    --tile-active-glow: 0 0 26px rgba(255,61,240,.6);
+    --tile-adj: rgba(126,249,255,.65);
+
+    --chip-bg: rgba(126,249,255,.08);
+    --chip-text: #bff9ff;
+    --chip-border: rgba(126,249,255,.3);
+    --ring: #7ef9ff;
+    --trail: #ff3df0;
+    --trail-glow: drop-shadow(0 0 8px #ff3df0);
+
+    --ring-hole: #0b0d16;
+    --ping: #ff3df0;
+    --hit-bg: rgba(126,249,255,.14);  --hit-text: #bff9ff;
+    --miss-bg: rgba(255,255,255,.06); --miss-text: #5b6382;
+
+    --panel-shadow: 0 18px 50px rgba(0,0,0,.45);
+    --reveal-bg: #0d0f1a;
+    --radius: 14px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    min-height: 100vh;
+    background: var(--bg);
+    background-image: var(--bg-glow);
+    color: var(--text);
+  }
+  button { font: inherit; cursor: pointer; }
+
+  /* ============================================================
+     SHARED COMPONENTS — identical in both layouts, skinned by tokens.
+     ============================================================ */
+  .panel {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 16px; box-shadow: var(--panel-shadow);
+  }
+  .panel > h2 { margin: 0 0 12px; font-size: 12px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); }
+
+  /* board */
+  .board-wrap { position: relative; touch-action: none; }
+  .board {
+    display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr);
+    gap: 8px; aspect-ratio: 1 / 1; width: 100%;
+    font-size: clamp(22px, 7.5vw, 32px);   /* tiles + multi letters inherit from here */
+  }
+  [data-tile] {
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; line-height: 1;
+    border-radius: var(--radius);
+    background: var(--tile-bg); border: 1px solid var(--tile-border);
+    color: var(--tile-text); text-shadow: var(--tile-shadow);
+    transition: transform .06s ease, background .08s ease, color .08s ease,
+                box-shadow .08s ease, border-color .08s ease;
+    position: relative;
+  }
+  [data-tile].multi { font-size: .82em; letter-spacing: .05em; }
+  [data-tile] .val { position: absolute; right: .3em; bottom: .18em; font-size: 9px; font-weight: 600; opacity: .5; letter-spacing: 0; }
+  [data-tile].active {
+    background: var(--tile-active-bg); color: var(--tile-active-text);
+    border-color: transparent; box-shadow: var(--tile-active-glow); transform: scale(.95);
+  }
+  [data-tile].adjacent:not(.active) { border-color: var(--tile-adj); color: var(--tile-adj); }
+  .trail { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+  .bad { animation: bad .32s ease; }
+  @keyframes bad { 0%,100% { transform: translateX(0);} 25% { transform: translateX(-4px);} 75% { transform: translateX(4px);} }
+
+  /* trace */
+  .trace {
+    font-weight: 800; font-size: clamp(20px, 6vw, 26px); letter-spacing: .14em;
+    text-transform: uppercase; min-height: 1.2em; color: var(--text);
+  }
+  .trace:empty::before {
+    content: attr(data-hint);
+    color: var(--muted); opacity: .8;
+    font-size: 14px; font-weight: 500; letter-spacing: .02em; text-transform: none;
+  }
+
+  /* timer ring + score block */
+  .timerblock { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .ring { width: 108px; height: 108px; border-radius: 50%; position: relative; flex: 0 0 auto; }
+  .ring-center {
+    position: absolute; inset: 10px; border-radius: 50%;
+    background: var(--ring-hole);
+    box-shadow: 0 0 0 1px var(--line);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .ring-center .t { font-size: 25px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text); letter-spacing: .01em; }
+  .ring-center .t.low { color: var(--ping); }
+  .score { line-height: .9; }
+  .score .v { font-size: 44px; font-weight: 900; font-variant-numeric: tabular-nums; }
+  .score .k { font-size: 10px; letter-spacing: .2em; text-transform: uppercase; opacity: .55; margin-top: 6px; }
+
+  /* chips: players + found words share one chip look */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: var(--chip-bg); color: var(--chip-text); border: 1px solid var(--chip-border);
+    border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600;
+  }
+  .chip .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+  .chip .s { font-weight: 800; font-variant-numeric: tabular-nums; }
+  .chip.me { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent); }
+  .chip .plus { opacity: .7; font-weight: 700; }
+  .empty { color: var(--muted); font-size: 13px; }
+
+  /* skin flourish: arcade adds glow to the neon bits (palette already swapped) */
+  body[data-skin="arcade"] .score .v { color: var(--ring); text-shadow: 0 0 22px color-mix(in srgb, var(--ring) 60%, transparent); }
+  body[data-skin="arcade"] .trace { color: #ff8cf5; text-shadow: 0 0 16px rgba(255,61,240,.5); }
+  body[data-skin="arcade"] .chip { letter-spacing: .05em; }
+
+  /* ============================================================
+     LAYOUT ONLY — arrangement per breakpoint. No component styles here.
+     ============================================================ */
+  body[data-layout="desktop"] .stage {
+    max-width: 1120px; margin: 0 auto; padding: 60px 22px 90px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(300px, .85fr);
+    grid-template-areas:
+      "board   timer"
+      "board   players"
+      "board   trace"
+      "board   found";
+    gap: 18px; align-items: start;
+  }
+  body[data-layout="desktop"] .trace-panel  { grid-area: trace; }
+  body[data-layout="desktop"] .timer-panel  { grid-area: timer; }
+  body[data-layout="desktop"] .board-panel  { grid-area: board; }
+  body[data-layout="desktop"] .players-panel{ grid-area: players; }
+  body[data-layout="desktop"] .found-panel  { grid-area: found; align-self: stretch; }
+
+  body[data-layout="mobile"] .stage {
+    max-width: 480px; margin: 0 auto; min-height: 100vh;
+    padding: 60px 16px 110px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  body[data-layout="mobile"] .timer-panel   { order: 1; }
+  body[data-layout="mobile"] .players-panel { order: 2; }
+  body[data-layout="mobile"] .trace-panel   { order: 3; }
+  body[data-layout="mobile"] .board-panel   { order: 4; }
+  body[data-layout="mobile"] .found-panel   { order: 5; }
+
+  /* ---------- floating prototype skin switcher ---------- */
+  #switcher {
+    position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 6px;
+    background: #12131a; color: #fff; padding: 6px; border-radius: 999px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.35); z-index: 9999; font-size: 13px;
+  }
+  #switcher button { background: transparent; color: #fff; border: 0; width: 34px; height: 34px; border-radius: 999px; font-size: 16px; }
+  #switcher button:hover { background: #2a2c3a; }
+  #switcher .label { min-width: 190px; text-align: center; opacity: .92; padding: 0 6px; }
+
+  #proto-controls { position: fixed; top: 12px; right: 12px; z-index: 9999; display: flex; gap: 6px; font-size: 12px; }
+  #proto-controls button { background: rgba(18,19,26,.82); color: #fff; border: 0; padding: 7px 11px; border-radius: 8px; backdrop-filter: blur(4px); }
+  #proto-controls button:hover { background: rgba(18,19,26,1); }
+  #proto-controls .tag { background: rgba(18,19,26,.82); color: #ffd479; border-radius: 8px; padding: 7px 9px; font-weight: 700; letter-spacing: .04em; }
+
+  /* ---------- reveal overlay (skinned, layout-agnostic) ---------- */
+  #reveal { position: fixed; inset: 0; z-index: 500; display: none; overflow: auto; }
+  #reveal.on { display: block; }
+  #reveal .backdrop { position: fixed; inset: 0; background: rgba(6,7,12,.62); backdrop-filter: blur(3px); }
+  #reveal .sheet {
+    position: relative; max-width: 560px; margin: 4vh auto; border-radius: 16px;
+    background: var(--reveal-bg); color: var(--text); padding: 22px; border: 1px solid var(--line);
+    box-shadow: 0 24px 70px rgba(0,0,0,.4);
+  }
+  #reveal h1 { margin: 0 0 4px; font-size: 22px; }
+  #reveal .sub { color: var(--muted); margin-bottom: 16px; font-size: 13px; }
+  #reveal h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin: 18px 0 8px; }
+  #reveal .words { display: flex; flex-wrap: wrap; gap: 6px; }
+  #reveal .w { border-radius: 999px; padding: 4px 10px; font-size: 13px; font-weight: 600; }
+  #reveal .w.miss { background: var(--miss-bg); color: var(--miss-text); }
+  #reveal .w.hit { background: var(--hit-bg); color: var(--hit-text); }
+  #reveal table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  #reveal td { padding: 8px 6px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  #reveal tr.me td { font-weight: 800; }
+  #reveal .rank { width: 28px; opacity: .5; }
+  #reveal .actions { display: flex; gap: 10px; margin-top: 20px; }
+  #reveal .actions button { flex: 1; border: 0; border-radius: 10px; padding: 12px; font-weight: 700; background: var(--accent); color: var(--accent-text); }
+  #reveal .actions button.ghost { background: transparent; color: inherit; border: 1px solid currentColor; }
+  @media print { #switcher, #proto-controls { display: none; } }
+</style>
+<body data-skin="default" data-layout="desktop">
+  <div id="proto-controls">
+    <span class="tag">PROTOTYPE #8</span>
+    <button data-cmd="start">Runde starten</button>
+    <button data-cmd="reveal">Reveal</button>
+    <button data-cmd="reset">Neu</button>
+  </div>
+
+  <div id="stage" class="stage">
+    <div class="panel trace-panel">
+      <h2>Aktuelles Wort</h2>
+      <div class="trace" data-hint="Ziehe mit Finger oder Maus über benachbarte Kacheln." data-role="trace"></div>
+    </div>
+    <div class="panel timer-panel">
+      <h2>Zeit</h2>
+      <div class="timerblock">
+        <div class="ring" data-role="ring"><div class="ring-center"><div class="t" data-role="timer">2:00</div></div></div>
+        <div class="score"><div class="v" data-role="score">0</div><div class="k">Punkte</div></div>
+      </div>
+    </div>
+    <div class="panel board-panel">
+      <div class="board-wrap">
+        <svg class="trail" data-role="trail"></svg>
+        <div class="board" data-role="board"></div>
+      </div>
+    </div>
+    <div class="panel players-panel">
+      <h2>Spieler</h2>
+      <div class="chips" data-role="players"></div>
+    </div>
+    <div class="panel found-panel">
+      <h2>Gefundene Wörter (<span data-role="wordcount">0/39</span>)</h2>
+      <div class="chips" data-role="found"></div>
+    </div>
+  </div>
+
+  <div id="reveal">
+    <div class="backdrop"></div>
+    <div class="sheet">
+      <h1>Runde beendet</h1>
+      <div class="sub" data-role="reveal-sub"></div>
+      <h2>Alle Wörter — <span data-role="reveal-count"></span></h2>
+      <div class="words" data-role="reveal-words"></div>
+      <h2>Punktestand</h2>
+      <table><tbody data-role="reveal-scores"></tbody></table>
+      <div class="actions">
+        <button data-cmd="reset">Neue Runde</button>
+        <button class="ghost" data-cmd="close">Weiter ansehen</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="switcher">
+    <button data-nav="-1" aria-label="vorheriger Skin">‹</button>
+    <div class="label" data-role="switcher-label"></div>
+    <button data-nav="1" aria-label="nächster Skin">›</button>
+  </div>
+
+<script>
+/* ---------------------------------------------------------------------------
+   Stub data + engine. Everything below is throwaway.
+--------------------------------------------------------------------------- */
+
+// Fixed board: four multi-letter tiles exercise legible multi-letter rendering.
+const BOARD = ['s','ch','e','n','t','a','u','r','st','ei','l','d','er','e','n','t'];
+
+// Full word list for this board (server-produced, in the real game). Stub here.
+const ALL_WORDS = ["alt","ein","neu","nur","sau","tal","auch","echt","eile","eine","erst","euch","eule","last","leer","nest","real","teil","erste","lache","lauch","laune","recht","sache","sauer","scheu","steil","stein","taste","latein","schale","schuld","schule","talent","tasche","teilen","leisten","schauen","schauer"];
+
+// German Scrabble-ish letter values (stub; exact table is an open design question).
+const LETTER_VALUE = {a:1,d:1,e:1,i:1,n:1,r:1,s:1,t:1,u:1,h:2,g:2,l:2,o:2,m:3,b:3,w:3,z:3,c:4,f:4,k:4,p:4,j:5,v:5,x:6,y:6,q:8,'ä':6,'ö':6,'ü':6,'ß':6};
+const wordValue = (w) => [...w].reduce((sum, ch) => sum + (LETTER_VALUE[ch] || 1), 0);
+
+const ROUND_SECONDS = 120;
+const BREAKPOINT = 860;
+
+// Skins: user-facing choice. `default: true` marks the one shipped default.
+const SKINS = {
+  default: { name: 'Standard', default: true },
+  arcade:  { name: 'Arcade' },
+};
+
+const state = {
+  skin: 'default',
+  layout: 'desktop',     // derived from viewport, not chosen
+  phase: 'idle',         // idle | play | reveal
+  remaining: ROUND_SECONDS,
+  deadline: null,
+  score: 0,
+  path: [],
+  found: new Set(),
+  players: [
+    { id: 'me', name: 'Du',    color: '#f5a623', me: true,  score: 0, words: 0, bot: false },
+    { id: 'b1', name: 'Anna',  color: '#7c5cff', me: false, score: 0, words: 0, bot: true },
+    { id: 'b2', name: 'Ben',   color: '#24c0a8', me: false, score: 0, words: 0, bot: true },
+    { id: 'b3', name: 'Clara', color: '#e8558e', me: false, score: 0, words: 0, bot: true },
+  ],
+};
+
+let tickTimer = null, botTimer = null;
+
+const neighbors = (i) => {
+  const r = i >> 2, c = i & 3, out = [];
+  for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+    if (!dr && !dc) continue;
+    const nr = r + dr, nc = c + dc;
+    if (nr < 0 || nr > 3 || nc < 0 || nc > 3) continue;
+    out.push(nr * 4 + nc);
+  }
+  return out;
+};
+const pathWord = () => state.path.map(i => BOARD[i]).join('');
+const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.max(0, Math.floor(s % 60))).padStart(2, '0')}`;
+
+/* ------------------------------- lifecycle ------------------------------- */
+
+function startRound() {
+  stopTimers();
+  state.phase = 'play';
+  state.deadline = Date.now() + ROUND_SECONDS * 1000;
+  state.remaining = ROUND_SECONDS;
+  state.path = [];
+  hideReveal();
+  tickTimer = setInterval(() => {
+    state.remaining = Math.max(0, (state.deadline - Date.now()) / 1000);
+    if (state.remaining <= 0) endRound();
+    renderDynamic();
+  }, 120);
+  botTimer = setInterval(botTick, 850);
+  renderDynamic();
+}
+function endRound() {
+  if (state.phase === 'reveal') return;
+  stopTimers();
+  state.phase = 'reveal';
+  state.path = [];
+  renderDynamic();
+  showReveal();
+}
+function resetRound() {
+  stopTimers();
+  state.phase = 'idle';
+  state.remaining = ROUND_SECONDS;
+  state.deadline = null;
+  state.score = 0;
+  state.path = [];
+  state.found = new Set();
+  state.players.forEach(p => { p.score = 0; p.words = 0; });
+  hideReveal();
+  renderDynamic();
+}
+function stopTimers() { clearInterval(tickTimer); clearInterval(botTimer); tickTimer = botTimer = null; }
+function botTick() {
+  if (state.phase !== 'play') return;
+  const bots = state.players.filter(p => p.bot);
+  const b = bots[Math.floor(Math.random() * bots.length)];
+  b.score += 2 + Math.floor(Math.random() * 14);
+  b.words++;
+  renderDynamic();
+}
+
+/* ------------------------------- interaction ----------------------------- */
+
+let dragging = false;
+let boardEl = null;
+
+function startPath(i) {
+  if (state.phase !== 'play') return;
+  state.path = [i];
+  renderDynamic();
+}
+function extendPath(i) {
+  const path = state.path;
+  if (path.length === 0 || path[path.length - 1] === i) return;
+  if (path.length >= 2 && path[path.length - 2] === i) { path.pop(); renderDynamic(); return; }
+  if (path.includes(i)) return;
+  if (neighbors(path[path.length - 1]).includes(i)) { path.push(i); renderDynamic(); }
+}
+function submitPath() {
+  const word = pathWord();
+  state.path = [];
+  if (word.length < 3) { renderDynamic(); return; }
+  if (ALL_WORDS.includes(word) && !state.found.has(word)) {
+    state.found.add(word);
+    state.score += wordValue(word);
+    const me = state.players.find(p => p.me);
+    me.score = state.score; me.words = state.found.size;
+  } else {
+    flashBad();
+  }
+  renderDynamic();
+}
+function flashBad() {
+  if (boardEl) {
+    boardEl.classList.remove('bad'); void boardEl.offsetWidth; boardEl.classList.add('bad');
+    setTimeout(() => boardEl && boardEl.classList.remove('bad'), 340);
+  }
+}
+function bindBoard(el) {
+  boardEl = el;
+  el.addEventListener('pointerdown', (e) => {
+    const t = e.target.closest('[data-tile]');
+    if (!t || state.phase !== 'play') return;
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    dragging = true;
+    startPath(+t.dataset.index);
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    const t = under && under.closest('[data-tile]');
+    if (!t || !el.contains(t)) return;
+    extendPath(+t.dataset.index);
+  });
+  const up = () => { if (!dragging) return; dragging = false; submitPath(); };
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointercancel', up);
+}
+
+/* ------------------------------- rendering ------------------------------- */
+
+const tileMarkup = (i) => {
+  const letters = BOARD[i].toUpperCase();
+  return `<div data-tile data-index="${i}" class="${BOARD[i].length > 1 ? 'multi' : ''}">${letters}<span class="val">${wordValue(BOARD[i])}</span></div>`;
+};
+function boardMarkup() { return BOARD.map((_, i) => tileMarkup(i)).join(''); }
+
+// Components are shared: players and found words are the same chip in both layouts.
+function playersMarkup() {
+  return state.players.map(p => `
+    <span class="chip ${p.me ? 'me' : ''}">
+      <span class="dot" style="background:${p.color}"></span>${p.name}<span class="s">${p.score}</span>
+    </span>`).join('');
+}
+function foundMarkup() {
+  if (!state.found.size) return '<span class="empty">Noch keine Wörter gefunden</span>';
+  return [...state.found].sort().map(w => `<span class="chip">${w}<span class="plus">+${wordValue(w)}</span></span>`).join('');
+}
+
+function mount() {
+  const stage = document.getElementById('stage');
+  stage.querySelector('[data-role="board"]').innerHTML = boardMarkup();
+  document.body.dataset.layout = state.layout;
+  bindBoard(stage.querySelector('[data-role="board"]'));
+  renderDynamic();
+}
+
+/* --- dynamic state surfacing (rule 5) --- */
+
+function renderDynamic() {
+  const stage = document.getElementById('stage');
+  if (!stage) return;
+  const q = (r) => stage.querySelectorAll(`[data-role="${r}"]`);
+  const low = state.remaining < 20 && state.phase === 'play';
+
+  q('timer').forEach(el => { el.textContent = fmt(state.remaining); el.classList.toggle('low', low); });
+  q('score').forEach(el => el.textContent = state.score);
+  q('trace').forEach(el => el.textContent = pathWord());
+  q('wordcount').forEach(el => el.textContent = `${state.found.size}/${ALL_WORDS.length}`);
+  q('players').forEach(el => el.innerHTML = playersMarkup());
+  q('found').forEach(el => el.innerHTML = foundMarkup());
+
+  const path = state.path;
+  const last = path.length ? path[path.length - 1] : -1;
+  const adj = last >= 0 ? new Set(neighbors(last)) : new Set();
+  stage.querySelectorAll('[data-tile]').forEach(t => {
+    const i = +t.dataset.index;
+    t.classList.toggle('active', path.includes(i));
+    t.classList.toggle('adjacent', adj.has(i) && !path.includes(i));
+  });
+
+  const ring = stage.querySelector('[data-role="ring"]');
+  const pct = Math.max(0, Math.min(1, state.remaining / ROUND_SECONDS));
+  const cs = getComputedStyle(document.body);
+  const col = (low ? cs.getPropertyValue('--ping') : cs.getPropertyValue('--ring')).trim() || '#2563eb';
+  if (ring) ring.style.background = `conic-gradient(${col} ${pct * 360}deg, color-mix(in srgb, ${col} 14%, transparent) 0deg)`;
+  drawTrail();
+}
+
+function drawTrail() {
+  const stage = document.getElementById('stage');
+  const svg = stage && stage.querySelector('[data-role="trail"]');
+  if (!svg) return;
+  const wrap = svg.parentElement;
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+  const pts = state.path.map(i => {
+    const t = wrap.querySelector(`[data-tile][data-index="${i}"]`);
+    return t ? [t.offsetLeft + t.offsetWidth / 2, t.offsetTop + t.offsetHeight / 2] : null;
+  }).filter(Boolean);
+  svg.innerHTML = pts.length < 2 ? '' :
+    `<polyline points="${pts.map(p => p.join(',')).join(' ')}" fill="none" stroke="var(--trail)"
+      stroke-width="7" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"
+      style="filter: var(--trail-glow)" />`;
+}
+
+/* --- reveal --- */
+
+function showReveal() {
+  const r = document.getElementById('reveal');
+  r.classList.add('on');
+  r.querySelector('[data-role="reveal-sub"]').textContent =
+    `Du hast ${state.found.size} von ${ALL_WORDS.length} Wörtern gefunden — ${state.score} Punkte.`;
+  r.querySelector('[data-role="reveal-count"]').textContent = `${state.found.size}/${ALL_WORDS.length}`;
+  r.querySelector('[data-role="reveal-words"]').innerHTML =
+    ALL_WORDS.map(w => `<span class="w ${state.found.has(w) ? 'hit' : 'miss'}">${w}</span>`).join('');
+  const ranked = [...state.players].sort((a, b) => b.score - a.score);
+  r.querySelector('[data-role="reveal-scores"]').innerHTML = ranked.map((p, i) => `
+    <tr class="${p.me ? 'me' : ''}">
+      <td class="rank">${i + 1}</td>
+      <td><span class="dot" style="background:${p.color};margin-right:8px"></span>${p.name}${p.me ? ' (Du)' : ''}</td>
+      <td style="text-align:right">${p.score}</td>
+    </tr>`).join('');
+}
+function hideReveal() { document.getElementById('reveal').classList.remove('on'); }
+
+/* ------------------------------- skin + layout --------------------------- */
+
+function setSkin(s, push) {
+  state.skin = SKINS[s] ? s : 'default';
+  document.body.dataset.skin = state.skin;
+  if (push) {
+    const url = new URL(location.href);
+    url.searchParams.set('skin', state.skin);
+    history.replaceState(null, '', url);
+  }
+  const meta = SKINS[state.skin];
+  document.querySelector('[data-role="switcher-label"]').textContent =
+    `Skin: ${meta.name}${meta.default ? '  ★' : ''}`;
+  renderDynamic();
+}
+function cycleSkin(dir) {
+  const keys = Object.keys(SKINS);
+  const i = keys.indexOf(state.skin);
+  setSkin(keys[(i + dir + keys.length) % keys.length], true);
+}
+function currentLayout() {
+  return window.matchMedia(`(min-width: ${BREAKPOINT}px)`).matches ? 'desktop' : 'mobile';
+}
+function syncLayout() {
+  const next = currentLayout();
+  if (next !== state.layout) {
+    state.layout = next;
+    document.body.dataset.layout = next;
+    renderDynamic();
+  }
+}
+
+/* ------------------------------- wiring ---------------------------------- */
+
+document.getElementById('switcher').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-nav]');
+  if (b) cycleSkin(+b.dataset.nav);
+});
+document.getElementById('proto-controls').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-cmd]');
+  if (!b) return;
+  if (b.dataset.cmd === 'start') startRound();
+  if (b.dataset.cmd === 'reveal') endRound();
+  if (b.dataset.cmd === 'reset') resetRound();
+  if (b.dataset.cmd === 'close') hideReveal();
+});
+document.getElementById('reveal').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-cmd]');
+  if (!b) return;
+  if (b.dataset.cmd === 'reset') resetRound();
+  if (b.dataset.cmd === 'close') hideReveal();
+});
+document.addEventListener('keydown', (e) => {
+  const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '') ||
+    document.activeElement?.isContentEditable;
+  if (typing) return;
+  if (e.key === 'ArrowLeft') { cycleSkin(-1); e.preventDefault(); }
+  if (e.key === 'ArrowRight') { cycleSkin(1); e.preventDefault(); }
+});
+let resizeRaf = null;
+window.addEventListener('resize', () => {
+  cancelAnimationFrame(resizeRaf);
+  resizeRaf = requestAnimationFrame(() => { syncLayout(); drawTrail(); });
+});
+
+state.layout = currentLayout();
+const initialSkin = new URL(location.href).searchParams.get('skin');
+setSkin(SKINS[initialSkin] ? initialSkin : 'default', false);
+mount();
+
+// review helper: ?phase=reveal opens the end-of-round sheet on load
+if (new URL(location.href).searchParams.get('phase') === 'reveal') endRound();
+</script>
+</body>
+</html>
