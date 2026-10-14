@@ -53,12 +53,24 @@ export class GameStore {
     if (snap.round) {
       this.deadline = snap.round.deadline;
     }
+    if (snap.finishedRound) {
+      // Intermission re-joiners still see the finished round's board.
+      this.round = {
+        roundNumber: snap.finishedRound.roundNumber,
+        board: snap.finishedRound.board,
+        deadline: 0,
+      };
+    }
     this.lastError = null;
   }
 
   applyScores(roundNumber: number, scores: ScoreEntry[]): void {
     if (roundNumber !== this.roundNumber) return;
-    void scores;
+    for (const s of scores) {
+      const p = this.players.find((x) => x.seatId === s.seatId);
+      if (p) p.cumulativeScore = s.cumulativeScore;
+      if (s.seatId === this.self.seatId) this.self.cumulativeScore = s.cumulativeScore;
+    }
   }
 
   upsertPlayer(p: PlayerInfo): void {

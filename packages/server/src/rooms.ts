@@ -29,7 +29,12 @@ export class Rooms {
       dispatch: (msg, sock) => this.dispatch(msg, sock),
       gone: (sock) => this.onSocketGone(sock),
     });
-    const pinger = new Pinger(ws, this.cfg.pongGraceMs, () => conn.terminate());
+    const pinger = new Pinger(ws, this.cfg.pongGraceMs, () => {
+      // A dead socket goes down the normal disconnect path: bookkeeping
+      // (seat absent, host transfer, empty grace) before the drop.
+      this.onSocketGone(ws);
+      conn.terminate();
+    });
 
     this.pingers.set(ws, pinger);
     this.conns.set(ws, { conn, roomId: null, seatId: null });
@@ -170,7 +175,9 @@ export class Rooms {
       this.sendTo(ws, { type: "error", reqId: msg.reqId, code: "nickname-taken" });
       return;
     }
-    if (room.seats.size >= this.cfg.maxPlayers) {
+    // Player seats are capped; a mid-round joiner is a spectator and waits
+    // for the next round-start (promotion is capped out in join order there).
+    if (room.phase !== "playing" && room.seats.size >= this.cfg.maxPlayers) {
       this.sendTo(ws, { type: "error", reqId: msg.reqId, code: "room-full" });
       return;
     }
@@ -465,10 +472,18 @@ export class Rooms {
     room.reveal = null;
     room.wordsBySeat = new Map();
     for (const seat of room.seats.values()) {
-      seat.role = "player"; // spectators are promoted exactly at round-start
       seat.roundWords = new Set();
       seat.roundScore = 0;
       room.wordsBySeat.set(seat.seatId, []);
+    }
+    // Spectators are promoted to players exactly at round-start, in join
+    // order, until the player cap is reached.
+    let players = this.playerCount(room);
+    for (const seat of [...room.seats.values()].sort((a, b) => a.seatId - b.seatId)) {
+      if (seat.role === "spectator" && players < this.cfg.maxPlayers) {
+        seat.role = "player";
+        players += 1;
+      }
     }
     this.autoReleaseStaleSeats(room);
     this.clearPhaseTimer(room);
@@ -531,9 +546,9 @@ export class Rooms {
       deadline: room.deadline,
     });
   }
-  /** Auto-advance; waits (ticks at remaining 0) while under 2 players. */
+  /** Auto-advance; waits (ticks at remaining 0) while under 2 player seats. */
   private autoAdvance(room: Room): boolean {
-    if (this.playerCount(room) < 2) return false;
+    if (this.seatPlayerCount(room) < 2) return false;
     this.touch(room);
     this.startRound(room);
     return true;
@@ -641,7 +656,16 @@ export class Rooms {
   private hasPresentOccupant(room: Room): boolean {
     return [...room.seats.values()].some((s) => s.present);
   }
+  /** Story 22: the host's start gate counts *connected* players. */
   private playerCount(room: Room): number {
+    let n = 0;
+    for (const s of room.seats.values()) if (s.role === "player" && s.present) n++;
+    return n;
+  }
+
+  /** The rolling clock gates on seats: reserved-but-absent seats still
+   *  have their round to return to, and auto-release on schedule. */
+  private seatPlayerCount(room: Room): number {
     let n = 0;
     for (const s of room.seats.values()) if (s.role === "player") n++;
     return n;
@@ -779,9 +803,9 @@ export class Rooms {
   /* ------------------------------------------------------------------ */
   /* Ops surface                                                         */
   /* ------------------------------------------------------------------ */
-  teardownAll(reason: string): void {
+  teardownAll(reason: string, closeCode = 1001): void {
     for (const room of [...this.rooms.values()]) {
-      this.endRoom(room, reason, 1001);
+      this.endRoom(room, reason, closeCode);
     }
   }
 }

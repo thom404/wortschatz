@@ -76,7 +76,7 @@ export class WordamentServer {
     if (this.shuttingDown) return;
     this.shuttingDown = true;
     if (this.pingInterval) clearInterval(this.pingInterval);
-    this.rooms.teardownAll(reason);
+    this.rooms.teardownAll(reason, closeCode);
     for (const ws of this.wss.clients) {
       try {
         ws.close(closeCode, reason);
@@ -98,7 +98,6 @@ export class WordamentServer {
     } catch {
       /* best effort */
     }
-    void closeCode;
   }
 
   private async handleHttp(req: IncomingMessage, res: ServerResponse): Promise<void> {

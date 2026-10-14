@@ -66,6 +66,9 @@ export class Connection {
     const now = Date.now();
     const action = this.limiter.hit(now);
     if (action === "teardown") {
+      // Sustained breach: tear down into the normal disconnect path, so the
+      // seat sees the usual present/disconnected bookkeeping.
+      this.deps.gone(this.ws);
       this.terminate();
       return;
     }
@@ -109,23 +112,38 @@ export class Connection {
 
   /** Shape validation beyond JSON-parse; null ⇒ an error was already sent. */
   private validate(parsed: unknown): ClientMessage | null {
+    const rec = (typeof parsed === "object" && parsed !== null ? parsed : {}) as Record<string, unknown>;
+    const reqId = readReqId(rec);
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      this.send({ type: "error", code: "invalid-message", message: "not an object" });
+      this.send({
+        type: "error",
+        ...(reqId !== undefined ? { reqId } : {}),
+        code: "invalid-message",
+        message: "not an object",
+      });
       return null;
     }
-    const rec = parsed as Record<string, unknown>;
     const type = rec["type"];
     if (typeof type !== "string") {
-      this.send({ type: "error", code: "invalid-message", message: "missing type" });
+      this.send({
+        type: "error",
+        ...(reqId !== undefined ? { reqId } : {}),
+        code: "invalid-message",
+        message: "missing type",
+      });
       return null;
     }
-    const reqId = readReqId(rec);
 
     switch (type) {
       case "create-room": {
         const nickname = readString(rec, "nickname");
         if (nickname === null) {
-          this.send({ type: "error", code: "invalid-message", message: "nickname required" });
+          this.send({
+            type: "error",
+            ...(reqId !== undefined ? { reqId } : {}),
+            code: "invalid-message",
+            message: "nickname required",
+          });
           return null;
         }
         return { type, nickname, ...(reqId !== undefined ? { reqId } : {}) };
@@ -134,11 +152,21 @@ export class Connection {
         const code = readString(rec, "code");
         const nickname = readString(rec, "nickname");
         if (code === null || code === "") {
-          this.send({ type: "error", code: "invalid-message", message: "code required" });
+          this.send({
+            type: "error",
+            ...(reqId !== undefined ? { reqId } : {}),
+            code: "invalid-message",
+            message: "code required",
+          });
           return null;
         }
         if (nickname === null || nickname === "") {
-          this.send({ type: "error", code: "invalid-message", message: "nickname required" });
+          this.send({
+            type: "error",
+            ...(reqId !== undefined ? { reqId } : {}),
+            code: "invalid-message",
+            message: "nickname required",
+          });
           return null;
         }
         const token = readOptionalString(rec, "token");
@@ -153,7 +181,12 @@ export class Connection {
       case "submit-word": {
         const word = readString(rec, "word");
         if (word === null) {
-          this.send({ type: "error", code: "invalid-message", message: "word required" });
+          this.send({
+            type: "error",
+            ...(reqId !== undefined ? { reqId } : {}),
+            code: "invalid-message",
+            message: "word required",
+          });
           return null;
         }
         return { type, word, ...(reqId !== undefined ? { reqId } : {}) };
@@ -168,7 +201,12 @@ export class Connection {
       case "transfer-host": {
         const seatId = rec["seatId"];
         if (typeof seatId !== "number" || !Number.isInteger(seatId)) {
-          this.send({ type: "error", code: "invalid-message", message: "integer seatId required" });
+          this.send({
+            type: "error",
+            ...(reqId !== undefined ? { reqId } : {}),
+            code: "invalid-message",
+            message: "integer seatId required",
+          });
           return null;
         }
         return { type, seatId, ...(reqId !== undefined ? { reqId } : {}) };

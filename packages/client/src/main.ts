@@ -1,4 +1,4 @@
-import { RoomConnection, loadSession, clearSession, type GreetFn } from "./api.js";
+import { RoomConnection, loadSession, clearSession, type GreetFn, type ConnStatus } from "./api.js";
 import { applyDelta, remainingOf, fmt } from "./deltas.js";
 import { GameStore, GERMAN_ERRORS } from "./store.js";
 import type { ServerMessage } from "@wordament/shared";
@@ -19,7 +19,7 @@ const store = new GameStore();
 let conn: RoomConnection | null = null;
 let renderTimer: ReturnType<typeof setInterval> | null = null;
 let inRoom = false;
-let connStatus: "connecting" | "open" | "retrying" | "closed" = "connecting";
+let connStatus: ConnStatus = "connecting";
 
 /* ------------------------------------------------------------------ */
 /* Boot / routes                                                       */
@@ -111,7 +111,7 @@ function onMessage(msg: ServerMessage): void {
   if (store.outcome !== before) render();
 }
 
-function onStatus(status: "connecting" | "open" | "retrying" | "closed"): void {
+function onStatus(status: ConnStatus): void {
   connStatus = status;
   if (status === "closed" && store.outcome === "none") {
     renderEnded("Verbindung beendet.");

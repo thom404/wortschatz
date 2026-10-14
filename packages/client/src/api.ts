@@ -11,6 +11,7 @@ import type { ClientMessage, ServerMessage, SnapshotMsg } from "@wordament/share
 export type ServerListener = (msg: ServerMessage) => void;
 
 export type GreetFn = (self: RoomConnection) => ClientMessage | null;
+export type ConnStatus = "connecting" | "open" | "retrying" | "closed";
 
 export interface StoredSession {
   token: string;
@@ -55,13 +56,13 @@ export class RoomConnection {
   readonly code: string;
   private readonly greet: GreetFn;
   private readonly listener: ServerListener;
-  private readonly onStatus: (status: "connecting" | "open" | "retrying" | "closed") => void;
+  private readonly onStatus: (status: ConnStatus) => void;
 
   constructor(
     code: string,
     greet: GreetFn,
     listener: ServerListener,
-    onStatus: (status: "connecting" | "open" | "retrying" | "closed") => void = () => {}
+    onStatus: (status: ConnStatus) => void = () => {}
   ) {
     this.code = code;
     this.greet = greet;
