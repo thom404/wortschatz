@@ -89,8 +89,11 @@ next one. A joiner with no valid session token is a spectator.
 
 ## Tick
 
-The 1 Hz server→client `round-tick` carrying the remaining time and the deadline, used
-to re-anchor a client's local interpolation between bounds. See Deadline.
+The once-per-second server→client `tick` carrying the phase, the remaining time
+and the deadline, used to re-anchor a client's local interpolation between
+bounds. One message type covers both the round countdown and the intermission
+countdown. See Deadline. (Renamed from the earlier `round-tick` when the
+real-time architecture landed.)
 
 ## Valid word
 

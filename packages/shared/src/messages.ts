@@ -1,0 +1,256 @@
+/**
+ * The wire contract: every message that can travel over the WebSocket in
+ * either direction, discriminated by `type`. This is the single source of
+ * truth; server and client both consume it and so cannot drift apart.
+ *
+ * Envelope rules:
+ * - Client→server requests may carry `reqId` (client-chosen monotonic
+ *   integer). The server echoes `reqId` verbatim on the correlated reply
+ *   when present; it never interprets it.
+ * - Server→client messages are deltas or re-anchors; a full `snapshot`
+ *   always supersedes them on join/reconnect/resync.
+ */
+import type { Board } from "./board.js";
+import type { ErrorCode, ErrorEnvelope } from "./errors.js";
+
+/* ------------------------------------------------------------------ */
+/* Client → server                                                     */
+/* ------------------------------------------------------------------ */
+
+export interface CreateRoomMsg {
+  type: "create-room";
+  nickname: string;
+  reqId?: number | undefined;
+}
+
+export interface JoinMsg {
+  type: "join";
+  code: string;
+  nickname: string;
+  /** Session token from a previous connection of this room; optional. */
+  token?: string | undefined;
+  reqId?: number | undefined;
+}
+
+export interface SubmitWordMsg {
+  type: "submit-word";
+  word: string;
+  reqId?: number | undefined;
+}
+
+export interface StartRoundMsg {
+  type: "start-round";
+  reqId?: number | undefined;
+}
+
+export interface SkipMsg {
+  type: "skip";
+  reqId?: number | undefined;
+}
+
+export interface KickMsg {
+  type: "kick";
+  seatId: number;
+  reqId?: number | undefined;
+}
+
+export interface TransferHostMsg {
+  type: "transfer-host";
+  seatId: number;
+  reqId?: number | undefined;
+}
+
+export interface LeaveMsg {
+  type: "leave";
+  reqId?: number | undefined;
+}
+
+export interface CloseRoomMsg {
+  type: "close-room";
+  reqId?: number | undefined;
+}
+
+export interface ResyncMsg {
+  type: "resync";
+  reqId?: number | undefined;
+}
+
+export type ClientMessage =
+  | CreateRoomMsg
+  | JoinMsg
+  | SubmitWordMsg
+  | StartRoundMsg
+  | SkipMsg
+  | KickMsg
+  | TransferHostMsg
+  | LeaveMsg
+  | CloseRoomMsg
+  | ResyncMsg;
+
+/* ------------------------------------------------------------------ */
+/* Server → client                                                     */
+/* ------------------------------------------------------------------ */
+
+/** The complete authoritative state, always sent whole. */
+export interface SnapshotMsg {
+  type: "snapshot";
+  reqId?: number | undefined;
+  room: RoomInfo;
+  self: SelfInfo;
+  players: PlayerInfo[];
+  /** Present only while the room phase is `playing`. */
+  round?: RoundInfo;
+  /** Present only while the room phase is `intermission`. */
+  finishedRound?: FinishedRoundInfo;
+}
+
+export interface RoomsEndedMsg {
+  type: "room-ended";
+  reason: string;
+}
+
+/** 1 Hz re-anchor during `playing` and `intermission`. */
+export interface TickMsg {
+  type: "tick";
+  phase: "playing" | "intermission";
+  remaining: number;
+  deadline: number;
+}
+
+export interface RoundStartMsg {
+  type: "round-start";
+  round: RoundInfo;
+}
+
+/** Payload contents are owned by ticket #6; the shape is opaque here. */
+export interface RoundEndMsg {
+  type: "round-end";
+  roundNumber: number;
+  reveal: RevealPayload;
+}
+
+/** Player-chip broadcast after every accepted verdict (and on snapshot). */
+export interface ScoreUpdateMsg {
+  type: "score-update";
+  roundNumber: number;
+  scores: ScoreEntry[];
+}
+
+export interface PlayerJoinedMsg {
+  type: "player-joined";
+  player: PlayerInfo;
+}
+
+export interface PlayerLeftMsg {
+  type: "player-left";
+  seatId: number;
+  nickname: string;
+}
+
+export interface PlayerDisconnectedMsg {
+  type: "player-disconnected";
+  seatId: number;
+  nickname: string;
+}
+
+export interface HostChangedMsg {
+  type: "host-changed";
+  hostSeatId: number;
+}
+
+export interface KickedMsg {
+  type: "kicked";
+}
+
+/** Synchronous verdict to a `submit-word`. */
+export interface WordAcceptedMsg {
+  type: "word-accepted";
+  reqId?: number | undefined;
+  word: string;
+  points: number;
+}
+
+export interface ServerErrorMsg {
+  type: "error";
+  /** Echoed from the correlated request when the client supplied one. */
+  reqId?: number | undefined;
+  code: ErrorCode;
+  message?: string;
+}
+
+export type ServerMessage =
+  | SnapshotMsg
+  | RoomsEndedMsg
+  | TickMsg
+  | RoundStartMsg
+  | RoundEndMsg
+  | ScoreUpdateMsg
+  | PlayerJoinedMsg
+  | PlayerLeftMsg
+  | PlayerDisconnectedMsg
+  | HostChangedMsg
+  | KickedMsg
+  | WordAcceptedMsg
+  | ServerErrorMsg;
+
+/** Convenience alias: an error message is the typed error envelope. */
+export type ErrorEnvelopeMsg = ServerErrorMsg;
+export type { ErrorEnvelope };
+
+/* ------------------------------------------------------------------ */
+/* Shared sub-shapes                                                   */
+/* ------------------------------------------------------------------ */
+
+export interface RoomInfo {
+  code: string;
+  phase: RoomPhase;
+  hostSeatId: number;
+  roundNumber: number;
+}
+
+export interface SelfInfo {
+  seatId: number;
+  nickname: string;
+  role: PlayerRole;
+  cumulativeScore: number;
+  /** Present on join/reconnect replies: reclaim key for this seat. */
+  token?: string | undefined;
+}
+
+export interface PlayerInfo {
+  seatId: number;
+  nickname: string;
+  role: PlayerRole;
+  cumulativeScore: number;
+  connected: boolean;
+}
+
+export interface RoundInfo {
+  roundNumber: number;
+  board: Board;
+  /** Absolute epoch-ms deadline of the current phase. */
+  deadline: number;
+}
+
+export interface FinishedRoundInfo {
+  roundNumber: number;
+  board: Board;
+  reveal: RevealPayload;
+}
+
+export interface ScoreEntry {
+  seatId: number;
+  nickname: string;
+  roundScore: number;
+  cumulativeScore: number;
+}
+
+/** Opaque until #6 fills it; exists so wire shape is fixed today. */
+export interface RevealPayload {
+  [key: string]: unknown;
+}
+
+export type RoomPhase = "lobby" | "playing" | "intermission" | "closed";
+export type PlayerRole = "player" | "spectator";
+
+export type { Board };

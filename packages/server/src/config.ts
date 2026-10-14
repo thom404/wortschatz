@@ -1,0 +1,135 @@
+/**
+ * Server configuration. Clock constants are injectable so integration tests
+ * run real timers at scaled-down durations; the domain collaborators
+ * (dictionary, board generation, scoring/reveal) are opaque injected seams
+ * owned by tickets #7 and #6 — this wire-spec ticket fixes only their shape.
+ */
+import { PROTOCOL } from "@wordament/shared";
+
+/** Opaque dictionary seam (deep module per ADR-0001; ticket #7 owns impl). */
+export interface DictionaryLike {
+  isValid(word: string): boolean;
+  /**
+   * Optional pathability seam (#19: non-pathable strings rejected
+   * server-side). The real implementation arrives with #7's board
+   * enumeration; until then the injected se may implement it.
+   */
+  isPathable?(word: string, board: string[]): boolean;
+}
+
+/** Board seam: a fresh board per round (ticket #7 owns generation). */
+export type BoardGenerator = (roundNumber: number) => string[];
+
+/** Scoring seam (ticket #6 owns the formula). */
+export type ScoreFn = (word: string, seatId: number) => number;
+
+/** Round-end reveal seam (ticket #6 owns the payload contents). */
+export type RevealFn = (ctx: {
+  board: string[];
+  roundNumber: number;
+  wordsBySeat: Map<number, string[]>;
+}) => { [key: string]: unknown };
+
+export interface Logger {
+  info(obj: Record<string, unknown>): void;
+  warn(obj: Record<string, unknown>): void;
+  error(obj: Record<string, unknown>): void;
+}
+
+export interface ServerConfig {
+  port: number;
+  host?: string;
+  /** Absolute path of the SPA build to serve at `/` (deep links included). */
+  staticDir?: string;
+
+  /** Injectable domain seams. */
+  dictionary: DictionaryLike;
+  generateBoard: BoardGenerator;
+  scoreWord: ScoreFn;
+  reveal: RevealFn;
+
+  /** Clock overrides (ms). Defaults come from `PROTOCOL`. */
+  roundMs?: number;
+  intermissionMs?: number;
+  tickIntervalMs?: number;
+  roomEmptyGraceMs?: number;
+  roomIdleMs?: number;
+
+  /** Hardening overrides. */
+  maxPayloadBytes?: number;
+  quotaWindowMs?: number;
+  quotaMaxMessages?: number;
+  pingIntervalMs?: number;
+  pongGraceMs?: number;
+  maxPlayers?: number;
+  maxRooms?: number;
+  roomCodeLength?: number;
+
+  /** Structured logger; defaults to JSON lines on stdout. */
+  log?: Logger;
+}
+
+export type ServerConfigResolved = Required<
+  Pick<
+    ServerConfig,
+    | "port"
+    | "roundMs"
+    | "intermissionMs"
+    | "tickIntervalMs"
+    | "roomEmptyGraceMs"
+    | "roomIdleMs"
+    | "maxPayloadBytes"
+    | "quotaWindowMs"
+    | "quotaMaxMessages"
+    | "pingIntervalMs"
+    | "pongGraceMs"
+    | "maxPlayers"
+    | "maxRooms"
+    | "roomCodeLength"
+  >
+> & {
+  host?: string;
+  staticDir?: string;
+  dictionary: DictionaryLike;
+  generateBoard: BoardGenerator;
+  scoreWord: ScoreFn;
+  reveal: RevealFn;
+  log: Logger;
+};
+
+function envPort(): number {
+  const raw = process.env.PORT;
+  if (raw === undefined || raw === "") return 3000;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 3000;
+}
+
+export function resolveConfig(overrides: ServerConfig): ServerConfigResolved {
+  return {
+    port: overrides.port ?? envPort(),
+    ...(overrides.host !== undefined ? { host: overrides.host } : {}),
+    ...(overrides.staticDir !== undefined ? { staticDir: overrides.staticDir } : {}),
+    dictionary: overrides.dictionary,
+    generateBoard: overrides.generateBoard,
+    scoreWord: overrides.scoreWord,
+    reveal: overrides.reveal,
+    roundMs: overrides.roundMs ?? PROTOCOL.ROUND_MS,
+    intermissionMs: overrides.intermissionMs ?? PROTOCOL.INTERMISSION_MS,
+    tickIntervalMs: overrides.tickIntervalMs ?? PROTOCOL.TICK_INTERVAL_MS,
+    roomEmptyGraceMs: overrides.roomEmptyGraceMs ?? PROTOCOL.ROOM_EMPTY_GRACE_MS,
+    roomIdleMs: overrides.roomIdleMs ?? PROTOCOL.ROOM_IDLE_MS,
+    maxPayloadBytes: overrides.maxPayloadBytes ?? PROTOCOL.MAX_PAYLOAD_BYTES,
+    quotaWindowMs: overrides.quotaWindowMs ?? PROTOCOL.QUOTA_WINDOW_MS,
+    quotaMaxMessages: overrides.quotaMaxMessages ?? PROTOCOL.QUOTA_MAX_MESSAGES,
+    pingIntervalMs: overrides.pingIntervalMs ?? PROTOCOL.PING_INTERVAL_MS,
+    pongGraceMs: overrides.pongGraceMs ?? PROTOCOL.PONG_GRACE_MS,
+    maxPlayers: overrides.maxPlayers ?? PROTOCOL.MAX_PLAYERS,
+    maxRooms: overrides.maxRooms ?? PROTOCOL.MAX_ROOMS,
+    roomCodeLength: overrides.roomCodeLength ?? PROTOCOL.ROOM_CODE_LENGTH,
+    log: overrides.log ?? {
+      info: (o) => console.log(JSON.stringify({ level: "info", ts: Date.now(), ...o })),
+      warn: (o) => console.warn(JSON.stringify({ level: "warn", ts: Date.now(), ...o })),
+      error: (o) => console.error(JSON.stringify({ level: "error", ts: Date.now(), ...o })),
+    },
+  };
+}

@@ -1,0 +1,23 @@
+# Homelab deployment behind Traefik 3 (timetagger label pattern; #9):
+# single Host() router, "open" middleware chain (no ddns-allowlist — remote
+# players must work), external reverse-proxy network via TRAEFIK_NETWORK.
+services:
+  wordament:
+    build: .
+    image: wordament:latest
+    restart: unless-stopped
+    environment:
+      - PORT=3000
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.wordament.rule=Host(`wordament.phanthom.cc`)
+      - traefik.http.routers.wordament.middlewares=open@file
+      - traefik.http.services.wordament.loadbalancer.server.port=3000
+      - tls.certresolver=dns-cloudflare
+      - tls.domains[0].main=wordament.phanthom.cc
+    networks:
+      - ${TRAEFIK_NETWORK:-reverse-proxy}
+
+networks:
+  reverse-proxy:
+    external: true
