@@ -18,6 +18,13 @@ A player's running total across a session — the sum of their per-round scores.
 session's winner is the highest cumulative score when the host closes or the room
 expires. Contrast a per-round score, which is shown in the round breakdown.
 
+## Deadline
+
+The server-owned absolute end time (epoch ms) of the current room phase — the
+2-minute round or the intermission. Clients render their countdown by interpolating
+against it, but the deadline is authoritative and the client's local zero is cosmetic.
+See Tick.
+
 ## Host
 
 The player who controls the room. The **creator** of a room is its first host; if the
@@ -58,15 +65,32 @@ A player's slot in a room, holding their nickname and cumulative score. A seat i
 reserved while a disconnected holder may still return, and auto-releases once its
 holder has missed a full round plus intermission; a voluntary leave releases it at once.
 
+## Server authority
+
+The property that the single server process owns the game: it generates the board,
+owns the clock and computes all scores, while clients only render and send input. There
+is no client-side clock, score, or word-trust.
+
 ## Session token
 
 The opaque, server-issued token persisted client-side that reclaims a player's seat
 and score without an account. A lost token means a brand-new player.
 
+## Snapshot
+
+The complete authoritative room-and-player state (`room`, `self`, `players`, and the
+live `round` when playing) that the server sends on join, on every reconnect and on
+`resync`. The client never reconstructs state from deltas; everything else is a delta.
+
 ## Spectator
 
 A player admitted to a room mid-round who watches the current round and plays from the
 next one. A joiner with no valid session token is a spectator.
+
+## Tick
+
+The 1 Hz server→client `round-tick` carrying the remaining time and the deadline, used
+to re-anchor a client's local interpolation between bounds. See Deadline.
 
 ## Valid word
 
@@ -75,6 +99,12 @@ connected path over the board with each tile used at most once, that is present 
 word list. Matching is case-insensitive and NFC-normalized; `ä/ö/ü/ß` are matched as
 real characters (no `ae/oe/ue/ss` aliasing). Validity is **strict list membership** —
 there is no algorithmic compound validation.
+
+## Wire protocol
+
+The WebSocket message contract: one JSON text frame per message, discriminated by a
+`type`, with an optional `reqId` echoed by the server for request/response correlation
+and a typed `error` reply for every rejected action. See Snapshot.
 
 ## Word list
 
