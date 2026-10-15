@@ -1,7 +1,7 @@
 /**
- * Scoring engine (ADR-0006-adjacent): the #6-resolution formula behind the
- * `ScoreFn` seam. A word scores the plain sum of its letters' canonical
- * German Scrabble values — no length multiplier, no multiplier tiles.
+ * Scoring engine: the #6-ticket resolution formula behind the `ScoreFn`
+ * seam. A word scores the plain sum of its letters' canonical German
+ * Scrabble values — no length multiplier, no multiplier tiles.
  *
  * The engine is a pure word function on purpose: the word string already
  * contains the letters the player actually spelled, so tile structure never
@@ -55,16 +55,13 @@ export const LETTER_VALUES: Readonly<Record<string, number>> = {
 } as const;
 
 export const MIN_VALUE = 1;
-export const MAX_VALUE = 10;
 
 /** One letter's table value; any off-table character clamps to the floor. */
 export function charScore(ch: string): number {
-  const value = LETTER_VALUES[ch];
-  if (value !== undefined) return value;
-  return Math.min(MAX_VALUE, Math.max(MIN_VALUE, MIN_VALUE));
+  return LETTER_VALUES[ch] ?? MIN_VALUE;
 }
 
-/** Plain sum of the word's letters' values (letters are NFC by #4's rules). */
+/** Plain sum of the word's letters' values (letters are NFC-normalized per ADR-0001's word rules). */
 export function wordScore(word: string): number {
   let total = 0;
   for (const ch of word) total += charScore(ch);
