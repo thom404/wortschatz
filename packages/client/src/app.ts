@@ -1,6 +1,7 @@
 import { loadSession, clearSession, type ConnStatus } from "./api.js";
 import { applyDelta, remainingOf, fmt, LOW_TIME_MS } from "./deltas.js";
 import { GameStore } from "./store.js";
+import { applySkin, loadSkin, skinSwitcherHtml, wireSkinSwitcher } from "./skins.js";
 import type { ClientMessage, PlayerInfo, RoomsEndedMsg, ServerMessage } from "@wordament/shared";
 import { neighbors, PROTOCOL, tileSpellingLength, tileStrings } from "@wordament/shared";
 import "./style.css";
@@ -108,6 +109,10 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
   };
   window.addEventListener("popstate", app.onPopState);
   app.stopDrag = wireDrag(app);
+  // The skin choice is page-level (ADR-0002): the restored selection
+  // rides on the root attribute before the first screen renders, so a
+  // returning visitor never glimpses the wrong design.
+  applySkin(loadSkin());
   home(app);
   return () => {
     teardown(app);
@@ -147,6 +152,7 @@ function home(app: App): void {
         <button id="jn-btn">Beitreten</button>
       </section>
       <p id="home-errors"></p>
+      ${skinSwitcherHtml(loadSkin())}
     </div>`;
   app.root.querySelector<HTMLButtonElement>("#mk-btn")!.onclick = () => {
     const nickname = input(app, "mk-nick");
@@ -175,6 +181,7 @@ function home(app: App): void {
     };
     startRoom(app, code, greet);
   };
+  wireSkinSwitcher(app.root);
 }
 
 function deepLinkCode(): string | null {

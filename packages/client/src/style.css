@@ -1,9 +1,10 @@
 /* ==================================================================
- * Standard skin (ADR-0002): the one default token set. Every visual
+ * Skins (ADR-0002): Standard (this token set) is the one default; the
+ * alternative Arcade ships below as a pure token block. Every visual
  * value a component consumes is defined here — palette, surfaces,
- * borders, glow, radii, spacing. Component styles never hard-code a
- * colour/shape; adding a skin later (Arcade, #23) is a token block.
- * The ONE stateful style switch is the shared `low` class (below).
+ * borders, glow, radii, spacing — and component styles never
+ * hard-code a colour/shape or branch on a skin. The ONE stateful
+ * style switch is the shared `low` class (below).
  * ================================================================== */
 :root {
   /* Palette */
@@ -48,6 +49,32 @@
   --timer-inset: 6px;
   --idx-top: 2px;
   --idx-left: 4px;
+}
+
+/* ==================================================================
+ * Arcade skin (ADR-0002, #23): the second skin — dark neon. Exactly
+ * one token block per skin, consumed by every component; the registry
+ * entry lives in skins.ts. No attribute set (`data-skin` unset or
+ * "standard") stays Standard.
+ * ================================================================== */
+body[data-skin="arcade"] {
+  /* Palette */
+  --surface: #0b0f1c; /* page background — near-black navy */
+  --panel: #131a2e; /* raised card surfaces */
+  --panel-inset: #0d1424; /* recessed surfaces (invite code) */
+  --ink: #e6efff; /* primary text — ice */
+  --dim: #8fa3c8; /* secondary text */
+  --accent: #22d3ee; /* interactive highlights — neon cyan */
+  --accent-ink: #05121b; /* text on accent */
+  --accent-soft: rgba(34, 211, 238, 0.16); /* badge wash */
+  --ok: #4ade80; /* connected state — neon green */
+  --away: #64748b; /* unreachable state */
+  --danger: #fb7185; /* typed errors */
+  --ping: #f43f5e; /* low-time urgency, shared by digits and ring */
+
+  /* Shape */
+  --border: #263352;
+  --glow: rgba(34, 211, 238, 0.55); /* brighter halo for neon */
 }
 
 body {
@@ -291,6 +318,7 @@ label {
   margin: var(--gap-s) 0;
   font-size: 0.9rem;
 }
+select,
 input {
   display: block;
   width: 100%;
@@ -300,6 +328,8 @@ input {
   border: 1px solid var(--border);
   border-radius: var(--radius-s);
   font: inherit;
+  background: var(--panel-inset);
+  color: var(--ink);
 }
 button {
   margin-top: var(--gap-s);

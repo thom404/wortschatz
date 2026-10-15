@@ -814,4 +814,70 @@ describe("mountable app", () => {
     expect(app!.root.querySelector("h1")!.textContent).toContain("Runde 1");
     expect(tileEls(app!.root).map((t) => t.textContent)).toEqual(BOARD.map((letter, i) => `${letter}${i}`));
   });
+
+  describe("home skin choice (#23)", () => {
+    // The choice is observable only at its boundaries: the root attribute
+    // (body[data-skin]), the localStorage value and remounts of the app.
+    const SKIN_KEY = "wordament:skin";
+
+    beforeEach(() => {
+      localStorage.removeItem(SKIN_KEY);
+    });
+
+    afterEach(() => {
+      localStorage.removeItem(SKIN_KEY);
+      delete (document.body as { dataset: DOMStringMap }).dataset.skin;
+    });
+
+    function chooseSkin(value: string): void {
+      const select = app!.root.querySelector<HTMLSelectElement>("#skin-select")!;
+      select.value = value;
+      select.dispatchEvent(new Event("change"));
+    }
+
+    it("first-time visitors land on Standard — the root attribute, the switcher and its selection", () => {
+      expect(document.body.dataset.skin).toBe("standard");
+      const select = app!.root.querySelector<HTMLSelectElement>("#skin-select")!;
+      expect([...select.options].map((o) => o.value)).toEqual(["standard", "arcade"]);
+      expect(select.value).toBe("standard");
+      // Switcher lives on the home screen (of this mount), not in a room.
+      typeInto("#mk-nick", "Lena");
+      click("#mk-btn");
+      app!.conn().feed(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
+      expect(app!.root.querySelector("#skin-select")).toBeNull();
+    });
+
+    it("choosing Arcade applies app-wide instantly and carries through every screen of the mount", () => {
+      chooseSkin("arcade");
+      expect(document.body.dataset.skin).toBe("arcade");
+
+      // Rooms render from the same root: no per-screen choice needed.
+      typeInto("#mk-nick", "Lena");
+      click("#mk-btn");
+      app!.conn().feed(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum LAG4T");
+      expect(document.body.dataset.skin).toBe("arcade");
+
+      // Back home, the switcher reflects the life choice of this visit.
+      click("#leave-btn");
+      expect(app!.root.querySelector<HTMLSelectElement>("#skin-select")!.value).toBe("arcade");
+    });
+
+    it("the choice persists via localStorage and a returning visitor mounts onto it", () => {
+      chooseSkin("arcade");
+      expect(localStorage.getItem(SKIN_KEY)).toBe("arcade");
+      app!.unmount();
+      app = mountHarness();
+      expect(document.body.dataset.skin).toBe("arcade");
+      expect(app!.root.querySelector<HTMLSelectElement>("#skin-select")!.value).toBe("arcade");
+    });
+
+    it("a misplaced stored value falls back to Standard, not to a broken skin", () => {
+      localStorage.setItem(SKIN_KEY, "retro90");
+      app!.unmount();
+      app = mountHarness();
+      expect(document.body.dataset.skin).toBe("standard");
+      expect(app!.root.querySelector<HTMLSelectElement>("#skin-select")!.value).toBe("standard");
+    });
+  });
 });

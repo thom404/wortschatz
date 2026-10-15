@@ -83,6 +83,16 @@ is no client-side clock, score, or word-trust.
 The opaque, server-issued token persisted client-side that reclaims a player's seat
 and score without an account. A lost token means a brand-new player.
 
+## Skin
+
+A user-facing visual design of the whole app: one CSS custom-property token block
+(palette, surface, border, glow, radius — plus a per-skin `--ping` low-time colour)
+consumed by every component, plus one registry entry. Standard (light) is the
+default; Arcade (dark neon) is the second. The choice renders as `data-skin` on the
+root, can be switched from the home screen, applies app-wide instantly, and
+persists in localStorage. No component style branches on a skin beyond tokens, and
+adding one cannot break layout. See [ADR-0002](docs/adr/0002-game-screen-layout-and-skins.md).
+
 ## Snapshot
 
 The complete authoritative room-and-player state (`room`, `self`, `players`, and the
