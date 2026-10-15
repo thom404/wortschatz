@@ -10,7 +10,7 @@
 # provider chain, the per-host TLS entrypoint line and the deployment walk.
 services:
   wordament:
-    image: ghcr.io/thom404/wordament-clone-german:sha-08dd09d0eed56b25cdd10ec46e512482d7e4902e
+    image: ghcr.io/thom404/wortschatz:sha-08dd09d0eed56b25cdd10ec46e512482d7e4902e
     restart: unless-stopped
     environment:
       - PORT=3000
