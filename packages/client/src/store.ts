@@ -18,13 +18,21 @@ export class GameStore {
     cumulativeScore: 0,
   };
   players: PlayerInfo[] = [];
+  /** Per-seat round score of the live or just-finished round — the
+   *  scoreboard's ranking key and the timer's centered value. Comes from
+   *  room-wide `score-update`s; absent seats count as 0. Cleared on
+   *  snapshot and round start. */
+  roundScores = new Map<number, number>();
   round: { roundNumber: number; board: string[]; deadline: number } | null = null;
   /** Round number + reveal of the finished round; the board itself stays in
    *  `round` (a bare `round-end` delta carries no board). */
   finishedRound: { roundNumber: number; reveal: RevealPayload } | null = null;
   deadline = 0;
-  /** My score for THIS round alone — the ring timer's centered value. */
-  selfRoundScore = 0;
+  /** My score for THIS round alone — the ring timer's centered value. One
+   *  state, not two: it reads the scoreboard map's entry for my seat. */
+  get selfRoundScore(): number {
+    return this.roundScores.get(this.self.seatId) ?? 0;
+  }
   roundWords = new Map<string, number>();
   lastError: { code: ErrorCode; message?: string } | null = null;
   outcome: Outcome = "none";
@@ -52,6 +60,7 @@ export class GameStore {
       cumulativeScore: snap.self.cumulativeScore,
     };
     this.players = snap.players.map((p) => ({ ...p }));
+    this.roundScores.clear();
     this.round = snap.round ?? null;
     this.finishedRound = snap.finishedRound
       ? { roundNumber: snap.finishedRound.roundNumber, reveal: snap.finishedRound.reveal }
@@ -73,13 +82,28 @@ export class GameStore {
   applyScores(roundNumber: number, scores: ScoreEntry[]): void {
     if (roundNumber !== this.roundNumber) return;
     for (const s of scores) {
+      this.roundScores.set(s.seatId, s.roundScore);
       const p = this.players.find((x) => x.seatId === s.seatId);
       if (p) p.cumulativeScore = s.cumulativeScore;
-      if (s.seatId === this.self.seatId) {
-        this.self.cumulativeScore = s.cumulativeScore;
-        this.selfRoundScore = s.roundScore;
-      }
+      if (s.seatId === this.self.seatId) this.self.cumulativeScore = s.cumulativeScore;
     }
+  }
+
+  /** The scoreboard view: players ordered by round score descending, ties
+   *  sharing one place, the display order inside a tie settled by join
+   *  order (the roster array's order). Standard competition ranking: a
+   *  later, better score restarts the count after shared places. */
+  rankedPlayers(): { player: PlayerInfo; roundScore: number; place: number }[] {
+    const order = this.players
+      .map((player, index) => ({ player, index, roundScore: this.roundScores.get(player.seatId) ?? 0 }))
+      .sort((a, b) => b.roundScore - a.roundScore || a.index - b.index);
+    let place = 1;
+    let prevScore: number | null = null;
+    return order.map((entry, idx) => {
+      if (prevScore !== null && entry.roundScore !== prevScore) place = idx + 1;
+      prevScore = entry.roundScore;
+      return { player: entry.player, roundScore: entry.roundScore, place };
+    });
   }
 
   upsertPlayer(p: PlayerInfo): void {
@@ -90,6 +114,7 @@ export class GameStore {
 
   removePlayer(seatId: number): void {
     this.players = this.players.filter((p) => p.seatId !== seatId);
+    this.roundScores.delete(seatId);
   }
 
   setConnected(seatId: number, connected: boolean): void {
@@ -99,11 +124,13 @@ export class GameStore {
 
   /** My private per-round found words with their points (from the
    *  synchronous `word-accepted` verdict). Quietly adds nothing when the
-   *  word is already found. */
+   *  word is already found; my scoreboard entry moves with it, ahead of
+   *  the room-wide `score-update` re-anchor. */
   acceptedForMe(word: string, points: number): void {
     if (this.roundWords.has(word)) return;
     this.roundWords.set(word, points);
-    this.selfRoundScore += points;
+    const mine = this.roundScores.get(this.self.seatId) ?? 0;
+    this.roundScores.set(this.self.seatId, mine + points);
   }
 
   get isHost(): boolean {
@@ -122,6 +149,7 @@ export class GameStore {
     this.roundNumber = 0;
     this.self = { seatId: -1, nickname: "", role: "player", cumulativeScore: 0 };
     this.players = [];
+    this.roundScores.clear();
     this.round = null;
     this.finishedRound = null;
     this.deadline = 0;

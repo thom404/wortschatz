@@ -3,13 +3,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   lobbySnapshot,
   mountHarness,
+  playingSnapshot,
   playerJoined,
   roundStarted,
   strayTouchMove,
   synthesizePointerDrag,
   synthesizeTouchDrag,
+  seat,
   tileEls,
   type Mounted,
+  type PlayerInfo,
 } from "./harness.js";
 
 /**
@@ -44,14 +47,229 @@ function typeInto(sel: string, value: string): void {
 
 /** Home → lobby → (host starts) → round one, through the boundary. */
 function driveToRoundOne(code: string): void {
-  typeInto("#mk-nick", "Lena");
+  driveToRoundWith(code, [seat({ seatId: 1, nickname: "Lena" })]);
+}
+
+/** Home → lobby (with a ready roster) → round one, through the boundary. */
+function driveToRoundWith(code: string, roster: PlayerInfo[]): void {
+  typeInto("#mk-nick", roster[0]!.nickname);
   click("#mk-btn");
-  app!.conn().feed(lobbySnapshot({ code, nickname: "Lena" }));
+  app!.conn().feed(lobbySnapshot({ code, nickname: roster[0]!.nickname, players: roster }));
   click("#start-btn");
   app!.conn().feed(roundStarted(BOARD));
 }
 
 describe("mountable app", () => {
+  describe("in-room screens (#20)", () => {
+    it("the lobby shows seats as player chips — nickname, host/role badge, connected state — and the host affordance", () => {
+      typeInto("#mk-nick", "Lena");
+      click("#mk-btn");
+      // A lobby can hold a disconnected seat: its holder lost the socket but
+      // keeps the reservation (glossary: seat).
+      app!.conn().feed(
+        lobbySnapshot({
+          code: "LAG4T",
+          nickname: "Lena",
+          players: [
+            seat({ seatId: 1, nickname: "Lena" }),
+            seat({ seatId: 2, nickname: "Ben" }),
+            seat({ seatId: 3, nickname: "Cem", connected: false }),
+          ],
+        })
+      );
+
+      // One chip per person — join order, the self chip highlighted.
+      const chips = [...app!.root.querySelectorAll<HTMLElement>("#players .chip.player")];
+      expect(chips).toHaveLength(3);
+      expect(chips[0]!.classList.contains("me")).toBe(true);
+      expect(chips[0]!.textContent).toContain("Lena");
+      expect(chips[1]!.textContent).toContain("Ben");
+      expect(chips[2]!.textContent).toContain("Cem");
+
+      // Events live on the chips, not as duplicated text: the host badge on
+      // my chip only, connected dots on every chip, the disconnected state
+      // spelled out in German on Cem's chip.
+      expect(chips[0]!.textContent).toContain("Gastgeber");
+      expect(chips[1]!.textContent).not.toContain("Gastgeber");
+      const dots = chips.map((c) => c.querySelector(".dot"));
+      expect(dots).toHaveLength(3);
+      expect(chips[0]!.querySelector(".dot.on")).toBeTruthy();
+      expect(chips[2]!.querySelector(".dot.off")).toBeTruthy();
+      expect(chips[2]!.textContent).toContain("unterbrochen");
+
+      // The host's round-start affordance (spec: start only at ≥ 2 players).
+      expect(app!.root.querySelector("#start-btn")).toBeTruthy();
+      expect(app!.root.querySelector("#players")).toBeTruthy();
+
+      // The address bar carries the room's real deep link, not the greeting
+      // key the creator pushed before the server named the room.
+      expect(window.location.pathname).toBe("/r/LAG4T");
+    });
+
+    it("the scoreboard live-updates per score-update: round-score order, ties share a place, join order breaks the tie", () => {
+      driveToRoundWith("LAG4T", [
+        seat({ seatId: 1, nickname: "Lena" }),
+        seat({ seatId: 2, nickname: "Ben" }),
+        seat({ seatId: 3, nickname: "Cem", connected: false }),
+      ]);
+
+      // One accepted verdict per seat arrives as a room-wide score-update.
+      app!.conn().feed({
+        type: "score-update",
+        roundNumber: 1,
+        scores: [
+          { seatId: 2, nickname: "Ben", roundScore: 7, cumulativeScore: 7 },
+          { seatId: 1, nickname: "Lena", roundScore: 5, cumulativeScore: 5 },
+          { seatId: 3, nickname: "Cem", roundScore: 5, cumulativeScore: 5 },
+        ],
+      });
+
+      // Ben leads alone; Lena and Cem tie on 5 and share second place, shown
+      // in join order (seat 1 before seat 3) — Cem keeps her disconnected chip.
+      const chips = [...app!.root.querySelectorAll<HTMLElement>("#players .chip.player")];
+      const board = chips.map((c) => ({
+        nick: c.querySelector(".nick")!.textContent,
+        place: c.querySelector(".place")!.textContent,
+      }));
+      expect(board).toEqual([
+        { nick: "Ben", place: "1" },
+        { nick: "Lena", place: "2" },
+        { nick: "Cem", place: "2" },
+      ]);
+      expect(chips.filter((c) => c.querySelector(".dot.off"))).toHaveLength(1);
+
+      // The chip carries its round score.
+      const scores = chips.map((c) => c.querySelector("small")!.textContent);
+      expect(scores).toEqual(["7 P", "5 P", "5 P"]);
+
+      // A later verdict reorders live: Cem's 9 overtakes Ben's 7.
+      app!.conn().feed({
+        type: "score-update",
+        roundNumber: 1,
+        scores: [
+          { seatId: 3, nickname: "Cem", roundScore: 9, cumulativeScore: 9 },
+          { seatId: 2, nickname: "Ben", roundScore: 7, cumulativeScore: 7 },
+          { seatId: 1, nickname: "Lena", roundScore: 5, cumulativeScore: 5 },
+        ],
+      });
+      const nowPlaces = [...app!.root.querySelectorAll<HTMLElement>("#players .chip.player .place")];
+      expect(nowPlaces.map((c) => c.textContent)).toEqual(["1", "2", "3"]);
+      expect(app!.root.querySelector("#players")!.textContent).toContain("Cem");
+    });
+
+    it("a new round resets the scoreboard: places from scratch, round scores cleared", () => {
+      driveToRoundWith("LAG4T", [
+        seat({ seatId: 1, nickname: "Lena" }),
+        seat({ seatId: 2, nickname: "Ben" }),
+        seat({ seatId: 3, nickname: "Cem" }),
+      ]);
+      app!.conn().feed({
+        type: "score-update",
+        roundNumber: 1,
+        scores: [
+          { seatId: 3, nickname: "Cem", roundScore: 9, cumulativeScore: 9 },
+          { seatId: 2, nickname: "Ben", roundScore: 7, cumulativeScore: 7 },
+          { seatId: 1, nickname: "Lena", roundScore: 5, cumulativeScore: 5 },
+        ],
+      });
+
+      // The next round starts: the ranking empties, everyone ties at 0 and
+      // the display order is pure join order.
+      app!.conn().feed(roundStarted(BOARD, 2));
+      const chips = [...app!.root.querySelectorAll<HTMLElement>("#players .chip.player")];
+      expect(chips.map((c) => c.querySelector(".nick")!.textContent)).toEqual(["Lena", "Ben", "Cem"]);
+      expect(chips.map((c) => c.querySelector(".place")!.textContent)).toEqual(["1", "1", "1"]);
+      expect(chips.map((c) => c.querySelector("small")!.textContent)).toEqual(["0 P", "0 P", "0 P"]);
+    });
+
+    it("the game screen renders one dashboard DOM with the arranged area hooks and the shared chip vocabulary", () => {
+      driveToRoundOne("LAG4T");
+
+      // One arrangement container feeds both breakpoints (ADR-0002: the DOM
+      // never differs per breakpoint, only the arrangement does).
+      const dashboard = app!.root.querySelector("#dashboard")!;
+      expect(dashboard.classList.contains("dashboard")).toBe(true);
+
+      // The four dashboard areas are each a single grid item off that one DOM.
+      expect(app!.root.querySelector(".area-title")).toBeTruthy();
+      const timer = app!.root.querySelector("#timer")!;
+      expect(timer.classList.contains("area-timer")).toBe(true);
+      const boardPanel = app!.root.querySelector(".panel:has(#board)")!;
+      expect(boardPanel.classList.contains("area-board")).toBe(true);
+      const foundPanel = app!.root.querySelector(".panel:has(#found)")!;
+      expect(foundPanel.classList.contains("area-found")).toBe(true);
+      const scorePanel = app!.root.querySelector(".panel:has(#players)")!;
+      expect(scorePanel.classList.contains("area-score")).toBe(true);
+
+      // Same component vocabulary as the lobby: panels wrap found-word chips
+      // and player chips alike — a first accepted verdict shows the chip form.
+      app!.conn().feed({ type: "word-accepted", word: "HAU", points: 3 });
+      expect(app!.root.querySelector("#found .chip.find")).toBeTruthy();
+      expect(app!.root.querySelector("#players .chip.player")).toBeTruthy();
+    });
+
+    it("a spectator watches board and countdown with no input affordance, the eviction note and the scoreboard", () => {
+      window.history.pushState({}, "", "/r/ABC12");
+      const deep = mountHarness();
+      try {
+        deep.root.querySelector<HTMLInputElement>("#jn-nick")!.value = "Ben";
+        deep.root.querySelector<HTMLButtonElement>("#jn-btn")!.click();
+        deep.conn().feed(
+          playingSnapshot({
+            code: "ABC12",
+            selfSeatId: 2,
+            nickname: "Ben",
+            role: "spectator",
+            board: BOARD,
+            players: [
+              seat({ seatId: 1, nickname: "Lena" }),
+              seat({ seatId: 2, nickname: "Ben", role: "spectator" }),
+            ],
+          })
+        );
+
+        // Board and countdown are the show; the scoreboard is visible.
+        expect(deep.root.querySelector("#board")).toBeTruthy();
+        expect(deep.root.querySelector("#countdown")!.textContent).toBe("2:00");
+        expect(deep.root.querySelector("#players .chip.player")).toBeTruthy();
+
+        // No input affordance: no trace line, no found-words panel.
+        expect(deep.root.querySelector("#trace")).toBeNull();
+        expect(deep.root.querySelector("#found")).toBeNull();
+
+        // The eviction note stands in the word list's place; Ben's own chip
+        // wears the spectator badge.
+        expect(deep.root.querySelector(".area-found")!.textContent).toContain(
+          "Du schaust zu — ab der nächsten Runde spielst du mit."
+        );
+        expect(deep.root.querySelector("#players .chip.player.me")!.textContent).toContain("Zuschauer");
+
+        // Dragging the watched board claims nothing and submits nothing.
+        const tiles = tileEls(deep.root);
+        synthesizePointerDrag([tiles[0]!, tiles[1]!, tiles[4]!], "mouse");
+        expect(deep.conn().sentTypes()).toEqual(["join"]);
+        expect(strayTouchMove(tiles[0]!).defaultPrevented).toBe(false);
+      } finally {
+        deep.unmount();
+        window.history.pushState({}, "", "/");
+      }
+    });
+    it("cleans tile notation for display: prefix/suffix markers and either/or variants never leak raw onto the grid", () => {
+      driveToRoundOne("LAG4T");
+      const NOTATED = ["an-", "-s", "e/ä", "H", "qu", "T", "I", "R", "E", "B", "U", "M", "S", "K", "A", "Z"]; // data keeps its markers; display must not
+      app!.conn().feed(roundStarted(NOTATED, 2));
+      const shown = tileEls(app!.root)
+        .slice(0, 5)
+        .map((t) => (t.firstChild?.textContent ?? "").trim()); // tile letters only (the .idx span rides along)
+      expect(shown).toEqual(["an", "s", "e/ä", "H", "qu"]);
+
+      // The input still spells the cleaned letters (trace uses the data).
+      const tiles = tileEls(app!.root);
+      synthesizePointerDrag([tiles[7]!, tiles[11]!], "mouse"); // R → M (8-way adjacent, both singles)
+      expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "RM", reqId: 3 });
+    });
+  });
+
   it("routes home → lobby → game, fed by snapshot and deltas, through the scripted connection", () => {
     // Home: the mounted app renders its first screen.
     expect(app!.root.querySelector("h1")!.textContent).toBe("WortMeister");

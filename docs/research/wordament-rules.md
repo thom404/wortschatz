@@ -10,20 +10,20 @@ or several weak ones. **Unconfirmed** = no trustworthy source found.
 
 ## Summary
 
-| Mechanic | Finding | Confidence |
-| --- | --- | --- |
-| Board | 4×4 grid, 16 tiles | Confirmed |
-| Round length | 2 minutes | Confirmed |
-| Simultaneous play | All players share one board, real time | Confirmed |
-| Adjacency | 8-directional (orthogonal + diagonal) | Confirmed |
-| Tile reuse | A tile may be used once per word | Confirmed |
-| Min word length | 3 letters | Confirmed |
-| Word validity | No abbreviations, no proper nouns | Confirmed |
-| Special tiles | Digrams, Either/Or, Prefix, Suffix | Confirmed |
-| Letter point values | Range 1–10, assigned per letter | Confirmed (range); value table **Unconfirmed** |
-| Word score formula | Sum of letter values; exact multipliers **Unconfirmed** | Unconfirmed |
-| Tile bag / letter distribution | Not documented | Unconfirmed |
-| "Found all words" bonus | Not documented | Unconfirmed |
+| Mechanic                       | Finding                                                 | Confidence                                     |
+| ------------------------------ | ------------------------------------------------------- | ---------------------------------------------- |
+| Board                          | 4×4 grid, 16 tiles                                      | Confirmed                                      |
+| Round length                   | 2 minutes                                               | Confirmed                                      |
+| Simultaneous play              | All players share one board, real time                  | Confirmed                                      |
+| Adjacency                      | 8-directional (orthogonal + diagonal)                   | Confirmed                                      |
+| Tile reuse                     | A tile may be used once per word                        | Confirmed                                      |
+| Min word length                | 3 letters                                               | Confirmed                                      |
+| Word validity                  | No abbreviations, no proper nouns                       | Confirmed                                      |
+| Special tiles                  | Digrams, Either/Or, Prefix, Suffix                      | Confirmed                                      |
+| Letter point values            | Range 1–10, assigned per letter                         | Confirmed (range); value table **Unconfirmed** |
+| Word score formula             | Sum of letter values; exact multipliers **Unconfirmed** | Unconfirmed                                    |
+| Tile bag / letter distribution | Not documented                                          | Unconfirmed                                    |
+| "Found all words" bonus        | Not documented                                          | Unconfirmed                                    |
 
 ## Board, tiles and timing
 
@@ -68,7 +68,7 @@ and the [eqrion/wordament solver](https://github.com/eqrion/wordament) source.
   are used; the tile contributes both letters to the word length and score.
   (Example: `AT` + `B` → `BAT`.)
 - **Either/Or** — two letters separated by a slash (e.g. `A/E`). The tile counts
-  as *either* letter; the word is checked both ways and scores if either is valid.
+  as _either_ letter; the word is checked both ways and scores if either is valid.
 - **Prefix** — marked by a trailing hyphen (e.g. `UN-`). May only be used at the
   **start** of a word.
 - **Suffix** — marked by a leading hyphen (e.g. `-ING`). May only be used at the
@@ -101,8 +101,8 @@ available sources disagree. Recorded here so we can make a deliberate choice.
    - double-letter tiles `Ed`, `Er`, `Qu`, `Ra`; triple-letter tile `MIS` = 12;
    - either/or tile `I/V` = 20 points;
    - **length multipliers: 4–5 letters ×1.5, 6–7 letters ×2, 8+ letters ×3.**
-   This page contradicts the official "1–10" range and the Scrabble-values
-   model, and reads like low-quality affiliate content. Treat as unreliable.
+     This page contradicts the official "1–10" range and the Scrabble-values
+     model, and reads like low-quality affiliate content. Treat as unreliable.
 
 3. **Custom solver table (not authoritative).**
    The eqrion solver hard-codes its own scheme with no length multiplier:

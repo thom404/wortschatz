@@ -1,13 +1,55 @@
+/* ==================================================================
+ * Standard skin (ADR-0002): the one default token set. Every visual
+ * value a component consumes is defined here — palette, surfaces,
+ * borders, glow, radii, spacing. Component styles never hard-code a
+ * colour/shape; adding a skin later (Arcade, #23) is a token block.
+ * The ONE stateful style switch is the shared `low` class (below).
+ * ================================================================== */
 :root {
-  --surface: #f4f7fb;
-  --panel: #ffffff;
-  --ink: #1f2a37;
-  --dim: #64748b;
-  --accent: #2563eb;
+  /* Palette */
+  --surface: #f4f7fb; /* page background — light blue */
+  --panel: #ffffff; /* raised card surfaces */
+  --panel-inset: #eef2f9; /* recessed surfaces (invite code) */
+  --ink: #1f2a37; /* primary text — slate */
+  --dim: #64748b; /* secondary text */
+  --accent: #2563eb; /* interactive highlights */
+  --accent-ink: #ffffff; /* text on accent */
+  --accent-soft: #dbeafe; /* badge wash */
+  --ok: #16a34a; /* connected state */
+  --away: #94a3b8; /* unreachable state */
+  --danger: #b91c1c; /* typed errors */
+  --ping: #dc2626; /* low-time urgency, shared by digits and ring */
+
+  /* Shape */
   --border: #dbe3ee;
-  --radius: 10px;
-  --ping: #dc2626;
+  --radius: 10px; /* panels */
+  --radius-s: 6px; /* inputs, buttons, badges */
+  --radius-tile: 8px;
+  --radius-pill: 999px; /* chips */
+  --radius-code: 4px;
+  --glow: rgba(37, 99, 235, 0.35); /* focus ring / self-chip halo */
+  --glow-spread: 3px; /* focus ring */
+  --halo-spread: 2px; /* self-chip halo */
+
+  /* Spacing */
+  --gap: 14px; /* block/panel rhythm */
+  --gap-s: 8px;
+  --gap-xs: 6px;
+  --gap-2xs: 4px;
+  --board-gap: 6px;
+  --chip-pad-y: 3px;
+  --chip-pad-x: 12px;
+  --badge-pad-y: 1px;
+  --badge-pad-x: 8px;
+  --dot: 8px;
+  --code-pad-y: 2px;
+  --code-pad-x: 6px;
+  --btn-pad-x: 14px;
+  --timer-inset: 6px;
+  --idx-top: 2px;
+  --idx-left: 4px;
 }
+
 body {
   margin: 0;
   background: var(--surface);
@@ -18,22 +60,76 @@ body {
     "Segoe UI",
     sans-serif;
 }
-.sheet {
-  max-width: 560px;
-  margin: 0 auto;
-  padding: 16px;
-}
+
 h1 {
   font-size: 1.4rem;
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  margin: 0 0 var(--gap);
 }
-.game-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+h2 {
+  font-size: 1rem;
+  margin-top: 0;
 }
+
+.sheet {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: var(--gap);
+}
+
+/* ------------------------------------------------------------------
+ * The dashboard (ADR-0002): ONE DOM for both breakpoints. Below 860px
+ * the arrangement is a stacked, chipped flex column; at ≥ 860px the
+ * same children place into a two-column grid dashboard via areas.
+ * Component styles stay breakpoint-agnostic (uniformity rule).
+ * ------------------------------------------------------------------ */
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+@media (min-width: 860px) {
+  .dashboard {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      "title timer"
+      "board found"
+      "board score";
+    align-items: start;
+  }
+  .area-title {
+    grid-area: title;
+  }
+  .area-timer {
+    grid-area: timer;
+    justify-self: end;
+  }
+  .area-board {
+    grid-area: board;
+  }
+  .area-found {
+    grid-area: found;
+  }
+  .area-score {
+    grid-area: score;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Panels                                                              */
+/* ------------------------------------------------------------------ */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--gap);
+  margin-bottom: var(--gap-s);
+}
+
+/* ------------------------------------------------------------------ */
+/* Ring timer (ADR-0002)                                               */
+/* ------------------------------------------------------------------ */
 .timer {
   --p: 1;
   --ring: var(--accent);
@@ -52,7 +148,7 @@ h1 {
 .timer::before {
   content: "";
   position: absolute;
-  inset: 6px;
+  inset: var(--timer-inset);
   border-radius: 50%;
   background: var(--panel);
 }
@@ -69,8 +165,9 @@ h1 {
   font-weight: 600;
   color: var(--dim);
 }
-/* ≤ 20 s remaining: one shared `low` class takes both digits and ring to
- * the low-time look via the shared `--ping` token (ADR-0002). */
+/* ≤ 20 s remaining: the ONE stateful style switch (ADR-0002) — one
+ * shared `low` class takes both digits and ring to the low-time look
+ * through the shared `--ping` token; never a per-skin code path. */
 .timer.low {
   --ring: var(--ping);
 }
@@ -80,41 +177,126 @@ h1 {
 .timer.low .timer-score {
   color: var(--ink);
 }
-h2 {
-  font-size: 1rem;
-  margin-top: 0;
+
+/* ------------------------------------------------------------------ */
+/* Chips (the shared component vocabulary)                              */
+/* ------------------------------------------------------------------ */
+.chips {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-xs);
+  padding: 0;
+  margin: var(--gap-s) 0 0;
 }
-.panel {
-  background: var(--panel);
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-xs);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px;
-  margin-bottom: 12px;
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  padding: var(--chip-pad-y) var(--chip-pad-x);
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
 }
+.chip small {
+  font-weight: 400;
+  color: var(--dim);
+}
+/* Found-word chips: word + points. */
+.chip.find {
+  text-transform: uppercase;
+}
+.chip.find small {
+  color: var(--accent);
+  text-transform: none;
+}
+.chip.none {
+  color: var(--dim);
+  font-weight: 400;
+  text-transform: none;
+}
+/* Player chips: connection state as a dot, role badges beside the name. */
+.chip .place,
+.chip .no {
+  color: var(--dim);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.chip .badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: var(--badge-pad-y) var(--badge-pad-x);
+  border-radius: var(--radius-pill);
+}
+.chip .badge.host {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.chip .badge.spec {
+  border: 1px solid var(--border);
+  color: var(--dim);
+}
+.chip .dot {
+  width: var(--dot);
+  height: var(--dot);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.chip .dot.on {
+  background: var(--ok);
+}
+.chip .dot.off {
+  background: var(--away);
+}
+.chip .away {
+  color: var(--dim);
+  font-weight: 400;
+  font-size: 0.8rem;
+}
+/* My own chip: the accent halo (and word "du" markers stay off — the
+ * chip's order and halo carry it). */
+.chip.me {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 var(--halo-spread) var(--glow);
+}
+
+/* ------------------------------------------------------------------ */
+/* Forms / buttons                                                     */
+/* ------------------------------------------------------------------ */
 label {
   display: block;
-  margin: 8px 0;
+  margin: var(--gap-s) 0;
   font-size: 0.9rem;
 }
 input {
   display: block;
   width: 100%;
   box-sizing: border-box;
-  margin-top: 4px;
-  padding: 8px;
+  margin-top: var(--gap-2xs);
+  padding: var(--gap-s);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-s);
   font: inherit;
 }
 button {
-  margin-top: 8px;
-  padding: 8px 14px;
+  margin-top: var(--gap-s);
+  padding: var(--gap-s) var(--btn-pad-x);
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: white;
-  border-radius: 6px;
+  color: var(--accent-ink);
+  border-radius: var(--radius-s);
   font: inherit;
   cursor: pointer;
+}
+button:focus-visible,
+input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 var(--glow-spread) var(--glow);
 }
 button#leave-btn,
 button#home-btn {
@@ -122,28 +304,42 @@ button#home-btn {
   color: var(--ink);
   border-color: var(--border);
 }
+
 .dim {
   color: var(--dim);
   font-size: 0.85rem;
 }
-li.me {
-  font-weight: 600;
+.note {
+  margin: 0;
+  color: var(--dim);
 }
-ul {
-  padding-left: 18px;
+#error,
+#home-errors {
+  color: var(--danger);
+  font-size: 0.9rem;
+  margin: 0 0 var(--gap-s);
 }
+code {
+  background: var(--panel-inset);
+  border-radius: var(--radius-code);
+  padding: var(--code-pad-y) var(--code-pad-x);
+}
+
+/* ------------------------------------------------------------------ */
+/* Board (the word-input surface) & trace                              */
+/* ------------------------------------------------------------------ */
 .board {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
+  gap: var(--board-gap);
   max-width: 320px;
-  margin: 8px auto;
+  margin: var(--gap-s) auto;
   /* The grid container owns tile font sizing (ADR-0002): one clamp from
    * the widest tile span on the board — never per-tile `em`, whose parent
    * resolution breaks scale-independence. Boards with multi-letter tiles
    * shrink the shared basis so `sch`/`st` stay legible. */
   font-size: clamp(0.8rem, calc(1.35rem / var(--tile-span, 1)), 1.35rem);
-  /* The board is the word-input surface: no scroll/zoom under the finger. */
+  /* No scroll/zoom under the finger during a drag. */
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
@@ -155,7 +351,7 @@ ul {
   justify-content: center;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-tile);
   font-weight: 700;
   text-transform: uppercase;
   position: relative;
@@ -167,12 +363,12 @@ ul {
 .tile.sel {
   background: var(--accent);
   border-color: var(--accent);
-  color: white;
+  color: var(--accent-ink);
 }
 .tile .idx {
   position: absolute;
-  top: 2px;
-  left: 4px;
+  top: var(--idx-top);
+  left: var(--idx-left);
   font-size: 0.6rem;
   color: var(--dim);
   font-weight: 400;
@@ -182,59 +378,24 @@ ul {
   text-align: center;
   font-weight: 600;
   text-transform: uppercase;
-  margin-bottom: 4px;
+  margin-bottom: var(--gap-2xs);
 }
 .trace.hint {
   color: var(--dim);
   font-weight: 400;
   text-transform: none;
 }
-.chips {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 0;
-  margin: 4px 0 0;
-}
-.chips li {
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 3px 12px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-.chips li small {
-  font-weight: 400;
-  color: var(--accent);
-  text-transform: none;
-}
-.chips li.none {
-  color: var(--dim);
-  font-weight: 400;
-  text-transform: none;
-}
-#error {
-  color: #b91c1c;
-  font-size: 0.9rem;
-}
-#home-errors {
-  color: #b91c1c;
-  font-size: 0.9rem;
-}
-code {
-  background: #eef2f9;
-  border-radius: 4px;
-  padding: 2px 6px;
-}
+
+/* ------------------------------------------------------------------ */
+/* Reveal (intermission; rest visual pass lives in ticket #22)          */
+/* ------------------------------------------------------------------ */
 .reveal dl,
 dl#reveal {
   margin: 0;
 }
 dt {
   font-weight: 600;
-  margin-top: 6px;
+  margin-top: var(--gap-xs);
 }
 dd {
   margin: 2px 0 0;

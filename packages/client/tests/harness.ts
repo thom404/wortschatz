@@ -2,9 +2,12 @@ import type {
   ClientMessage,
   RoundStartMsg,
   PlayerJoinedMsg,
+  PlayerInfo,
   ServerMessage,
   SnapshotMsg,
 } from "@wordament/shared";
+
+export type { PlayerInfo };
 import { saveSession, type ConnStatus } from "../src/api.js";
 import { mount, type ConnFactory, type RoomConn } from "../src/app.js";
 
@@ -185,23 +188,75 @@ export function mountHarness(): Mounted {
 /** Rooms are small; fixtures use explicit seats. Seat 1 holds the host by
  *  default — the creator of a room is its first host. */
 function player(opts: { seatId: number; nickname: string; connected?: boolean }) {
+  return seat(opts);
+}
+
+/** One seat of a room's roster, with every player-chip dimension named:
+ *  nickname, role and connected state (cumulative score on request). */
+export function seat(opts: {
+  seatId: number;
+  nickname: string;
+  role?: "player" | "spectator";
+  connected?: boolean;
+  cumulativeScore?: number;
+}): PlayerInfo {
   return {
     seatId: opts.seatId,
     nickname: opts.nickname,
-    role: "player",
-    cumulativeScore: 0,
+    role: opts.role ?? "player",
+    cumulativeScore: opts.cumulativeScore ?? 0,
     connected: opts.connected ?? true,
-  } as const;
+  };
 }
 
-/** Lobby snapshot: the creator alone in the room, waiting for joiners. */
-export function lobbySnapshot(opts: { code: string; nickname: string; seatId?: number }): SnapshotMsg {
+/** Lobby snapshot: the creator alone in the room, waiting for joiners —
+ *  or a hand-picked roster for chip/seat tests. A lobby roster is always
+ *  join-ordered (the server appends each new seat). */
+export function lobbySnapshot(opts: {
+  code: string;
+  nickname: string;
+  seatId?: number;
+  players?: PlayerInfo[];
+}): SnapshotMsg {
   const seatId = opts.seatId ?? 1;
   return {
     type: "snapshot",
     room: { code: opts.code, phase: "lobby", hostSeatId: seatId, roundNumber: 0 },
     self: { seatId, nickname: opts.nickname, role: "player", cumulativeScore: 0, token: "t-1" },
-    players: [player({ seatId, nickname: opts.nickname })],
+    players: opts.players ?? [player({ seatId, nickname: opts.nickname })],
+  };
+}
+
+/** Snapshot deep in a running round: `self` sits as a named role and must
+ *  see the game screen the server's truth prescribes. */
+export function playingSnapshot(opts: {
+  code: string;
+  selfSeatId: number;
+  nickname: string;
+  role: "player" | "spectator";
+  board: readonly string[];
+  roundNumber?: number;
+  players?: PlayerInfo[];
+}): SnapshotMsg {
+  const players = opts.players ?? [
+    seat({ seatId: 1, nickname: "Lena" }),
+    seat({
+      seatId: opts.selfSeatId,
+      nickname: opts.nickname,
+      role: opts.role,
+    }),
+  ];
+  return {
+    type: "snapshot",
+    room: { code: opts.code, phase: "playing", hostSeatId: 1, roundNumber: opts.roundNumber ?? 1 },
+    self: {
+      seatId: opts.selfSeatId,
+      nickname: opts.nickname,
+      role: opts.role,
+      cumulativeScore: 0,
+    },
+    players,
+    round: { roundNumber: opts.roundNumber ?? 1, board: [...opts.board], deadline: Date.now() + 120_000 },
   };
 }
 

@@ -59,6 +59,13 @@ shareable deep link `wordament.phanthom.cc/r/<code>`.
 One timed 2-minute period of simultaneous play on a shared board, followed by the
 intermission. Rounds roll endlessly until the room ends.
 
+## Round score
+
+A player's points in one round alone (per spec #15 story 10, ticket #20): shown live
+on the game screen's scoreboard, ordered by round score with ties sharing one place
+and the display order inside a tie settled by join order. Contrast the cumulative
+score.
+
 ## Seat
 
 A player's slot in a room, holding their nickname and cumulative score. A seat is
@@ -79,8 +86,10 @@ and score without an account. A lost token means a brand-new player.
 ## Snapshot
 
 The complete authoritative room-and-player state (`room`, `self`, `players`, and the
-live `round` when playing) that the server sends on join, on every reconnect and on
-`resync`. The client never reconstructs state from deltas; everything else is a delta.
+live `round` when playing) that the server sends on join, on every reconnect, on
+`resync`, and — without being asked — to every seat promoted from spectator to
+player at round start. The client never reconstructs state from deltas; everything
+else is a delta.
 
 ## Spectator
 

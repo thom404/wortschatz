@@ -21,12 +21,12 @@ where possible; those measurements are marked "(measured)".
 2. **igerman98 / `hunspell-de-de` / LibreOffice `de_DE_frami`** — **GPL-2.0-or-later**,
    Björn Jacke's authoritative spelling dictionary; affix-compressed, so the
    surface-form count is in the millions once expanded. Use as the spelling
-   authority and (optionally) to *validate* the CC0 list. ← coverage/authority pick.
+   authority and (optionally) to _validate_ the CC0 list. ← coverage/authority pick.
 3. **Daniel Naber "Deutsches Morphologie-Lexikon"** — **CC BY-SA 4.0**, full-form
    lexicon with lemma + POS tags. Use only if we want lemma/inflection metadata,
    not just a word set. ← metadata pick.
 
-A naive flat list from germandict is *probably* fine but its "Public Domain" claim
+A naive flat list from germandict is _probably_ fine but its "Public Domain" claim
 rests on data derived from GPL and CC-BY-SA sources (see §3.4) — treat it as a
 licence risk, not a clean-room source.
 
@@ -34,36 +34,36 @@ licence risk, not a clean-room source.
 
 ## 1. Decision criteria
 
-| Criterion | Why it matters here |
-|---|---|
-| Licence cost | Must be 0 €. |
-| Redistributable in a Docker image | We vendor the list into the image, i.e. we *redistribute* it. No "personal use only", no "do not republish". |
-| Attribution / ShareAlike obligations | CC0 = none; CC BY-SA / GPL = attribution and (data) copyleft obligations we must honour in our own licence/docs. |
-| Format & parseability | We need a set of valid words at runtime; simpler is better. |
-| Size & memory footprint | Game server must hold the list in RAM. |
-| Coverage | Inflected forms, umlauts (`ä/ö/ü` vs `ae/oe/ue`), `ß` distinct from `ss`, capitalised nouns, proper nouns/phrases in or out. |
+| Criterion                            | Why it matters here                                                                                                          |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| Licence cost                         | Must be 0 €.                                                                                                                 |
+| Redistributable in a Docker image    | We vendor the list into the image, i.e. we _redistribute_ it. No "personal use only", no "do not republish".                 |
+| Attribution / ShareAlike obligations | CC0 = none; CC BY-SA / GPL = attribution and (data) copyleft obligations we must honour in our own licence/docs.             |
+| Format & parseability                | We need a set of valid words at runtime; simpler is better.                                                                  |
+| Size & memory footprint              | Game server must hold the list in RAM.                                                                                       |
+| Coverage                             | Inflected forms, umlauts (`ä/ö/ü` vs `ae/oe/ue`), `ß` distinct from `ss`, capitalised nouns, proper nouns/phrases in or out. |
 
 Licence/obligation summary of the free licences involved: CC0 imposes no
 conditions; CC BY-SA requires attribution + sharing modifications under the same
 licence; GPL-2.0-or-later requires that redistributed copies (including the data
 file) carry the licence and offer the source. All three are zero-cost. GPL on a
-*data file* shipped next to our code is "mere aggregation" for the code, but the
+_data file_ shipped next to our code is "mere aggregation" for the code, but the
 data file itself must remain under GPL — worth an explicit `docs/licences/` note.
 
 ---
 
 ## 2. Candidates at a glance
 
-| # | Source | Licence | Redistribute @ 0 € | Format | Entries / size (measured) | Inflected forms | Umlauts | `ß` ≠ `ss` | Nouns capitalised | Phrases / proper nouns |
-|---|---|---|---|---|---|---|---|---|---|---|
-| 2.1 | enz/german-wordlist | CC0-1.0 | Yes, no obligations | UTF-8 text, 1/line | 685,829 / 8,644,058 B | Yes | `ä/ö/ü` | Yes (11,974 lines) | Yes (291,428 lines) | No / No |
-| 2.2 | igerman98 (`hunspell-de-de`, LO `de_DE_frami`) | GPL-2.0-or-later | Yes, copyleft | Hunspell `.dic`+`.aff` (ISO-8859-1) | 258,220 stems / 4.36 MB; millions of forms after expansion | Yes (affix rules) | `ä/ö/ü` | Yes | Yes | compound rules; some names |
-| 2.3 | Daniel Naber Morphologie-Lexikon | CC BY-SA 4.0 | Yes, attribution + SA | TSV (form, lemma, tags), UTF-8 | 25 MB text lexicon | Yes (explicit) | `ä/ö/ü` | Yes | Yes | some multi-word entries |
-| 2.4 | Free German Dictionary (germandict) | declared Public Domain (⚠ see §3.4) | claim yes — legally shaky | plain text, Latin-1, CRLF | >2,000,000 / 6.27 MB `.7z` | Yes | `ä/ö/ü` | Yes | Yes | occasional |
-| 2.5 | German Wiktionary dump / kaikki+wiktextract | CC BY-SA 4.0 (+GFDL) | Yes, attribution + SA | XML dump → JSONL | 1,269,246 pages; kaikki extract 1.0 GB / 352,527 words | partial | `ä/ö/ü` | Yes | Yes | yes, incl. proper names |
-| 2.6 | wordfreq (`de`, `de-large`) | data CC BY-SA 4.0 (code Apache-2.0) | Yes, attribution + SA | Python pkg / msgpack.gz | small 186,094 B; large 3,622,737 B | wordforms | `ä/ö/ü` | ⚠ case/ß normalised | lowercased | yes, incl. junk |
-| 2.7 | dewiki-wordrank | CC BY-SA 4.0 | Yes, attribution + SA | TSV word+count | lowercased, from de.wikipedia | yes (as surface forms) | `ä/ö/ü` | lowercased | no (lowercased) | yes (wiki noise) |
-| 2.8 | OpenThesaurus | LGPL-2.1 **or** CC BY-SA 4.0 | Yes, attribution (+SA/LGPL) | text/MySQL dump | text export 1.61 MB zip | lemmas mostly | `ä/ö/ü` | ⚠ CH variant `ss` | yes | no (synonym thesaurus) |
+| #   | Source                                         | Licence                             | Redistribute @ 0 €          | Format                              | Entries / size (measured)                                  | Inflected forms        | Umlauts | `ß` ≠ `ss`          | Nouns capitalised   | Phrases / proper nouns     |
+| --- | ---------------------------------------------- | ----------------------------------- | --------------------------- | ----------------------------------- | ---------------------------------------------------------- | ---------------------- | ------- | ------------------- | ------------------- | -------------------------- |
+| 2.1 | enz/german-wordlist                            | CC0-1.0                             | Yes, no obligations         | UTF-8 text, 1/line                  | 685,829 / 8,644,058 B                                      | Yes                    | `ä/ö/ü` | Yes (11,974 lines)  | Yes (291,428 lines) | No / No                    |
+| 2.2 | igerman98 (`hunspell-de-de`, LO `de_DE_frami`) | GPL-2.0-or-later                    | Yes, copyleft               | Hunspell `.dic`+`.aff` (ISO-8859-1) | 258,220 stems / 4.36 MB; millions of forms after expansion | Yes (affix rules)      | `ä/ö/ü` | Yes                 | Yes                 | compound rules; some names |
+| 2.3 | Daniel Naber Morphologie-Lexikon               | CC BY-SA 4.0                        | Yes, attribution + SA       | TSV (form, lemma, tags), UTF-8      | 25 MB text lexicon                                         | Yes (explicit)         | `ä/ö/ü` | Yes                 | Yes                 | some multi-word entries    |
+| 2.4 | Free German Dictionary (germandict)            | declared Public Domain (⚠ see §3.4) | claim yes — legally shaky   | plain text, Latin-1, CRLF           | >2,000,000 / 6.27 MB `.7z`                                 | Yes                    | `ä/ö/ü` | Yes                 | Yes                 | occasional                 |
+| 2.5 | German Wiktionary dump / kaikki+wiktextract    | CC BY-SA 4.0 (+GFDL)                | Yes, attribution + SA       | XML dump → JSONL                    | 1,269,246 pages; kaikki extract 1.0 GB / 352,527 words     | partial                | `ä/ö/ü` | Yes                 | Yes                 | yes, incl. proper names    |
+| 2.6 | wordfreq (`de`, `de-large`)                    | data CC BY-SA 4.0 (code Apache-2.0) | Yes, attribution + SA       | Python pkg / msgpack.gz             | small 186,094 B; large 3,622,737 B                         | wordforms              | `ä/ö/ü` | ⚠ case/ß normalised | lowercased          | yes, incl. junk            |
+| 2.7 | dewiki-wordrank                                | CC BY-SA 4.0                        | Yes, attribution + SA       | TSV word+count                      | lowercased, from de.wikipedia                              | yes (as surface forms) | `ä/ö/ü` | lowercased          | no (lowercased)     | yes (wiki noise)           |
+| 2.8 | OpenThesaurus                                  | LGPL-2.1 **or** CC BY-SA 4.0        | Yes, attribution (+SA/LGPL) | text/MySQL dump                     | text export 1.61 MB zip                                    | lemmas mostly          | `ä/ö/ü` | ⚠ CH variant `ss`   | yes                 | no (synonym thesaurus)     |
 
 ---
 
@@ -76,8 +76,8 @@ data file itself must remain under GPL — worth an explicit `docs/licences/` no
   dictionary behind the Debian `hunspell-de-de`, `aspell-de` and the LibreOffice
   German dictionary. Source: <https://www.j3e.de/ispell/igerman98/>.
 - **Licence.** `Documentation/Copyright` inside the release tarball states:
-  *"This program is free software; you can redistribute it and/or modify it under
-  the terms of the GNU General Public License version 2 or 3"* →
+  _"This program is free software; you can redistribute it and/or modify it under
+  the terms of the GNU General Public License version 2 or 3"_ →
   **GPL-2.0-or-later**. Source: `igerman98-20161207.tar.bz2` →
   `Documentation/Copyright`; also <https://www.j3e.de/ispell/igerman98/dict/>.
   Tarball itself is only ~459 KB; latest release 2016-12-07.
@@ -109,8 +109,8 @@ data file itself must remain under GPL — worth an explicit `docs/licences/` no
   - `aspell-de` word list: <https://packages.debian.org/sid/aspell-de>.
   - LibreOffice German dictionary `de_DE_frami`:
     <https://github.com/LibreOffice/dictionaries/tree/master/de> — its
-    `README_de_DE_frami.txt` says the word lists are *"lizenziert unter der GNU
-    GPL, Version 2 oder 3"* and are derived from igerman98; `COPYING_GPLv2` /
+    `README_de_DE_frami.txt` says the word lists are _"lizenziert unter der GNU
+    GPL, Version 2 oder 3"_ and are derived from igerman98; `COPYING_GPLv2` /
     `COPYING_GPLv3` are shipped. Encoding is `SET ISO8859-1` (in
     `de_DE_frami.aff`).
 
@@ -143,8 +143,8 @@ data file itself must remain under GPL — worth an explicit `docs/licences/` no
 - **What it is.** Morphy-derived German morphology data with many corrections and
   extensions (largely from korrekturen.de). Source:
   <https://www.danielnaber.de/morphologie/>.
-- **Licence.** *"Die Daten stehen unter der Creative Commons Namensnennung -
-  Weitergabe unter gleichen Bedingungen 4.0 Unported Lizenz"* → **CC BY-SA 4.0**
+- **Licence.** _"Die Daten stehen unter der Creative Commons Namensnennung -
+  Weitergabe unter gleichen Bedingungen 4.0 Unported Lizenz"_ → **CC BY-SA 4.0**
   (attribution + ShareAlike). Same page.
 - **Format.** Export via LanguageTool produces per-line
   `form <TAB> lemma <TAB> POS-tags`, e.g. `Häusern  Haus  SUB:DAT:PLU:NEU`.
@@ -170,8 +170,8 @@ data file itself must remain under GPL — worth an explicit `docs/licences/` no
 - **Coverage.** Full forms incl. inflections; `ä/ö/ü`; `ß` vs `ss` carefully
   handled; capitalised nouns; occasional false positives (author's own admission).
 - **⚠ Licence trap.** `Methoden und Quellen der Wortliste.txt` (in the project's own
-  files) says the data was built by *filtering a corpus with Hunspell and the
-  **DE-frami** dictionary (GPL)*, from sources that include the **German Wikipedia
+  files) says the data was built by _filtering a corpus with Hunspell and the
+  **DE-frami** dictionary (GPL)_, from sources that include the **German Wikipedia
   dump (CC BY-SA)** and **OpenThesaurus (CC BY-SA / LGPL)**. A work derived from
   GPL and CC-BY-SA data **cannot simply be relicensed as Public Domain**, and EU
   sui-generis database rights may also apply to a word list. So the "Public Domain"
@@ -195,7 +195,7 @@ data file itself must remain under GPL — worth an explicit `docs/licences/` no
 - **Coverage.** Lemmas + many inflections, real umlauts/`ß`, capitalisation,
   **includes proper names** and phrases — needs filtering for a game dictionary.
 - **Verdict.** Free and redistributable (attribution + SA) but heavy to process and
-  noisy; best as a *supplement* to a curated list, not the primary source.
+  noisy; best as a _supplement_ to a curated list, not the primary source.
 
 ### 3.6 wordfreq — data CC BY-SA 4.0 (code Apache-2.0)
 
@@ -232,14 +232,14 @@ data file itself must remain under GPL — worth an explicit `docs/licences/` no
 
 ## 4. Sources that are **NOT** usable
 
-| Source | Why not |
-|---|---|
-| **Duden** (duden.de, Duden print/software) | Proprietary, all rights reserved. The Duden dictionary explicitly states no part may be reproduced or distributed in any form without the publisher's written consent ("Kein Teil dieses Werkes darf ohne schriftliche Einwilligung des Verlages … reproduziert … werden", Duden – Das Fremdwörterbuch, Bibliographisches Institut). Paying for a licence violates the zero-cost constraint. Source: <https://www.duden.de/woerterbuch>, book preview at <https://api.pageplace.de/preview/DT0400.9783411913145_A40494506/preview-9783411913145_A40494506.pdf>. |
-| **DWDS** (dwds.de) | BBAW reserves rights under §44b UrhG: *"Jegliche Nutzung der Inhalte des DWDS, einschließlich … automatisierte Abfragen und Auswertungen (Crawlen, Parsen, Text- und Data-Mining) … ist nur mit ausdrücklicher Genehmigung gestattet."* Not redistributable. Source: <https://www.dwds.de/d/nutzungsbedingungen>, <https://www.dwds.de/d/urheberrechte>. **Warning:** third-party repos that label DWDS-derived lemmata as "CC BY-SA 4.0" (e.g. `holzga/anagram-guesser`'s `LICENSE-DATA`) are mis-attributing — DWDS does not grant that. |
-| **dict.cc** | Free to use but explicitly **not republishable**: an available vocabulary file is *"free to use (as long as it is not republished)"*. Source: <https://www.dict.cc/?l=e&s=about%3Awordlist>. |
-| **LEO, Langenscheidt, PONS, Wahrig** | Proprietary commercial dictionaries; no redistribution licence. |
-| **Official Scrabble/Duden tournament word lists** | Proprietary (Scrabble word lists are licensed products); not OSS. |
-| **Any Hunspell dictionary without an OSI/CC licence** | Licences vary per dictionary; only GPL/MPL/LGPL/CC dictionaries are safe. Verify the licence file in the specific dictionary, not just the package. |
+| Source                                                | Why not                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Duden** (duden.de, Duden print/software)            | Proprietary, all rights reserved. The Duden dictionary explicitly states no part may be reproduced or distributed in any form without the publisher's written consent ("Kein Teil dieses Werkes darf ohne schriftliche Einwilligung des Verlages … reproduziert … werden", Duden – Das Fremdwörterbuch, Bibliographisches Institut). Paying for a licence violates the zero-cost constraint. Source: <https://www.duden.de/woerterbuch>, book preview at <https://api.pageplace.de/preview/DT0400.9783411913145_A40494506/preview-9783411913145_A40494506.pdf>. |
+| **DWDS** (dwds.de)                                    | BBAW reserves rights under §44b UrhG: _"Jegliche Nutzung der Inhalte des DWDS, einschließlich … automatisierte Abfragen und Auswertungen (Crawlen, Parsen, Text- und Data-Mining) … ist nur mit ausdrücklicher Genehmigung gestattet."_ Not redistributable. Source: <https://www.dwds.de/d/nutzungsbedingungen>, <https://www.dwds.de/d/urheberrechte>. **Warning:** third-party repos that label DWDS-derived lemmata as "CC BY-SA 4.0" (e.g. `holzga/anagram-guesser`'s `LICENSE-DATA`) are mis-attributing — DWDS does not grant that.                      |
+| **dict.cc**                                           | Free to use but explicitly **not republishable**: an available vocabulary file is _"free to use (as long as it is not republished)"_. Source: <https://www.dict.cc/?l=e&s=about%3Awordlist>.                                                                                                                                                                                                                                                                                                                                                                    |
+| **LEO, Langenscheidt, PONS, Wahrig**                  | Proprietary commercial dictionaries; no redistribution licence.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| **Official Scrabble/Duden tournament word lists**     | Proprietary (Scrabble word lists are licensed products); not OSS.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **Any Hunspell dictionary without an OSI/CC licence** | Licences vary per dictionary; only GPL/MPL/LGPL/CC dictionaries are safe. Verify the licence file in the specific dictionary, not just the package.                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 ---
 

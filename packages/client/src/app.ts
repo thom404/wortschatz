@@ -1,7 +1,7 @@
 import { loadSession, clearSession, type ConnStatus } from "./api.js";
 import { applyDelta, remainingOf, fmt, LOW_TIME_MS } from "./deltas.js";
 import { GameStore } from "./store.js";
-import type { ClientMessage, ServerMessage } from "@wordament/shared";
+import type { ClientMessage, PlayerInfo, ServerMessage } from "@wordament/shared";
 import { neighbors, PROTOCOL, tileSpellingLength, tileStrings } from "@wordament/shared";
 import "./style.css";
 
@@ -66,6 +66,15 @@ interface App {
 
 /** The one sentence the drag surface shows between words. */
 const TRACE_HINT = "Ziehe über die Felder, um ein Wort zu bilden.";
+
+/** Display is independent of data (ADR-0002): the notation's markers drop
+ *  off — prefixes render without their trailing `-`, suffixes without
+ *  their leading `-`; either/or tiles show both candidate variants. The
+ *  trace and scores keep spelling the data's real letters. */
+function displayTile(t: string): string {
+  if (t.includes("/")) return t;
+  return t.replace(/^-|-$/g, "");
+}
 
 /**
  * Mounts the app into `rootEl`, which renders to the home screen
@@ -197,6 +206,15 @@ function onMessage(app: App, msg: ServerMessage): void {
   if (app.store.outcome !== before) render(app);
 }
 
+/** The address bar tells the room's real deep link: creating a room pushes
+ *  the greeting key (nickname) before the server names the room, so the
+ *  first snapshot replaces it with the true /r/<code>. */
+function syncRoomUrl(app: App): void {
+  if (!app.store.code) return;
+  const want = `/r/${app.store.code}`;
+  if (location.pathname !== want) window.history.replaceState({}, "", want);
+}
+
 function onStatus(app: App, status: ConnStatus): void {
   app.connStatus = status;
   if (status === "closed" && app.store.outcome === "none") {
@@ -237,6 +255,7 @@ function teardown(app: App): void {
 
 function render(app: App): void {
   if (!app.inRoom) return;
+  syncRoomUrl(app);
   if (app.store.outcome === "kicked")
     return renderEnded(app, `Du wurdest aus dem Raum ${escapeHtml(app.store.code)} entfernt.`);
   if (app.store.outcome === "room-ended")
@@ -263,7 +282,7 @@ function render(app: App): void {
 function timerHtml(app: App): string {
   const state = timerState(app);
   return `
-    <div id="timer" class="timer${state.low ? " low" : ""}" style="--p:${state.fraction.toFixed(4)}">
+    <div id="timer" class="timer area-timer${state.low ? " low" : ""}" style="--p:${state.fraction.toFixed(4)}">
       <span id="countdown" class="timer-digits">${fmt(remainingOf(app.store))}</span>
       <span id="round-score" class="timer-score">${app.store.selfRoundScore} P</span>
     </div>`;
@@ -309,7 +328,7 @@ function renderLobby(app: App): void {
       ${statusHtml(app)}
       <section class="panel">
         <h2>Spieler</h2>
-        <ul id="players">${playersHtml(app.store)}</ul>
+        <ul id="players" class="chips">${playerChipsHtml(app.store)}</ul>
         <p class="dim">${app.store.players.filter((p) => p.connected).length} verbunden von max. 8</p>
         ${
           app.store.isHost
@@ -339,38 +358,38 @@ function renderGame(app: App): void {
   // Font sizing lives on the grid container via the widest tile span knob
   // (ADR-0002): per-tile `em` resolves against the parent and breaks.
   const tileSpan = Math.max(1, ...board.map((t) => tileSpellingLength(t)));
-  const timer = timerHtml(app);
   app.root.innerHTML = `
     <div class="sheet">
-      <div class="game-top">
-        <h1>Runde ${app.store.roundNumber}</h1>
-        ${timer}
-      </div>
       ${statusHtml(app)}
       ${app.store.lastError ? `<p id="error">${escapeHtml(app.store.errorText)}</p>` : ""}
-      <section class="panel">
-        <h2>Spielbrett</h2>
-        <div id="trace" class="trace hint">${TRACE_HINT}</div>
-        <div id="board" class="board" style="--tile-span:${tileSpan}">${board
-          .map((t, i) => `<div class="tile">${escapeHtml(t)}<span class="idx">${i}</span></div>`)
-          .join("")}</div>
-      </section>
-      ${
-        spectating
-          ? `<section class="panel"><p class="dim">Du schaust zu — ab der nächsten Runde spielst du mit.</p></section>
-             <section class="panel">
-               <h2>Punkte</h2>
-               <ul id="players">${playersHtml(app.store)}</ul>
-             </section>`
-          : `<section class="panel">
-               <h2>Deine Funde</h2>
-               <ul id="found" class="chips">${foundHtml(app.store)}</ul>
-             </section>
-             <section class="panel">
-               <h2>Punkte</h2>
-               <ul id="players">${playersHtml(app.store)}</ul>
-             </section>`
-      }
+      <div id="dashboard" class="dashboard">
+        <h1 class="area-title">Runde ${app.store.roundNumber}</h1>
+        ${timerHtml(app)}
+        <section class="panel area-board">
+          <h2>Spielbrett</h2>
+          ${spectating ? "" : `<div id="trace" class="trace hint">${TRACE_HINT}</div>`}
+          <div id="board" class="board" style="--tile-span:${tileSpan}">${board
+            .map(
+              (t, i) => `<div class="tile">${escapeHtml(displayTile(t))}<span class="idx">${i}</span></div>`
+            )
+            .join("")}</div>
+        </section>
+        ${
+          spectating
+            ? `<section class="panel area-found">
+                 <h2>Zuschauer</h2>
+                 <p class="note">Du schaust zu — ab der nächsten Runde spielst du mit.</p>
+               </section>`
+            : `<section class="panel area-found">
+                 <h2>Deine Funde</h2>
+                 <ul id="found" class="chips">${foundHtml(app.store)}</ul>
+               </section>`
+        }
+        <section class="panel area-score">
+          <h2>Punkte</h2>
+          <ul id="players" class="chips">${playerChipsHtml(app.store, "ranked")}</ul>
+        </section>
+      </div>
       <button id="leave-btn">Raum verlassen</button>
     </div>`;
   app.root.querySelector<HTMLButtonElement>("#leave-btn")!.onclick = () => leaveRoom(app);
@@ -388,13 +407,13 @@ function renderIntermission(app: App): void {
       <section class="panel">
         <h2>Runde ${app.store.finishedRound?.roundNumber ?? app.store.roundNumber}</h2>
         <div class="board dim">${(app.store.round?.board ?? [])
-          .map((t) => `<div class="tile">${escapeHtml(t)}</div>`)
+          .map((t) => `<div class="tile">${escapeHtml(displayTile(t))}</div>`)
           .join("")}</div>
         <dl id="reveal">${revealHtml(app.store)}</dl>
       </section>
       <section class="panel">
         <h2>Punkte</h2>
-        <ul id="players">${playersHtml(app.store)}</ul>
+        <ul id="players" class="chips">${playerChipsHtml(app.store, "totals")}</ul>
       </section>
       ${
         app.store.isHost
@@ -616,15 +635,40 @@ function statusHtml(app: App): string {
   return `<p class="dim">${app.connStatus === "retrying" ? "Verbindung wird wiederhergestellt …" : "Verbinde …"}</p>`;
 }
 
-function playersHtml(store: GameStore): string {
+/**
+ * The shared player chip (ADR-0002's one component vocabulary): nickname,
+ * role and connection state live on one chip per person — a person renders
+ * exactly once per screen, in lobby and game alike.
+ *
+ * Modes:
+ * - `seats`: the lobby's join-ordered roster, numbered by seat order.
+ * - `ranked`: the live scoreboard — ordered by round score, ties share a
+ *   place, join order settles the display order inside a tie.
+ * - `totals`: cumulative standing (intermission; #22 owns its revisiting).
+ */
+function playerChipsHtml(store: GameStore, mode: "seats" | "ranked" | "totals" = "seats"): string {
+  const render = (p: PlayerInfo, prefixHtml: string, scoreText: string): string => {
+    const self = p.seatId === store.self.seatId;
+    const me = self ? " me" : "";
+    const host = p.seatId === store.hostSeatId ? `<span class="badge host">Gastgeber</span>` : "";
+    const spectator = p.role === "spectator" ? `<span class="badge spec">Zuschauer</span>` : "";
+    const linked = p.connected
+      ? `<span class="dot on"></span>`
+      : `<span class="dot off"></span><span class="away">unterbrochen</span>`;
+    return `<li class="chip player${me}">${prefixHtml}<span class="nick">${escapeHtml(p.nickname)}</span>${host}${spectator}${
+      scoreText ? `<small class="score">${scoreText}</small>` : ""
+    }${linked}</li>`;
+  };
+  if (mode === "ranked") {
+    return store
+      .rankedPlayers()
+      .map((r) => render(r.player, `<span class="place">${r.place}</span>`, `${r.roundScore} P`))
+      .join("");
+  }
   return store.players
-    .map((p) => {
-      const self = p.seatId === store.self.seatId;
-      const host = p.seatId === store.hostSeatId ? " 🏠" : "";
-      const role = p.role === "spectator" ? " (Zuschauer)" : "";
-      const away = p.connected ? "" : " (unterbrochen)";
-      return `<li ${self ? 'class="me"' : ""}>${escapeHtml(p.nickname)}${host}${role} — ${p.cumulativeScore}${away}</li>`;
-    })
+    .map((p, i) =>
+      render(p, `<span class="no">${i + 1}.</span> `, mode === "totals" ? `${p.cumulativeScore} P` : "")
+    )
     .join("");
 }
 
@@ -654,9 +698,12 @@ function revealHtml(store: GameStore): string {
  *  points value. Cleared at every round start. */
 function foundHtml(store: GameStore): string {
   const chips = [...store.roundWords]
-    .map(([word, points]) => `<li><span>${escapeHtml(word)}</span> <small>+${points}</small></li>`)
+    .map(
+      ([word, points]) =>
+        `<li class="chip find"><span>${escapeHtml(word)}</span> <small>+${points}</small></li>`
+    )
     .join("");
-  return chips || `<li class="none">—</li>`;
+  return chips || `<li class="chip none">—</li>`;
 }
 
 function setHomeError(app: App, msg: string): void {

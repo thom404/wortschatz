@@ -485,9 +485,11 @@ export class Rooms {
     // Spectators are promoted to players exactly at round-start, in join
     // order, until the player cap is reached.
     let players = this.playerCount(room);
+    const promoted: Seat[] = [];
     for (const seat of [...room.seats.values()].sort((a, b) => a.seatId - b.seatId)) {
       if (seat.role === "spectator" && players < this.cfg.maxPlayers) {
         seat.role = "player";
+        promoted.push(seat);
         players += 1;
       }
     }
@@ -511,6 +513,12 @@ export class Rooms {
       remaining: room.deadline - Date.now(),
       deadline: room.deadline,
     });
+    // Every promoted seat is told its new role through a full snapshot
+    // (a snapshot always supersedes deltas): the client flips the game
+    // screen's input affordance on without a resync round-trip.
+    for (const seat of promoted) {
+      for (const sock of seat.sockets) this.sendSnapshot(sock, room, seat);
+    }
   }
   private armPhaseTimer(room: Room): void {
     this.clearPhaseTimer(room);

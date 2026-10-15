@@ -39,8 +39,8 @@ export function applyDelta(store: GameStore, msg: ServerMessage): void {
       store.roundNumber = msg.round.roundNumber;
       store.round = msg.round;
       store.deadline = msg.round.deadline;
-      store.selfRoundScore = 0;
       store.roundWords = new Map();
+      store.roundScores.clear();
       break;
     case "round-end":
       store.phase = "intermission";
