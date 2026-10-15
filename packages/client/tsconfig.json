@@ -9,7 +9,7 @@
     "noEmit": true
   },
   "references": [{ "path": "../shared" }],
-  "include": ["src"],
+  "include": ["src", "tests"],
   "files": ["vite.config.ts"],
   "exclude": ["node_modules", "dist_test"]
 }
