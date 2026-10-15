@@ -1,6 +1,10 @@
 # Homelab deployment behind Traefik 3 (timetagger label pattern; #9):
 # single Host() router, "open" middleware chain (no ddns-allowlist — remote
 # players must work), external reverse-proxy network via TRAEFIK_NETWORK.
+# Content-safety is never chain-wired: the Traefik `chain-wordament` chain
+# (file provider, cf. #25) intentionally contains no CSP — the app itself
+# serves Content-Security-Policy on its static responses (#24). Operator
+# steps stay in spec #15 / #11 until the final deployment ticket lands.
 services:
   wordament:
     build: .

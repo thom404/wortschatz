@@ -41,6 +41,29 @@ describe("static SPA serving", () => {
     void scene;
   });
 
+  // #24: minimal app-level CSP on every static response — self default,
+  // same-origin connects, no third-party origins (spec #15 story 41).
+  test("every static response carries the app-level CSP header", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wordament-static-"));
+    await writeFile(join(dir, "index.html"), "<html>wordament</html>");
+    await mkdir(join(dir, "assets"));
+    await writeFile(join(dir, "assets", "app.js"), "export {}");
+
+    const scene2 = await makeScene({ ...FAST_CLOCK, staticDir: dir });
+    try {
+      const base = `http://localhost:${scene2.handle.port}`;
+      const csp = "default-src 'self'; connect-src 'self'";
+
+      for (const path of ["/", "/r/ABC12", "/assets/app.js", "/nope.txt"]) {
+        const res = await fetch(new URL(path, base));
+        expect(res.headers.get("content-security-policy")).toBe(csp);
+      }
+    } finally {
+      await scene2.stop();
+    }
+    void scene;
+  });
+
   test("healthz works without any static dir", async () => {
     const res = await fetch(`http://localhost:${scene.handle.port}/healthz`);
     expect(res.status).toBe(200);

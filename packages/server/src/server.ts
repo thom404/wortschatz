@@ -20,6 +20,16 @@ const MIME: Record<string, string> = {
 };
 
 /**
+ * Minimal app-level CSP (#24, spec #15 story 41): everything self-origin;
+ * same-origin WebSocket connections stay permitted; no third-party origins
+ * (assets are bundled/self-hosted, font stack is system, inline unused — no
+ * `'unsafe-inline'` anywhere). The Traefik chain (`chain-wordament`)
+ * deliberately carries no CSP: content-safety is asserted here, at the
+ * app's own static seam, as a plain wire-visible header.
+ */
+const CONTENT_SECURITY_POLICY = "default-src 'self'; connect-src 'self'";
+
+/**
  * One Node process serves the static SPA and `GET /ws` on the same port.
  * Room codes travel inside the first WebSocket message, never the URL path;
  * `/r/<code>` deep links fall through to the SPA.
@@ -119,7 +129,10 @@ export class WordamentServer {
     }
     try {
       const body = await this.serveStatic(dir, url.pathname);
-      res.writeHead(200, { "content-type": MIME[extname(body.path)] ?? "application/octet-stream" });
+      res.writeHead(200, {
+        "content-type": MIME[extname(body.path)] ?? "application/octet-stream",
+        "content-security-policy": CONTENT_SECURITY_POLICY,
+      });
       res.end(body.content);
     } catch {
       res.writeHead(404, { "content-type": "text/plain" }).end("not found");
