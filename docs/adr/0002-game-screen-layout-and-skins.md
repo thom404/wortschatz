@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-14
-- Ticket: [#8](https://github.com/thom404/wordament-clone-german/issues/8) (game screen look & feel, prototype)
+- Ticket: [#8](https://github.com/thom404/wortschatz/issues/8) (game screen look & feel, prototype)
 - Prototype: branch `prototype/game-screen` (throwaway; not in main)
 
 ## Context

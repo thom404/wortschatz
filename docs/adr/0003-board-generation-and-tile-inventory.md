@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-15
-- Ticket: [#7](https://github.com/thom404/wordament-clone-german/issues/7) (board
+- Ticket: [#7](https://github.com/thom404/wortschatz/issues/7) (board
   generation, tile inventory & solvability)
 - Research: [`docs/research/wordament-rules.md`](../research/wordament-rules.md)
   (issue #3), [`docs/research/german-word-list.md`](../research/german-word-list.md)

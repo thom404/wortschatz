@@ -1,10 +1,10 @@
-# wordament-clone-german
+# wortschatz
 
 ## Agent skills
 
 ### Issue tracker
 
-Issues and specs live as GitHub issues in `thom404/wordament-clone-german`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues and specs live as GitHub issues in `thom404/wortschatz`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

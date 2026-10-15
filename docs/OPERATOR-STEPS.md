@@ -67,7 +67,7 @@ host. `compose.yaml` pins a pulled image reference to an exact
 `sha-<full-sha>` tag from the CI publish flow (#27):
 
 ```yaml
-image: ghcr.io/thom404/wordament-clone-german:sha-<full-sha>
+image: ghcr.io/thom404/wortschatz:sha-<full-sha>
 ```
 
 Then:
