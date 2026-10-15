@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { mkdtemp, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -67,6 +67,20 @@ describe("static SPA serving", () => {
   test("healthz works without any static dir", async () => {
     const res = await fetch(`http://localhost:${scene.handle.port}/healthz`);
     expect(res.status).toBe(200);
-    expect(await res.text()).toBe("ok");
+    expect(JSON.parse(await res.text())).toEqual({ ok: true, sha: null });
+  });
+
+  // #29: the deploy verifies the running container is the image of the exact
+  // merge commit; /healthz answers with the sha baked into the image, so the
+  // public URL reveals the deployed version, not just liveness.
+  test("healthz reports the deployed git sha", async () => {
+    vi.stubEnv("WORDAMENT_GIT_SHA", "c8d1a2b3e4f5");
+    try {
+      const res = await fetch(`http://localhost:${scene.handle.port}/healthz`);
+      expect(res.status).toBe(200);
+      expect(JSON.parse(await res.text())).toEqual({ ok: true, sha: "c8d1a2b3e4f5" });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

@@ -3,6 +3,13 @@ name: Image
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+
+# Serialise build+deploy so a fast-follow merge cannot race the running
+# deploy (later runs queue; the newest image always deploys after a re-pin).
+concurrency:
+  group: production-image
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -32,3 +39,80 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+
+  # #29: the merge-built image lands in GHCR, then this job SSHes to the
+  # homelab server, re-pins its compose file to sha-<full-sha> of this exact
+  # commit, pulls, restarts, and verifies the public URL answers with that
+  # same sha. The server stays a pure pull-and-restart consumer: it never
+  # builds and holds nothing but a read-only GHCR login. SSH secrets are
+  # provisioned once by the operator wizard (docs/OPERATOR-STEPS.md §7).
+  deploy:
+    name: deploy homelab
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+      DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
+      SERVICE_URL: ${{ vars.SERVICE_URL || 'https://wordament.phanthom.cc' }}
+    steps:
+      - name: Verify required deploy secrets
+        run: |
+          missing=""
+          for label in SSH_HOST SSH_USER SSH_PRIVATE_KEY SSH_KNOWN_HOSTS; do
+            if [ -z "${!label}" ]; then missing="$missing $label"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing deploy secrets:$missing — run the deploy wizard (docs/OPERATOR-STEPS.md §7) to provision them."
+            exit 1
+          fi
+
+      - name: Prepare SSH
+        run: |
+          mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/deploy_key"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/deploy_key" "$HOME/.ssh/known_hosts"
+
+      - name: Re-pin, pull, restart on the server
+        run: |
+          host="${SSH_HOST%%:*}"
+          opts=(-i "$HOME/.ssh/deploy_key" -o BatchMode=yes -o ConnectTimeout=15)
+          if [ "$SSH_HOST" != "$host" ]; then opts+=(-p "${SSH_HOST##*:}"); fi
+          ssh "${opts[@]}" "$SSH_USER@$host" bash -s -- "${{ github.sha }}" ghcr.io/${{ github.repository }} "$DEPLOY_DIR" <<'REMOTE'
+          set -euo pipefail
+          sha="$1"; image="$2"; dir="$3"
+          cd "${dir:-$HOME/Docker/production/wordament}"
+          [ -f compose.yaml ] || { echo "compose.yaml missing in $PWD"; exit 1; }
+          echo "previous pin: $(grep -oE 'ghcr.io/thom404/[^:]+:sha-[0-9a-f]{40}' compose.yaml || echo none)"
+          sed -i -E "s#^(image: ghcr\.io/thom404/)[^:]+:sha-[0-9a-f]{40}#image: ${image}:sha-${sha}#" compose.yaml
+          grep -qF "${image}:sha-${sha}" compose.yaml || { echo "re-pin failed:"; grep 'image:' compose.yaml; exit 1; }
+          docker compose pull
+          docker compose up -d
+          echo "deployed:"
+          docker compose ps --format '{{.Name}} {{.Image}}'
+          REMOTE
+
+      - name: Verify public URL serves the deployed sha
+        run: |
+          expected='"sha":"'${{ github.sha }}'"'
+          for _ in $(seq 1 30); do
+            code=$(curl -fsS -o /tmp/healthz.json -w '%{http_code}' "$SERVICE_URL/healthz" || true)
+            if [ "$code" = "200" ] && grep -qF "$expected" /tmp/healthz.json; then
+              echo "verified: $SERVICE_URL/healthz answers $(cat /tmp/healthz.json)"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::$SERVICE_URL/healthz did not answer 200 with sha ${{ github.sha }} within 60s"
+          [ -f /tmp/healthz.json ] && cat /tmp/healthz.json
+          exit 1
+
+      - name: Remove SSH material
+        if: always()
+        run: rm -f "$HOME/.ssh/deploy_key" "$HOME/.ssh/known_hosts"
