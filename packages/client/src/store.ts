@@ -1,4 +1,4 @@
-import type { PlayerInfo, ScoreEntry, SnapshotMsg, ErrorCode } from "@wordament/shared";
+import type { PlayerInfo, ScoreEntry, SnapshotMsg, ErrorCode, RevealPayload } from "@wordament/shared";
 
 /**
  * Client state. Built ONLY from server messages (snapshot + deltas); never
@@ -19,7 +19,9 @@ export class GameStore {
   };
   players: PlayerInfo[] = [];
   round: { roundNumber: number; board: string[]; deadline: number } | null = null;
-  finishedRound: { roundNumber: number; reveal: Record<string, unknown> } | null = null;
+  /** Round number + reveal of the finished round; the board itself stays in
+   *  `round` (a bare `round-end` delta carries no board). */
+  finishedRound: { roundNumber: number; reveal: RevealPayload } | null = null;
   deadline = 0;
   roundWords = new Set<string>();
   lastError: { code: ErrorCode; message?: string } | null = null;
@@ -49,7 +51,9 @@ export class GameStore {
     };
     this.players = snap.players.map((p) => ({ ...p }));
     this.round = snap.round ?? null;
-    this.finishedRound = snap.finishedRound ?? null;
+    this.finishedRound = snap.finishedRound
+      ? { roundNumber: snap.finishedRound.roundNumber, reveal: snap.finishedRound.reveal }
+      : null;
     if (snap.round) {
       this.deadline = snap.round.deadline;
     }

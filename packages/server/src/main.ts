@@ -5,10 +5,10 @@
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { startServer } from "./index.js";
-import { placeholderReveal } from "./defaults.js";
 import { loadDictionary } from "./dictionary/loader.js";
 import { generateBoard } from "./boardgen/index.js";
 import { germanScore } from "./scoring/index.js";
+import { revealAll } from "./reveal.js";
 import type { Logger } from "./config.js";
 
 const logger: Logger = {
@@ -31,7 +31,7 @@ const server = await startServer({
   dictionary,
   generateBoard: (seed) => generateBoard(seed, dictionary),
   scoreWord: germanScore,
-  reveal: placeholderReveal,
+  reveal: revealAll,
   staticDir,
 });
 

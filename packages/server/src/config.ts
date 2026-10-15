@@ -5,6 +5,7 @@
  * owned by tickets #7 and #6 — this wire-spec ticket fixes only their shape.
  */
 import { PROTOCOL } from "@wordament/shared";
+import type { RevealPayload } from "@wordament/shared";
 import { randomBytes } from "node:crypto";
 
 /** Opaque dictionary seam (deep module per ADR-0001; ticket #7 owns impl). */
@@ -28,12 +29,16 @@ export type SeedSource = () => bigint;
 /** Scoring seam (ticket #6 owns the formula). */
 export type ScoreFn = (word: string, seatId: number) => number;
 
-/** Round-end reveal seam (ticket #6 owns the payload contents). */
+/** Round-end reveal seam (#6/#17): computes the concrete payload from the
+ *  round's enumerated findable words and the per-seat found words. */
 export type RevealFn = (ctx: {
-  board: string[];
-  roundNumber: number;
+  /** Enumerated distinct findable words for the round (ADR-0003 retention). */
+  words: string[];
   wordsBySeat: Map<number, string[]>;
-}) => { [key: string]: unknown };
+  /** The shared per-word price, straight from the scoring engine that
+   *  awarded each submission (#6: identical for every seat). */
+  points: (word: string) => number;
+}) => RevealPayload;
 
 export interface Logger {
   info(obj: Record<string, unknown>): void;

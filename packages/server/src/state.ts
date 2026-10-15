@@ -2,7 +2,7 @@
  * Room and seat domain types. Server-internal: never inspected by tests,
  * which see only the wire seam.
  */
-import type { RoomPhase } from "@wordament/shared";
+import type { RoomPhase, RevealPayload } from "@wordament/shared";
 import { PROTOCOL } from "@wordament/shared";
 import type { WebSocket } from "ws";
 
@@ -38,7 +38,7 @@ export interface Room {
   deadline: number;
   seats: Map<number, Seat>;
   nextSeatId: number;
-  reveal: { [key: string]: unknown } | null;
+  reveal: RevealPayload | null;
   wordsBySeat: Map<number, string[]>;
   lastActivity: number;
   closing: boolean;

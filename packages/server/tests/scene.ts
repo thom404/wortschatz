@@ -1,6 +1,7 @@
 import { startServer, type ServerHandle } from "../src/index.js";
-import { PlaceholderDictionary, placeholderReveal, placeholderBoard } from "../src/defaults.js";
+import { PlaceholderDictionary, placeholderBoard } from "../src/defaults.js";
 import { germanScore } from "../src/scoring/index.js";
+import { revealAll } from "../src/reveal.js";
 import { PROTOCOL, type ServerConfig } from "../src/index.js";
 import type { TestClient } from "./test-client.js";
 import { connect } from "./test-client.js";
@@ -41,7 +42,7 @@ export async function makeScene(overrides: Partial<ServerConfig> = {}): Promise<
     dictionary: wordDict(),
     generateBoard: fixedGenerateBoard,
     scoreWord: germanScore,
-    reveal: placeholderReveal,
+    reveal: revealAll,
     log: { info() {}, warn() {}, error() {} },
     ...overrides,
   };
@@ -79,7 +80,7 @@ export const fullCfg = (over: Partial<ServerConfig> = {}): ServerConfig => ({
   dictionary: wordDict(),
   generateBoard: placeholderBoard,
   scoreWord: germanScore,
-  reveal: placeholderReveal,
+  reveal: revealAll,
   log: { info() {}, warn() {}, error() {} },
   ...over,
 });

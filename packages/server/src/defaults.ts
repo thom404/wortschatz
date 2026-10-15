@@ -1,10 +1,9 @@
 /**
  * Placeholder implementations of the injected domain seams for tests that
  * need fixed boards/dictionaries. Production wires the real modules in
- * `main.ts` (dictionary + boardgen from #7, scoring from #16; reveal later
- * from ticket #17).
+ * `main.ts` (dictionary + boardgen from #7, scoring + reveal from #6/#17).
  */
-import type { RevealFn, DictionaryLike, BoardGenerator } from "./config.js";
+import type { DictionaryLike, BoardGenerator } from "./config.js";
 
 export class PlaceholderDictionary implements DictionaryLike {
   private readonly words: Set<string>;
@@ -29,6 +28,3 @@ export const placeholderBoard: BoardGenerator = (seed: bigint) => {
     words: [],
   };
 };
-
-/** Placeholder reveal: an empty payload (ticket #17 replaces this). */
-export const placeholderReveal: RevealFn = () => ({});

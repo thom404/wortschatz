@@ -263,11 +263,7 @@ function renderIntermission(): void {
       <section class="panel">
         <h2>Runde ${store.finishedRound?.roundNumber ?? store.roundNumber}</h2>
         <div class="board dim">${(store.round?.board ?? []).map((t) => `<div class="tile">${escapeHtml(t)}</div>`).join("")}</div>
-        <dl id="reveal">${
-          Object.entries(store.finishedRound?.reveal ?? {})
-            .map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(JSON.stringify(v))}</dd>`)
-            .join("") || "<dt>Ergebnisse</dt><dd>—</dd>"
-        }</dl>
+        <dl id="reveal">${revealHtml()}</dl>
       </section>
       <section class="panel">
         <h2>Punkte</h2>
@@ -319,6 +315,28 @@ function playersHtml(): string {
       const away = p.connected ? "" : " (unterbrochen)";
       return `<li ${self ? 'class="me"' : ""}>${escapeHtml(p.nickname)}${host}${role} — ${p.cumulativeScore}${away}</li>`;
     })
+    .join("");
+}
+
+/** The concrete reveal (#17): groups ascend by length; each word shows its
+ *  points and the nicknames of the seats that found it. */
+function revealHtml(): string {
+  const reveal = store.finishedRound?.reveal;
+  if (!reveal || reveal.groups.length === 0) return "<dt>Ergebnisse</dt><dd>—</dd>";
+  return reveal.groups
+    .map(
+      (g) =>
+        `<dt>${g.length} Buchstaben</dt><dd>${g.words
+          .map((w) => {
+            const by = w.foundBy
+              .map((id) => store.players.find((p) => p.seatId === id)?.nickname)
+              .filter(Boolean)
+              .join(", ");
+            const cls = w.foundBy.length === 0 ? ` class="missed"` : "";
+            return `<span${cls}>${escapeHtml(w.word)} <small>+${w.points}${by ? ` · ${escapeHtml(by)}` : ""}</small></span>`;
+          })
+          .join(" · ")}</dd>`
+    )
     .join("");
 }
 

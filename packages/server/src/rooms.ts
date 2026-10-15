@@ -539,9 +539,11 @@ export class Rooms {
     room.phase = "intermission";
     room.deadline = Date.now() + this.cfg.intermissionMs;
     room.reveal = this.cfg.reveal({
-      board: room.board,
-      roundNumber: room.roundNumber,
+      words: room.words,
       wordsBySeat: room.wordsBySeat,
+      // #6 prices a word identically for every seat, so the reveal shows the
+      // shared word price: priced ownerless, via the engine's "no seat" id.
+      points: (word) => this.cfg.scoreWord(word, -1),
     });
     this.cfg.log.info({ event: "round-end", room: room.code, round: room.roundNumber });
     this.broadcast(room, {

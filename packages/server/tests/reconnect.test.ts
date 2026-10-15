@@ -73,6 +73,7 @@ describe("snapshots & resync", () => {
     expect(snap2.finishedRound).toBeDefined();
     expect(snap2.finishedRound!.board).toHaveLength(16);
     expect(snap2.finishedRound!.reveal).toBeDefined();
+    expect(snap2.finishedRound!.reveal.groups).toEqual([]); // no words were enumerated on the scene's board
   });
 
   test("a dead token silently degrades to a brand-new player, never an error", async () => {

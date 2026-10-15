@@ -20,7 +20,7 @@ function realCfg(seed = 42n, log?: ServerConfig["log"]): Partial<ServerConfig> {
     generateBoard: (s) => generateBoard(s, dictionary),
     seedSource: () => seed,
     scoreWord: (w) => w.length,
-    reveal: () => ({}),
+    reveal: () => ({ groups: [] }),
     log: log ?? { info() {}, warn() {}, error() {} },
     ...FAST_CLOCK,
   };

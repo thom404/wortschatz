@@ -122,7 +122,7 @@ export interface RoundStartMsg {
   round: RoundInfo;
 }
 
-/** Payload contents are owned by ticket #6; the shape is opaque here. */
+/** Round-end broadcast: the findable-word reveal (#17 concrete shape). */
 export interface RoundEndMsg {
   type: "round-end";
   roundNumber: number;
@@ -245,9 +245,25 @@ export interface ScoreEntry {
   cumulativeScore: number;
 }
 
-/** Opaque until #6 fills it; exists so wire shape is fixed today. */
+/**
+ * End-of-round reveal (#6/#17): every findable word of the finished board,
+ * grouped by word length ascending; each word priced by the scoring engine
+ * and annotated with the seat ids that found it. Missed words are present
+ * with an empty `foundBy`. No tile paths, no first-finder credit.
+ */
 export interface RevealPayload {
-  [key: string]: unknown;
+  groups: RevealGroup[];
+}
+
+export interface RevealGroup {
+  length: number;
+  words: RevealWord[];
+}
+
+export interface RevealWord {
+  word: string;
+  points: number;
+  foundBy: number[];
 }
 
 export type RoomPhase = "lobby" | "playing" | "intermission" | "closed";
