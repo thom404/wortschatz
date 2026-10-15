@@ -1,25 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { TILE_BAG, isEitherOr, isPrefix, isSuffix, tileSpellingLength } from "@wordament/shared";
-import { generateBoard, isFormable } from "../src/boardgen/index.js";
-import { createDictionary, type Dictionary } from "../src/dictionary/index.js";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { generateBoard, isFormable, passesGate } from "../src/boardgen/index.js";
+import { createDictionary } from "../src/dictionary/index.js";
 
-/** Dictionary stub for gate independence; words are synthetic on purpose. */
-function dictWith(words: string[]): { findWords(board: string[]): string[] } {
-  return { findWords: (board: string[]) => (board.length === 16 ? words : []) };
-}
-
-const GATE_RICH = [
-  ...Array.from({ length: 40 }, (_, i) => `aaa${i}`), // 40 distinct
-  ...Array.from({ length: 14 }, (_, i) => `aaaaa${i}`), // 14 ≥5
-  ...Array.from({ length: 2 }, (_, i) => `aaaaaaa${i}`), // 2 ≥7
-];
+/** Fixture-dictionary twin for the pure boardgen seam. */
+const FIXTURE_WORDS = readFileSync(join(import.meta.dirname, "fixtures", "words.txt"), "utf8")
+  .split("\n")
+  .filter(Boolean);
+const fixtureDictionary = createDictionary(FIXTURE_WORDS);
 
 describe("generateBoard", () => {
   it("is deterministic per seed and differs across seeds", () => {
     const dict = createDictionary([]);
-    const a1 = generateBoard(1n, dict as unknown as Dictionary);
-    const a2 = generateBoard(1n, dict as unknown as Dictionary);
-    const b = generateBoard(2n, dict as unknown as Dictionary);
+    const a1 = generateBoard(1n, fixtureDictionary);
+    const a2 = generateBoard(1n, fixtureDictionary);
+    const b = generateBoard(2n, fixtureDictionary);
     expect(a1.board).toEqual(a2.board);
     expect(a1.words).toEqual(a2.words);
     expect(a1.board).not.toEqual(b.board);
@@ -27,7 +24,7 @@ describe("generateBoard", () => {
 
   it("returns a 16-cell board drawn from the tile bag", () => {
     const dict = createDictionary([]);
-    const { board } = generateBoard(7n, dict as unknown as Dictionary);
+    const { board } = generateBoard(7n, fixtureDictionary);
     expect(board).toHaveLength(16);
     for (const t of board) {
       expect(TILE_BAG[t]).toBeGreaterThan(0);
@@ -37,7 +34,7 @@ describe("generateBoard", () => {
   it("keeps the decided special-tile composition", () => {
     const dict = createDictionary([]);
     for (let s = 0; s < 50; s++) {
-      const { board } = generateBoard(BigInt(s), dict as unknown as Dictionary);
+      const { board } = generateBoard(BigInt(s), fixtureDictionary);
       const either = board.filter(isEitherOr);
       const prefixes = board.filter(isPrefix);
       const suffixes = board.filter(isSuffix);
@@ -50,7 +47,7 @@ describe("generateBoard", () => {
   it("never places two multi-letter tiles adjacent", () => {
     const dict = createDictionary([]);
     for (let s = 0; s < 100; s++) {
-      const { board } = generateBoard(BigInt(s), dict as unknown as Dictionary);
+      const { board } = generateBoard(BigInt(s), fixtureDictionary);
       const multiIdx = board.map((t, i) => (tileSpellingLength(t) > 1 ? i : -1)).filter((i) => i >= 0);
       // King-graph feasibility on the 4×4: at most 4 multi tiles can exist.
       expect(multiIdx.length).toBeLessThanOrEqual(4);
@@ -65,19 +62,41 @@ describe("generateBoard", () => {
     }
   });
 
-  it("passes the gate when enough words are enumerated", () => {
-    const result = generateBoard(1n, dictWith(GATE_RICH) as unknown as Dictionary);
-    expect(result.board).toHaveLength(16);
-    expect(result.words.sort()).toEqual([...GATE_RICH].sort());
+  it("passesGate checks the three thresholds exactly", () => {
+    const three = Array.from(
+      { length: 40 },
+      (_, i) => `abc${"abdeg"[i % 5]}${"cfghi"[i % 5]}${"lkjmn"[i % 5]}`
+    );
+    expect(passesGate([])).toBe(false); // no words → it is also rejected at the enumeration stage
+    expect(passesGate(["aaaaaaa"])).toBe(false); // 1 word
+    expect(passesGate(three)).toBe(false); // 40 short words, no ≥5
+    expect(
+      passesGate([
+        ...Array.from({ length: 14 }, () => "aaaaa"),
+        ...Array.from({ length: 26 }, () => "abab"),
+        ...Array.from({ length: 2 }, () => "aaaaaaa"),
+      ])
+    ).toBe(true);
+  });
+
+  it("only ships words that survive the isFormable post-filter", () => {
+    for (const seed of [11n, 12n, 13n]) {
+      const { board, words } = generateBoard(seed, fixtureDictionary);
+      const enumeration = fixtureDictionary.findWords(board);
+      for (const w of words) {
+        expect(isFormable(w, board)).toBe(true);
+        expect(enumeration.includes(w)).toBe(true);
+      }
+    }
   });
 
   it("falls back deterministically when the gate never passes", () => {
-    const poor = { findWords: () => ["ab", "cd"] };
-    const r1 = generateBoard(3n, poor as unknown as Dictionary);
-    const r2 = generateBoard(3n, poor as unknown as Dictionary);
+    const poor = { findWords: () => [] };
+    const r1 = generateBoard(3n, poor);
+    const r2 = generateBoard(3n, poor);
     expect(r1.board).toEqual(r2.board);
     expect(r1.board).toHaveLength(16);
-    expect(r1.words).toEqual(["ab", "cd"]);
+    expect(r1.words).toEqual([]);
   });
 });
 

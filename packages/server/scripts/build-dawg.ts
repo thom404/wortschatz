@@ -12,8 +12,8 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildDawg, serializeDawg } from "../dist/dictionary/dawg-blob.js";
-import { createDictionary } from "../dist/dictionary/index.js";
+import { buildDawg, serializeDawg, walk } from "../dist/dictionary/dawg-blob.js";
+import { rawLinesToWords } from "../dist/dictionary/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url)); // packages/server/scripts
 const argv = process.argv.slice(2);
@@ -25,25 +25,31 @@ const arg = (name: string, fallback: string): string => {
 const wordsPath = arg("--words", "../../../words");
 const outPath = arg("--out", "../dist/dawg.bin");
 
-const raw = readFileSync(wordsPath, "utf8");
-const lines = raw.split("\n").filter((l) => l.trim().length > 0);
+const lines = readFileSync(wordsPath, "utf8")
+  .split("\n")
+  .filter((l) => l.trim().length > 0);
 
-// List trim: the raw list's sub-3 entries (the known 90 two-letter lines)
-// never enter the artifact; the loader trims defensively at query time too.
-const trimmed = lines.filter((l) => l.normalize("NFC").toLowerCase().length >= 3);
+const words = rawLinesToWords(lines);
+// Sub-3 trim: the pinned list's known 90 two-letter entries never enter.
+const sub3 = lines.length - lines.filter((l) => l.normalize("NFC").toLowerCase().length >= 3).length;
 console.log(
-  `build-dawg: ${lines.length} lines → ${trimmed.length} entries ≥3 letters (dropped ${lines.length - trimmed.length})`
+  `build-dawg: ${lines.length} lines → ${words.length} unique entries ≥3 letters (sub-3 dropped: ${sub3})`
 );
+if (sub3 !== 90) {
+  console.error(`build-dawg: unexpected sub-3 count (${sub3} ≠ 90) — refusing to emit the artifact`);
+  process.exit(1);
+}
 
-const unique = new Set(trimmed.map((l) => l.normalize("NFC").toLowerCase()));
-const dictionary = createDictionary([...unique]);
+const dictionary = buildDawg(words);
+// Sanity: the artifact answers membership through the automaton walk.
 const sanity = ["haus", "zeit", "sich"];
-const alive = sanity.filter((w) => dictionary.isValid(w));
-console.log(
-  `build-dawg: ${unique.size} unique entries; sanity-resolved via list: ${alive.length}/${sanity.length}`
-);
+const alive = sanity.filter((w) => {
+  const end = walk(dictionary, w);
+  return end !== null && end.final;
+});
+console.log(`build-dawg: ${words.length} unique entries; sanity walk: ${alive.length}/${sanity.length}`);
 
-const blob = serializeDawg(buildDawg([...unique]));
+const blob = serializeDawg(dictionary);
 mkdirSync(dirname(outPath), { recursive: true });
 writeFileSync(outPath, blob, "utf8");
 console.log(`build-dawg: wrote ${outPath} (${blob.length} bytes)`);

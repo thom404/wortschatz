@@ -119,6 +119,22 @@ describe("submissions against a real generated board", () => {
     expect(err.message).toBe("not placeable");
   });
 
+  test("formability is checked before membership: an off-list dead word answers 'not placeable'", async () => {
+    const { host, rs } = await startedRound(scene);
+    const dictionary = fixtureDict();
+    // A letter absent from the board makes any spelling of it unformable.
+    const boardLetters = new Set(rs.round.board.join(""));
+    const missingLetter = "aeiourstnlhkdc".split("").find((l: string) => !boardLetters.has(l));
+    const word = (missingLetter ?? "z").repeat(3);
+    // Discriminator: membership false AND unformable — only the submit
+    // *order* decides which error message comes back.
+    expect(dictionary.isValid(word)).toBe(false);
+    host.send({ type: "submit-word", word, reqId: 22 });
+    const err = await host.expect((m) => m.type === "error" && m.reqId === 22, 4000);
+    expect(err.code).toBe("invalid-word");
+    expect(err.message).toBe("not placeable");
+  });
+
   test("generation never hands out two adjacent multi-letter tiles", async () => {
     const seeded = await realScene(5n);
     try {

@@ -19,7 +19,7 @@ export interface BoardResult {
   words: string[];
 }
 
-/** Board seam: a fresh board per round from one 64-bit seed; pure (ADR-0003 §9). */
+/** Board seam: a fresh board per round from one 64-bit seed; pure (ADR-0003 §10). */
 export type BoardGenerator = (seed: bigint) => BoardResult;
 
 /** Seed seam: one 64-bit crypto seed per room per round (injectable for tests). */

@@ -12,13 +12,13 @@ import {
   SUFFIX_MENU,
   PROTOCOL,
   isDigram,
+  isMulti,
   isPrefix,
   isSuffix,
-  tileSpellingLength,
+  neighbors,
   tileStrings,
   type Tile,
 } from "@wordament/shared";
-import { neighbors } from "../dictionary/index.js";
 import { makeRng, type Rng } from "./rng.js";
 
 /** Solvability gate, frozen by simulation (ADR-0003 §7). */
@@ -31,8 +31,8 @@ export const GATE = {
 /** Max draw attempts before ranking fallback. */
 export const MAX_BOARD_ATTEMPTS = 200;
 
-/** ~5 special/multi-letter slots per board (ADR-0003 §6). */
-const SLOTS = 5;
+/** ~5 special/multi-letter slots per board (ADR-0003 §6; capped by 8-way feasibility). */
+const MULTI_SLOTS = 5;
 
 export interface BoardResult {
   board: Board;
@@ -48,7 +48,12 @@ export function generateBoard(seed: bigint, dict: BoardDict): BoardResult {
 
   for (let attempt = 0; attempt < MAX_BOARD_ATTEMPTS; attempt++) {
     const board = drawBoard(rng);
-    const words = dict.findWords(board).sort();
+    // The dictionary enumerates constraint-obliviously; special-tile
+    // positioning is applied here by post-filtering (spec #14, ADR-0003 §8).
+    const words = dict
+      .findWords(board)
+      .filter((w) => isFormable(w, board))
+      .sort();
     if (passesGate(words)) return { board, words };
     const rank: [number, number] = [words.filter((w) => w.length >= 5).length, words.length];
     if (!best || rank[0] > best.rank[0] || (rank[0] === best.rank[0] && rank[1] > best.rank[1])) {
@@ -78,7 +83,7 @@ function expandBag(): Tile[] {
   return out;
 }
 
-function shuffle(arr: Tile[], rng: Rng): Tile[] {
+function shuffle<T>(arr: T[], rng: Rng): T[] {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = rng.range(i + 1);
     const a = arr[i]!,
@@ -89,15 +94,13 @@ function shuffle(arr: Tile[], rng: Rng): Tile[] {
   return arr;
 }
 
-function shuffleNums(arr: number[], rng: Rng): number[] {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = rng.range(i + 1);
-    const a = arr[i]!,
-      b = arr[j]!;
-    arr[i] = b;
-    arr[j] = a;
-  }
-  return arr;
+/** Indices of the tiles satisfying a predicate (multi slots, upgrade slots). */
+function indicesWhere(tiles: Tile[], pred: (t: Tile) => boolean): number[] {
+  const out: number[] = [];
+  tiles.forEach((t, i) => {
+    if (pred(t)) out.push(i);
+  });
+  return out;
 }
 
 const DIGRAM_UPGRADES = Object.entries(TILE_BAG)
@@ -112,11 +115,9 @@ function drawBoard(rng: Rng): Board {
   // with no 8-way adjacency. Excess drawn multis are traded for singles from
   // the unused bag tail, preserving the draw's letter distribution.
   const replaceExcessMultis = (tiles: Tile[]): Tile[] => {
-    const multiIdx = tiles.map((t, i) => (tileSpellingLength(t) > 1 ? i : -1)).filter((i) => i >= 0);
+    const multiIdx = indicesWhere(tiles, isMulti);
     if (multiIdx.length <= MAX_MULTI) return tiles;
-    const candidates = bag
-      .slice(PROTOCOL.BOARD_SIZE)
-      .filter((t) => tileSpellingLength(t) === 1 && !tiles.includes(t));
+    const candidates = bag.slice(PROTOCOL.BOARD_SIZE).filter((t) => !isMulti(t) && !tiles.includes(t));
     shuffle(candidates, rng);
     const result = [...tiles];
     for (let i = 0; i < multiIdx.length - MAX_MULTI; i++) {
@@ -133,8 +134,8 @@ function drawBoard(rng: Rng): Board {
   const either = rng.range(4) !== 0;
   const prefixes = rng.range(3);
   const suffixes = rng.range(3);
-  const digramTarget = SLOTS - (either ? 1 : 0) - prefixes - suffixes;
-  const multis = tiles.filter((t) => tileSpellingLength(t) > 1).length;
+  const digramTarget = MULTI_SLOTS - (either ? 1 : 0) - prefixes - suffixes;
+  const multis = tiles.filter((t) => isMulti(t)).length;
   const extraDigrams = Math.max(
     0,
     Math.min(digramTarget - multis, MAX_MULTI - multis - (either ? 1 : 0) - prefixes - suffixes)
@@ -154,9 +155,9 @@ function drawBoard(rng: Rng): Board {
     upgrades.push(DIGRAM_UPGRADES[rng.range(DIGRAM_UPGRADES.length)]!);
   }
 
-  const singleIdx = tiles.map((t, i) => (tileSpellingLength(t) === 1 ? i : -1)).filter((i) => i >= 0);
+  const singleIdx = indicesWhere(tiles, (t) => !isMulti(t));
   if (singleIdx.length >= upgrades.length) {
-    shuffleNums(singleIdx, rng);
+    shuffle(singleIdx, rng);
     for (let i = 0; i < upgrades.length; i++) {
       tiles[singleIdx[i]!] = upgrades[i]!;
     }
@@ -177,13 +178,13 @@ function place(tiles: Tile[], rng: Rng): Board {
   // rejection only against placed multis), singles fill the rest in random
   // order. Nearly always succeeds outright at ≤ 4 multis.
   const board: (Tile | undefined)[] = new Array(PROTOCOL.BOARD_SIZE).fill(undefined);
-  const freeCells: number[] = shuffleNums(
+  const freeCells: number[] = shuffle(
     Array.from({ length: PROTOCOL.BOARD_SIZE }, (_, i) => i),
     rng
   );
   const multis: Tile[] = [];
   const singles: Tile[] = [];
-  for (const t of tiles) (tileSpellingLength(t) > 1 ? multis : singles).push(t);
+  for (const t of tiles) (isMulti(t) ? multis : singles).push(t);
 
   for (const t of multis) {
     if (!assignMulti(board, freeCells, t, rng)) return placeFallback(tiles);
@@ -204,7 +205,7 @@ function assignMulti(board: (Tile | undefined)[], freeCells: number[], t: Tile, 
     let blocked = false;
     for (const nb of NEIGHBOR_CACHE[cell]!) {
       const placed = board[nb];
-      if (placed !== undefined && tileSpellingLength(placed) > 1) {
+      if (placed !== undefined && isMulti(placed)) {
         blocked = true;
         break;
       }
@@ -225,8 +226,8 @@ const CORNERS = [0, 2, 8, 10];
 
 function placeFallback(tiles: Tile[]): Board {
   const board: (Tile | undefined)[] = new Array(PROTOCOL.BOARD_SIZE).fill(undefined);
-  const multi = tiles.filter((t) => tileSpellingLength(t) > 1);
-  const single = tiles.filter((t) => tileSpellingLength(t) === 1);
+  const multi = tiles.filter((t) => isMulti(t));
+  const single = tiles.filter((t) => !isMulti(t));
   multi.forEach((t, i) => {
     if (i < CORNERS.length) board[CORNERS[i]!] = t;
   });
@@ -238,7 +239,7 @@ function placeFallback(tiles: Tile[]): Board {
 }
 
 function countMulti(tiles: Tile[]): number {
-  return tiles.filter((t) => tileSpellingLength(t) > 1).length;
+  return tiles.filter((t) => isMulti(t)).length;
 }
 
 const NEIGHBOR_CACHE: number[][] = Array.from({ length: PROTOCOL.BOARD_SIZE }, (_, i) => neighbors(i));

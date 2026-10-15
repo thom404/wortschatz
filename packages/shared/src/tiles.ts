@@ -59,6 +59,11 @@ export function tileSpellingLength(t: Tile): number {
   return Math.max(...tileStrings(t).map((s) => s.length));
 }
 
+/** Tiles that spell more than one letter (digrams, prefixes, suffixes). */
+export function isMulti(t: Tile): boolean {
+  return tileSpellingLength(t) > 1;
+}
+
 /** Curated menus for special tiles (ADR-0003 §6). */
 export const PREFIX_MENU = ["an-", "un-", "ge-", "ab-"] as const;
 export const SUFFIX_MENU = ["-ung", "-en", "-er", "-s"] as const;

@@ -6,7 +6,7 @@
  */
 import { buildDawg, type DawgNode } from "./dawg.js";
 
-export { buildDawg } from "./dawg.js";
+export { buildDawg, walk } from "./dawg.js";
 
 export function serializeDawg(root: DawgNode): string {
   const idOf = new Map<DawgNode, number>();

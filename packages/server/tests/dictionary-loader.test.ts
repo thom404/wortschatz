@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
@@ -10,10 +10,12 @@ const FIXTURE_WORDS = readFileSync(join(import.meta.dirname, "fixtures", "words.
   .split("\n")
   .filter(Boolean);
 
-let dir: string;
+let dir: string | undefined = undefined;
 afterEach(async () => {
-  if (dir) await rm(dir, { recursive: true, force: true });
-  dir = undefined as unknown as string;
+  if (dir) {
+    await rm(dir, { recursive: true, force: true });
+    dir = undefined;
+  }
 });
 
 describe("loadDictionary", () => {
@@ -26,7 +28,7 @@ describe("loadDictionary", () => {
     const { dictionary, fellBack } = await loadDictionary({
       dawgPath,
       wordsPath: "unused-because-artifact-exists",
-      log: { warn: (o) => warnings.push(o) } as never,
+      log: { info() {}, warn: (o) => warnings.push(o), error() {} },
     });
     expect(fellBack).toBe(false);
     expect(warnings).toHaveLength(0);
@@ -43,7 +45,7 @@ describe("loadDictionary", () => {
     const { dictionary, fellBack } = await loadDictionary({
       dawgPath: join(dir, "missing.bin"),
       wordsPath,
-      log: { warn: (o) => warnings.push(o) } as never,
+      log: { info() {}, warn: (o) => warnings.push(o), error() {} },
     });
     expect(fellBack).toBe(true);
     expect(warnings[0]?.["event"]).toBe("dawg-fallback-build");
@@ -54,5 +56,3 @@ describe("loadDictionary", () => {
     expect(dictionary.isValid("de")).toBe(false);
   });
 });
-
-void readFile;

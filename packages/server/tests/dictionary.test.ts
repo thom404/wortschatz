@@ -92,25 +92,26 @@ describe("findWords", () => {
     expect(dict.findWords(board).sort()).toEqual(["ain", "ein"]);
   });
 
-  it("makes prefix tiles word-start only", () => {
-    // w an- d ... : "wand" would need the prefix tile mid-word — forbidden;
-    // starting ON the tile spells "and" — allowed.
+  it("enumerates prefix tile candidates at any path position (constraint-oblivious)", () => {
+    // w an- d ... : "and" spells via the prefix tile at word start, "wand"
+    // via the same tile mid-word. Positioning is boardgen's post-filter job.
     const dict = createDictionary(["wand", "and"]);
     const board = ["w", "an-", "d", "a", "e", "r", "n", "t", "s", "t", "o", "b", "c", "c", "z", "z"];
-    expect(dict.findWords(board).sort()).toEqual(["and"]);
+    expect(dict.findWords(board).sort()).toEqual(["and", "wand"]);
   });
 
-  it("makes suffix tiles word-end only", () => {
+  it("enumerates suffix tile candidates independent of position (constraint-oblivious)", () => {
     // a r t -s ... : "arts" ends on the suffix tile — allowed.
     const dict = createDictionary(["art", "arts"]);
     const board = ["a", "r", "t", "-s", "e", "n", "o", "b", "c", "c", "z", "z", "w", "w", "y", "y"];
     expect(dict.findWords(board).sort()).toEqual(["art", "arts"]);
   });
 
-  it("rejects words that would end on a suffix tile while continuing", () => {
-    // a -s t ... : "ast" needs -s mid-word — forbidden.
+  it("enumerates words that pass through a suffix tile mid-path (constraint-oblivious)", () => {
+    // a -s t ... : "ast" consumes -s mid-word; enumerated here, removed later
+    // by boardgen's isFormable post-filter (tested in boardgen.test.ts).
     const dict = createDictionary(["ast"]);
     const board = ["a", "-s", "t", "e", "n", "o", "b", "c", "z", "z", "w", "w", "y", "y", "d", "d"];
-    expect(dict.findWords(board)).toEqual([]);
+    expect(dict.findWords(board)).toEqual(["ast"]);
   });
 });
