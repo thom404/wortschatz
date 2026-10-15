@@ -21,7 +21,7 @@ import type { RevealPayload } from "@wordament/shared";
 
 /** The #17 reveal wire shape, worked out by hand from the hand-scored words:
  *  ort 4 points, found by both seats; saat missed; test 4 points, Lena only. */
-const kREVEAL: RevealPayload = {
+const REVEAL: RevealPayload = {
   groups: [
     { length: 3, words: [{ word: "ort", points: 4, foundBy: [1, 2] }] },
     {
@@ -301,7 +301,7 @@ describe("mountable app", () => {
         seat({ seatId: 1, nickname: "Lena" }),
         seat({ seatId: 2, nickname: "Ben" }),
       ]);
-      app!.conn().feed(roundEnded(1, kREVEAL));
+      app!.conn().feed(roundEnded(1, REVEAL));
 
       expect(app!.root.querySelector("h1")!.textContent).toBe("Zwischenspiel");
       // The finished board stays on screen (the honest, board-anchored
@@ -342,7 +342,7 @@ describe("mountable app", () => {
           { seatId: 3, nickname: "Cem", roundScore: 2, cumulativeScore: 40 },
         ],
       });
-      app!.conn().feed(roundEnded(1, kREVEAL));
+      app!.conn().feed(roundEnded(1, REVEAL));
 
       // Session standings: ordered by cumulative score — Cem leads the
       // session despite Ben winning the round — ties settle by join order.
@@ -359,7 +359,7 @@ describe("mountable app", () => {
 
     it("the host gets a working skip control that starts the next round now", () => {
       driveToRoundOne("LAG4T");
-      app!.conn().feed(roundEnded(1, kREVEAL));
+      app!.conn().feed(roundEnded(1, REVEAL));
       const skip = app!.root.querySelector<HTMLButtonElement>("#skip-btn")!;
       skip.click();
       expect(app!.conn().sent().at(-1)).toEqual({ type: "skip", reqId: 3 });
@@ -377,7 +377,7 @@ describe("mountable app", () => {
           nickname: "Ben",
           hostSeatId: 1,
           board: BOARD,
-          reveal: kREVEAL,
+          reveal: REVEAL,
         })
       );
       expect(app!.root.querySelector("h1")!.textContent).toBe("Zwischenspiel");
@@ -392,7 +392,7 @@ describe("mountable app", () => {
       vi.useFakeTimers();
       try {
         driveToRoundOne("LAG4T");
-        app!.conn().feed(roundEnded(1, kREVEAL));
+        app!.conn().feed(roundEnded(1, REVEAL));
         app!.conn().feed(tick("intermission", 2_000));
         await vi.advanceTimersByTimeAsync(251);
         // Interpolated intermission digits are live…
@@ -419,7 +419,7 @@ describe("mountable app", () => {
         seat({ seatId: 1, nickname: "Lena" }),
         seat({ seatId: 2, nickname: "Ben" }),
       ]);
-      app!.conn().feed(roundEnded(1, kREVEAL));
+      app!.conn().feed(roundEnded(1, REVEAL));
       const fromRoundEnd = revealText(app!.root);
 
       // A late joiner arrives through the join panel, per snapshot.
@@ -435,7 +435,7 @@ describe("mountable app", () => {
           nickname: "Ben",
           hostSeatId: 1,
           board: BOARD,
-          reveal: kREVEAL,
+          reveal: REVEAL,
         })
       );
       expect(revealText(app!.root)).toEqual(fromRoundEnd);

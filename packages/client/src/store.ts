@@ -6,6 +6,32 @@ import type { PlayerInfo, ScoreEntry, SnapshotMsg, ErrorCode, RevealPayload } fr
  */
 export type Outcome = "none" | "kicked" | "room-ended";
 
+/** The scoreboard's and the standings' shared ranking fabric: order by an
+ *  ascending-score key descending, ties staying in join order (the roster
+ *  array's order), then standard competition ranking over the result — a
+ *  later, better score restarts the count after shared places. */
+function orderPlayers(
+  players: PlayerInfo[],
+  key: (p: PlayerInfo) => number
+): { player: PlayerInfo; index: number; key: number }[] {
+  return players
+    .map((player, index) => ({ player, index, key: key(player) }))
+    .sort((a, b) => b.key - a.key || a.index - b.index);
+}
+
+function competitionPlaces(ordered: { key: number }[], score: (e: { key: number }) => number): number[] {
+  const places: number[] = [];
+  let place = 1;
+  let prev: number | null = null;
+  ordered.forEach((entry, idx) => {
+    const value = score(entry);
+    if (prev !== null && value !== prev) place = idx + 1;
+    prev = value;
+    places.push(place);
+  });
+  return places;
+}
+
 export class GameStore {
   code = "";
   phase: "lobby" | "playing" | "intermission" | "closed" = "lobby";
@@ -94,16 +120,13 @@ export class GameStore {
    *  order (the roster array's order). Standard competition ranking: a
    *  later, better score restarts the count after shared places. */
   rankedPlayers(): { player: PlayerInfo; roundScore: number; place: number }[] {
-    const order = this.players
-      .map((player, index) => ({ player, index, roundScore: this.roundScores.get(player.seatId) ?? 0 }))
-      .sort((a, b) => b.roundScore - a.roundScore || a.index - b.index);
-    let place = 1;
-    let prevScore: number | null = null;
-    return order.map((entry, idx) => {
-      if (prevScore !== null && entry.roundScore !== prevScore) place = idx + 1;
-      prevScore = entry.roundScore;
-      return { player: entry.player, roundScore: entry.roundScore, place };
-    });
+    const ordered = orderPlayers(this.players, (p) => this.roundScores.get(p.seatId) ?? 0);
+    const places = competitionPlaces(ordered, (e) => e.key);
+    return ordered.map((entry, i) => ({
+      player: entry.player,
+      roundScore: entry.key,
+      place: places[i]!,
+    }));
   }
 
   /** The intermission's session standings (#22): ordered by cumulative
@@ -111,26 +134,14 @@ export class GameStore {
    *  ranking rules as `rankedPlayers`: ties share a place, display order
    *  inside a tie settles by join order. */
   sessionRanked(): { player: PlayerInfo; roundScore: number; cumulativeScore: number; place: number }[] {
-    const order = this.players
-      .map((player, index) => ({
-        player,
-        index,
-        roundScore: this.roundScores.get(player.seatId) ?? 0,
-        cumulativeScore: player.cumulativeScore,
-      }))
-      .sort((a, b) => b.cumulativeScore - a.cumulativeScore || a.index - b.index);
-    let place = 1;
-    let prevScore: number | null = null;
-    return order.map((entry, idx) => {
-      if (prevScore !== null && entry.cumulativeScore !== prevScore) place = idx + 1;
-      prevScore = entry.cumulativeScore;
-      return {
-        player: entry.player,
-        roundScore: entry.roundScore,
-        cumulativeScore: entry.cumulativeScore,
-        place,
-      };
-    });
+    const ordered = orderPlayers(this.players, (p) => p.cumulativeScore);
+    const places = competitionPlaces(ordered, (e) => e.key);
+    return ordered.map((entry, i) => ({
+      player: entry.player,
+      roundScore: this.roundScores.get(entry.player.seatId) ?? 0,
+      cumulativeScore: entry.key,
+      place: places[i]!,
+    }));
   }
 
   upsertPlayer(p: PlayerInfo): void {

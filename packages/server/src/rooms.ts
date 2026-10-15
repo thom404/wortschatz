@@ -205,10 +205,10 @@ export class Rooms {
     });
     this.broadcast(room, { type: "player-joined", player: seatInfo(created) });
     this.sendSnapshot(ws, room, created, msg.reqId, created.token);
-    // Same repair as the token reclaim: newcomer and room stay on one
-    // source of truth for the standings (#22). The lobby carries nothing:
-    // no seat has scored yet.
-    if (room.phase !== "lobby") this.broadcastScores(room);
+    // The intermission's screen stays the honest mirror for newcomers too:
+    // the finished round never scored the new seat, so a room-wide
+    // score-update re-anchors the standings everyone renders (#22).
+    if (room.phase === "intermission") this.broadcastScores(room);
     this.tryAutoAdvance(room);
   }
   private findSeatByToken(room: Room, token: string): Seat | null {

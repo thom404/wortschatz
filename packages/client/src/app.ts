@@ -721,16 +721,11 @@ function statusHtml(app: App): string {
  * - `seats`: the lobby's join-ordered roster, numbered by seat order.
  * - `ranked`: the live scoreboard — ordered by round score, ties share a
  *   place, join order settles the display order inside a tie.
- * - `totals`: cumulative standing (join order; the intermission revisits
- *   it in `session` mode).
  * - `session`: the intermission standings (#22) — round score and
  *   cumulative session score side by side on one chip, ordered by
  *   cumulative score (the session's winner key), ties sharing a place.
  */
-function playerChipsHtml(
-  store: GameStore,
-  mode: "seats" | "ranked" | "totals" | "session" = "seats"
-): string {
+function playerChipsHtml(store: GameStore, mode: "seats" | "ranked" | "session" = "seats"): string {
   const render = (p: PlayerInfo, prefixHtml: string, scoreText: string): string => {
     const self = p.seatId === store.self.seatId;
     const me = self ? " me" : "";
@@ -761,11 +756,7 @@ function playerChipsHtml(
       )
       .join("");
   }
-  return store.players
-    .map((p, i) =>
-      render(p, `<span class="no">${i + 1}.</span> `, mode === "totals" ? `${p.cumulativeScore} P` : "")
-    )
-    .join("");
+  return store.players.map((p, i) => render(p, `<span class="no">${i + 1}.</span> `, "")).join("");
 }
 
 /**
