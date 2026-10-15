@@ -91,8 +91,8 @@ compatibility and because a ruleset is inspectable at
   }
   JSON
   ```
-- The ruleset is the source of truth; this ADR documents it.
 
+- The ruleset is the source of truth; this ADR documents it.
 
 ## Suppressed alternatives
 
