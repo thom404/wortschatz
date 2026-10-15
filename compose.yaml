@@ -3,12 +3,14 @@
 # provider's `middlewares-chains.yml` (rate-limit + https-redirectscheme +
 # secure-headers + compress; no CSP — the app serves its own, cf. #24; no
 # ddns-allowlist — remote players must work). The wordament service itself is
-# stateless: PORT env, no volume. See docs/OPERATOR-STEPS.md for the file
+# stateless: PORT env, no volume. The image is pulled from GHCR, pinned to an
+# exact sha-<full-sha> tag of a main-branch merge build (#27, #32); the
+# operator bumps that pin per release and rolls back by re-pinning.
+# See docs/OPERATOR-STEPS.md for the file
 # provider chain, the per-host TLS entrypoint line and the deployment walk.
 services:
   wordament:
-    build: .
-    image: wordament:latest
+    image: ghcr.io/thom404/wordament-clone-german:sha-08dd09d0eed56b25cdd10ec46e512482d7e4902e
     restart: unless-stopped
     environment:
       - PORT=3000
