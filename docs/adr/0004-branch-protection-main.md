@@ -61,11 +61,38 @@ compatibility and because a ruleset is inspectable at
 - Rename side-effects handled: git remote, `package.json`/lock root name,
   `compose.yaml` + `OPERATOR-STEPS.md` GHCR path (`ghcr.io/thom404/wortschatz`),
   issue links in the ADRs, issue-tracker pointers in `AGENTS.md`. Not renamed,
-  deliberately: the npm workspace scope `@wordament/*` (touching every import)
-  and the deployment domain `wordament.phanthom.cc` (operator-level change) —
-  both tracked as follow-ups for this ticket's TM-hygiene goal.
-- The ruleset is the source of truth; this ADR documents it, it is not itself
-  under version control (a GitHub-side configuration object).
+  deliberately: the npm workspace scope `@wordament/*` (touching every import,
+  issue [#37](https://github.com/thom404/wortschatz/issues/37)) and the
+  deployment domain `wordament.phanthom.cc` (operator-level change, issue
+  [#38](https://github.com/thom404/wortschatz/issues/38)) — both tracked
+  follow-ups for this ticket's TM-hygiene goal.
+- **Reproducing the ruleset from this repo alone** (⚠ the ruleset lives on
+  GitHub's side and is not version-controlled; this command recreates it —
+  check-run name `checks` matches the job in `.github/workflows/ci.yml`):
+
+  ```sh
+  gh api -X POST repos/thom404/wortschatz/rulesets --input - <<'JSON'
+  {
+    "name": "Protect main", "target": "branch", "enforcement": "active",
+    "conditions": { "ref_name": { "include": ["~DEFAULT_BRANCH"], "exclude": [] } },
+    "bypass_actors": [],
+    "rules": [
+      { "type": "deletion" }, { "type": "non_fast_forward" },
+      { "type": "required_status_checks", "parameters": {
+          "required_status_checks": [{ "context": "checks" }],
+          "strict_required_status_checks_policy": true } },
+      { "type": "pull_request", "parameters": {
+          "dismiss_stale_reviews_on_push": false, "require_code_owner_review": false,
+          "require_last_push_approval": false, "required_approving_review_count": 0,
+          "required_review_thread_resolution": false,
+          "allowed_merge_methods": ["merge", "squash", "rebase"],
+          "dismissal_restriction": { "enabled": false } } }
+    ]
+  }
+  JSON
+  ```
+- The ruleset is the source of truth; this ADR documents it.
+
 
 ## Suppressed alternatives
 
