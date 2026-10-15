@@ -52,7 +52,7 @@ inspect ghcr.io/thom404/wortschatz:latest` — anonymous, no layer transfer —
    `ghcr.io/thom404/wortschatz:sha-<revision>` (indentation preserved); then
    the standard refresh (`docker compose pull` + `docker compose up -d`).
 4. **Verify, then record; else roll back.** `GET $SERVICE_URL/healthz` must
-   answer HTTP 200 with `\"sha\":\"<revision>\"` within `VERIFY_TIMEOUT`
+   answer HTTP 200 with `"sha":"<revision>"` within `VERIFY_TIMEOUT`
    (default 60 s). Success writes the digest marker; failure restores the
    previous pin from a backup (`old_pin` captured pre-sed), re-pulls it and
    re-`up -d`s — `up -d` only ever happens after a successful `pull`, so a
@@ -65,6 +65,13 @@ inspect ghcr.io/thom404/wortschatz:latest` — anonymous, no layer transfer —
    catch-up; the service unit (`Type=oneshot`, `TimeoutStartSec=300`) is the
    single caller of `deploy/wortschatz-update.sh` (installed at
    `/usr/local/bin/wortschatz-update`).
+6. **Red-signal relocation.** With the CI deploy job gone, #29's criterion
+   "a failed deploy marks the workflow run red" has no direct CI equivalent —
+   a pull/deploy failure is a _server-side_ signal now: the unit goes
+   `failed` + the journal records it, nothing greener on GitHub. The
+   main-branch green-checks gate from #26 is untouched either way (it blocks
+   the merge, not the deploy); the criterion is retired by construction, not
+   left unimplemented.
 
 ## Consequences
 
@@ -76,8 +83,8 @@ inspect ghcr.io/thom404/wortschatz:latest` — anonymous, no layer transfer —
   walk and the `.github/run-deploy-wizard.sh` scaffolding of the first
   draft were dropped accordingly.
 - Deploys are eventually consistent with merges (≤ poll interval + build
-  time), not synchronous. Merges that need to be live _now_ (feed-hotfix
-  style) can run `systemctl start wortschatz-update` or `gh workflow run
+  time), not synchronous. Merges that need to be live _now_ can run
+  `systemctl start wortschatz-update` on the server, or `gh workflow run
 Image`–rebuild and wait one tick.
 - Rollback is unchanged in operator terms (re-pin to an old `sha-` tag +
   standard refresh), but now has a first line of defence: the updater itself
