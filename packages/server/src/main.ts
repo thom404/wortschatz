@@ -5,7 +5,9 @@
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { startServer } from "./index.js";
-import { PlaceholderDictionary, placeholderBoard, placeholderReveal, placeholderScore } from "./defaults.js";
+import { placeholderReveal, placeholderScore } from "./defaults.js";
+import { loadDictionary } from "./dictionary/loader.js";
+import { generateBoard } from "./boardgen/index.js";
 import type { Logger } from "./config.js";
 
 const logger: Logger = {
@@ -18,10 +20,15 @@ const here = resolve(join(fileURLToPath(import.meta.url), "..", "..", ".."));
 // Static SPA lives in the client build; overridable for container layouts.
 const staticDir = process.env.WORDAMENT_STATIC_DIR ?? resolve(join(here, "client", "dist"));
 
+// Artifact-first load; outside Docker this falls back to building the DAWG
+// from the committed raw list (structured warning from the loader).
+const { dictionary, fellBack } = await loadDictionary({ log: logger });
+if (!fellBack) logger.info({ event: "dawg-loaded" });
+
 const server = await startServer({
   port: Number(process.env.PORT ?? 3000),
-  dictionary: new PlaceholderDictionary([]),
-  generateBoard: placeholderBoard,
+  dictionary,
+  generateBoard: (seed) => generateBoard(seed, dictionary),
   scoreWord: placeholderScore,
   reveal: placeholderReveal,
   staticDir,

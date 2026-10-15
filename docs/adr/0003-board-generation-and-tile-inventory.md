@@ -31,7 +31,7 @@ real list, pruned DFS cross-checked against brute force).
 
 1. **Ownership.** #7 owns the tile inventory (without scoring values), generation
    (fresh board every round), the solvability gate, the seed, word-on-board
-   *formation checking*, and the enumerated word list. Per-letter point values,
+   _formation checking_, and the enumerated word list. Per-letter point values,
    length multipliers and the end-of-round reveal belong to #6; tile rendering
    belongs to #8.
 2. **Canonical tile form.** Tiles are lowercase NFC strings; notation is
@@ -43,15 +43,15 @@ real list, pruned DFS cross-checked against brute force).
    tile `q` does not exist — `q` is only produced by the `qu` digram. Runts
    (`x j y`) get exactly one tile each.
 4. **Tile bag.** One committed `TILE_BAG` constant (tile → count), frequency
-   data used as *structure only*, hand-rebalanced for playability. **96 tiles,
+   data used as _structure only_, hand-rebalanced for playability. **96 tiles,
    30/96 (31.25%) vowel mass:**
 
-   | Tiles | Counts |
-   | --- | --- |
-   | Singles — vowels | `e×10 a×6 i×6 o×4 u×4` (+ `ä×2 ö×1 ü×1`) |
-   | Singles — core | `t r n ×4 · s×3 · d×2 · h×2 l×3 g×2 c×2 m×2 b×2` |
-   | Singles — rest | `f p k w v z ×1 · x j y ×1 · ß×2` |
-   | Multi (21) | `er×3 en×3 te×3 ch×2 sch×3 st×3 ei×2 qu×2` |
+   | Tiles            | Counts                                           |
+   | ---------------- | ------------------------------------------------ |
+   | Singles — vowels | `e×10 a×6 i×6 o×4 u×4` (+ `ä×2 ö×1 ü×1`)         |
+   | Singles — core   | `t r n ×4 · s×3 · d×2 · h×2 l×3 g×2 c×2 m×2 b×2` |
+   | Singles — rest   | `f p k w v z ×1 · x j y ×1 · ß×2`                |
+   | Multi (21)       | `er×3 en×3 te×3 ch×2 sch×3 st×3 ei×2 qu×2`       |
 
 5. **Draw model.** Scrabble-style: 16 tiles drawn without replacement from a
    shuffled copy of the bag (i.i.d. per-cell assignment rejected: unbounded
@@ -59,7 +59,7 @@ real list, pruned DFS cross-checked against brute force).
    measured gain).
 6. **Special-tile types — all four, Germanized** (per #3's confirmed mechanics):
    digram (`st`), either/or (`a/e` — counts as either letter, word valid if
-   *either variant* is on the list), prefix (`an-`/`un-`/`ge-`/`ab-`, word-start
+   _either variant_ is on the list), prefix (`an-`/`un-`/`ge-`/`ab-`, word-start
    only), suffix (`-ung`/`-en`/`-er`/`-s`, word-end only). Per-board
    composition: 0–1 either/or (weighted to usually appear; pair menu
    `e/ä i/e a/e o/u`), 0–2 prefixes, 0–2 suffixes, digrams fill the ~5
@@ -71,7 +71,7 @@ real list, pruned DFS cross-checked against brute force).
    raise over the simulation's fragile p25 of 1; costs ~25–30% extra 0.7 ms
    draws. No other dead-board heuristics.)
 8. **Surface rule.** A submitted word is accepted only if it is on the list
-   *and formable on the live board*; `isFormable` lives in the #7 board module
+   _and formable on the live board_; `isFormable` lives in the #7 board module
    (the mirror of enumeration) and is consumed by the submit pipeline.
 9. **Retention.** The enumerated distinct-word list is stored in the round's
    in-memory state at generation; the reveal reuses it (one enumeration per
@@ -101,6 +101,12 @@ real list, pruned DFS cross-checked against brute force).
 - The gate's thresholds are sharp enough that the fallback path (best-of-200)
   should be rare; if it ever fires on real data, the bag has drifted and the
   simulation script should be re-run.
+- **Feasibility cap discovered at implementation:** with 8-way adjacency the
+  4×4 king graph hosts at most **4** mutually non-adjacent multi-letter tiles,
+  so the "~5 special/multi slots" resolve to at most 4 on any real board.
+  Drawn multi-tiles beyond the cap are traded back to singles from the unused
+  bag tail (preserving the draw's letter distribution), and the composition
+  always budgets specials into the remaining slots.
 - `q`-only-words are impossible except via `qu`, matching German orthography.
 
 ## Suppressed alternatives

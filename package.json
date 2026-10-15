@@ -13,6 +13,7 @@
   "scripts": {
     "typecheck": "tsc -b packages/shared packages/server && tsc -p packages/client",
     "build": "tsc -b packages/shared packages/server && cd packages/client && npx vite build",
+    "build-dawg": "node --experimental-strip-types packages/server/scripts/build-dawg.ts",
     "start": "node packages/server/dist/main.js",
     "test": "vitest run",
     "test:watch": "vitest",

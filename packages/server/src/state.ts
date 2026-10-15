@@ -31,6 +31,10 @@ export interface Room {
   hostSeatId: number;
   roundNumber: number;
   board: string[];
+  /** 64-bit board generation seed for the current round; logged, never shared. */
+  seed: bigint;
+  /** Enumerated findable words for the current round; the reveal reuses it. */
+  words: string[];
   deadline: number;
   seats: Map<number, Seat>;
   nextSeatId: number;

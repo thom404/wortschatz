@@ -4,6 +4,7 @@ import type { ServerConfigResolved } from "./config.js";
 import { Connection } from "./connection.js";
 import { Pinger } from "./hardening.js";
 import { makeRoomCode, makeToken, type Room, type Seat } from "./state.js";
+import { isFormable } from "./boardgen/index.js";
 interface ConnState {
   conn: Connection;
   roomId: string | null;
@@ -117,6 +118,8 @@ export class Rooms {
       hostSeatId: -1,
       roundNumber: 0,
       board: [],
+      seed: 0n,
+      words: [],
       deadline: 0,
       seats: new Map(),
       nextSeatId: 0,
@@ -325,18 +328,17 @@ export class Rooms {
       this.sendToSeat(seat, { type: "error", reqId: msg.reqId, code: "word-duplicate", message: word });
       return;
     }
-    if (!this.cfg.dictionary.isValid(word)) {
-      this.sendToSeat(seat, { type: "error", reqId: msg.reqId, code: "invalid-word", message: word });
-      return;
-    }
-    const placeable = this.cfg.dictionary.isPathable?.(word, room.board) ?? true;
-    if (!placeable) {
+    if (!isFormable(word, room.board)) {
       this.sendToSeat(seat, {
         type: "error",
         reqId: msg.reqId,
         code: "invalid-word",
         message: "not placeable",
       });
+      return;
+    }
+    if (!this.cfg.dictionary.isValid(word)) {
+      this.sendToSeat(seat, { type: "error", reqId: msg.reqId, code: "invalid-word", message: word });
       return;
     }
     seat.roundWords.add(word);
@@ -467,7 +469,11 @@ export class Rooms {
   private startRound(room: Room): void {
     room.roundNumber += 1;
     room.phase = "playing";
-    room.board = this.cfg.generateBoard(room.roundNumber);
+    const seed = this.cfg.seedSource();
+    const generated = this.cfg.generateBoard(seed);
+    room.seed = seed;
+    room.board = generated.board;
+    room.words = generated.words;
     room.deadline = Date.now() + this.cfg.roundMs;
     room.reveal = null;
     room.wordsBySeat = new Map();
@@ -489,7 +495,12 @@ export class Rooms {
     this.clearPhaseTimer(room);
     this.armPhaseTimer(room);
     this.armTickLoop(room);
-    this.cfg.log.info({ event: "round-start", room: room.code, round: room.roundNumber });
+    this.cfg.log.info({
+      event: "round-start",
+      room: room.code,
+      round: room.roundNumber,
+      seed: room.seed.toString(),
+    });
     this.broadcast(room, {
       type: "round-start",
       round: { roundNumber: room.roundNumber, board: room.board, deadline: room.deadline },

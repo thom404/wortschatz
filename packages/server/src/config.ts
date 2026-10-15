@@ -5,20 +5,25 @@
  * owned by tickets #7 and #6 — this wire-spec ticket fixes only their shape.
  */
 import { PROTOCOL } from "@wordament/shared";
+import { randomBytes } from "node:crypto";
 
 /** Opaque dictionary seam (deep module per ADR-0001; ticket #7 owns impl). */
 export interface DictionaryLike {
   isValid(word: string): boolean;
-  /**
-   * Optional pathability seam (#19: non-pathable strings rejected
-   * server-side). The real implementation arrives with #7's board
-   * enumeration; until then the injected se may implement it.
-   */
-  isPathable?(word: string, board: string[]): boolean;
 }
 
-/** Board seam: a fresh board per round (ticket #7 owns generation). */
-export type BoardGenerator = (roundNumber: number) => string[];
+/** Board seam: real generation result per round (ticket #7 owns generation). */
+export interface BoardResult {
+  board: string[];
+  /** Enumerated distinct words; kept in round state for the reveal (#6). */
+  words: string[];
+}
+
+/** Board seam: a fresh board per round from one 64-bit seed; pure (ADR-0003 §9). */
+export type BoardGenerator = (seed: bigint) => BoardResult;
+
+/** Seed seam: one 64-bit crypto seed per room per round (injectable for tests). */
+export type SeedSource = () => bigint;
 
 /** Scoring seam (ticket #6 owns the formula). */
 export type ScoreFn = (word: string, seatId: number) => number;
@@ -47,6 +52,9 @@ export interface ServerConfig {
   generateBoard: BoardGenerator;
   scoreWord: ScoreFn;
   reveal: RevealFn;
+
+  /** Seed draw for board generation; defaults to `crypto` randomness. */
+  seedSource?: SeedSource;
 
   /** Clock overrides (ms). Defaults come from `PROTOCOL`. */
   roundMs?: number;
@@ -94,6 +102,7 @@ export type ServerConfigResolved = Required<
   generateBoard: BoardGenerator;
   scoreWord: ScoreFn;
   reveal: RevealFn;
+  seedSource: SeedSource;
   log: Logger;
 };
 
@@ -113,6 +122,7 @@ export function resolveConfig(overrides: ServerConfig): ServerConfigResolved {
     generateBoard: overrides.generateBoard,
     scoreWord: overrides.scoreWord,
     reveal: overrides.reveal,
+    seedSource: overrides.seedSource ?? ((): bigint => randomBytes(8).readBigUInt64BE(0)),
     roundMs: overrides.roundMs ?? PROTOCOL.ROUND_MS,
     intermissionMs: overrides.intermissionMs ?? PROTOCOL.INTERMISSION_MS,
     tickIntervalMs: overrides.tickIntervalMs ?? PROTOCOL.TICK_INTERVAL_MS,

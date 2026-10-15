@@ -1,9 +1,9 @@
 import { startServer, type ServerHandle } from "../src/index.js";
 import {
   PlaceholderDictionary,
-  placeholderBoard,
   placeholderReveal,
   placeholderScore,
+  placeholderBoard,
 } from "../src/defaults.js";
 import { PROTOCOL, type ServerConfig } from "../src/index.js";
 import type { TestClient } from "./test-client.js";
@@ -34,11 +34,16 @@ export function fixedBoard(): string[] {
   return ["t", "e", "s", "t", "w", "o", "r", "t", "z", "z", "a", "a", "b", "b", "c", "c"];
 }
 
+/** Fixed board + empty word list, the test twin of a real generated round. */
+export function fixedGenerateBoard(): { board: string[]; words: string[] } {
+  return { board: fixedBoard(), words: [] };
+}
+
 export async function makeScene(overrides: Partial<ServerConfig> = {}): Promise<Scene> {
   const baseCfg: ServerConfig = {
     port: 0,
     dictionary: wordDict(),
-    generateBoard: () => fixedBoard(),
+    generateBoard: fixedGenerateBoard,
     scoreWord: placeholderScore,
     reveal: placeholderReveal,
     log: { info() {}, warn() {}, error() {} },

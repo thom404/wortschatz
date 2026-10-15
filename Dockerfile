@@ -1,16 +1,24 @@
 # syntax=docker/dockerfile:1
-# Stateless game box: word list ships per ADR-0001 (the dictionary
-# module itself lands with #7); no volume, stdout-only logs, PORT env (default 3000).
+# Stateless game box: word list shipped and checksum-verified per ADR-0001;
+# dictionary artifact built once here (never committed); no volume, stdout-only
+# logs, PORT env (default 3000).
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages/shared packages/shared
 COPY packages/server packages/server
 COPY packages/client packages/client
+COPY words words
+COPY COPYING COPYING
+
+# List integrity first: pinned enz/german-wordlist or the build stops.
+RUN echo "20095928ca70974fb5d86e44f10181cee16e2831b0d4b1a4ddd12c261aebc5e9  words" | sha256sum -c -
+
 RUN npm install --no-audit --no-fund \
  && npm run typecheck \
  && npm test \
  && npm run build \
+ && npm run build-dawg \
  && npm prune --omit=dev
 
 FROM node:22-alpine AS runtime
