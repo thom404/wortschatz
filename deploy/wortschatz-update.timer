@@ -1,0 +1,12 @@
+[Unit]
+Description=Run wortschatz-update every 15 minutes (pull-based auto-deploy)
+Documentation=https://github.com/thom404/wortschatz/blob/main/docs/adr/0005-auto-deploy-homelab.md
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+# A long offline spell catches up promptly once back online.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
