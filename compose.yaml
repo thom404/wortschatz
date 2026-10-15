@@ -17,6 +17,7 @@ services:
       - traefik.http.routers.wordament-rtr.rule=Host(`wordament.${DOMAIN:-phanthom.cc}`)
       - traefik.http.routers.wordament-rtr.entrypoints=https
       - traefik.http.routers.wordament-rtr.tls=true
+      - traefik.http.routers.wordament-rtr.tls.certresolver=dns-cloudflare
       - traefik.http.routers.wordament-rtr.middlewares=chain-wordament@file
       - traefik.http.services.wordament-svc.loadbalancer.server.port=3000
     networks:

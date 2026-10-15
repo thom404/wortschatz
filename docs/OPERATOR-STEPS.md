@@ -25,9 +25,10 @@ Notes:
 
 - `middlewares-rate-limit` is avg 100 / burst 50; if the shared homelab's
   existing declaration differs from that, update it for this chain.
-- `tls=true` picks up `dns-cloudflare` because the Traefik `https` entrypoint
-  declares it as its default certresolver; if that ever changes, an explicit
-  `--entrypoints.https.http.tls.certresolver` line is needed.
+- `tls=true` plus an explicit `traefik.http.routers.wordament-rtr.tls.certresolver=dns-cloudflare`
+  — the entrypoint's default certresolver alone does not trigger ACME issuance
+  for a new domain on Traefik 3.7 (the resolver only scans HostSNI rules); the
+  explicit label is what made the `wordament.phanthom.cc` certificate issue.
 - No chain-level CSP: the app serves its own minimal
   `Content-Security-Policy` on its static responses (#24).
 - No `ddns-allowlist` anywhere in the chain — remote players (colleagues on
