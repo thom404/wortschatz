@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   lobbySnapshot,
   mountHarness,
   playerJoined,
   roundStarted,
+  strayTouchMove,
   synthesizePointerDrag,
   synthesizeTouchDrag,
   tileEls,
@@ -18,6 +19,8 @@ import {
  */
 
 const BOARD = ["H", "A", "U", "S", "T", "I", "R", "E", "B", "U", "M", "S", "K", "A", "T", "Z"];
+/** A board whose notation carries a multi-letter digram (canonical lowercase). */
+const MIXED = ["sch", "T", "E", "R", "H", "A", "U", "S", "Z", "I", "M", "B", "K", "N", "Ö", "D"];
 
 let app: Mounted | null = null;
 
@@ -83,27 +86,32 @@ describe("mountable app", () => {
     ]);
 
     // The game screen: server-owned board and deadline, rendered. The
-    // heading's round counter only refreshes on snapshots — a round-start
-    // delta never bumps it (pinned current behavior).
+    // round number comes from the round-start delta itself (server truth
+    // through the boundary), and so does the mounted round score value.
     app!.conn().feed(roundStarted(BOARD));
-    expect(app!.root.querySelector("h1")!.textContent).toContain("Runde 0");
+    expect(app!.root.querySelector("h1")!.textContent).toContain("Runde 1");
     const tiles = tileEls(app!.root);
     expect(tiles.map((t) => t.textContent)).toEqual(BOARD.map((letter, i) => `${letter}${i}`));
-    expect(app!.root.querySelector<HTMLElement>("#countdown")!.textContent).toBe("2:00");
 
-    // A typed word goes out trimmed; the verdict comes back and renders.
-    app!.root.querySelector<HTMLInputElement>("#word-input")!.value = "  HAUS  ";
-    app!.root
-      .querySelector<HTMLFormElement>("#word-form")!
-      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    expect(app!.conn().sent()).toEqual([
-      { type: "create-room", nickname: "Lena", reqId: 1 },
-      { type: "start-round", reqId: 2 },
-      { type: "submit-word", word: "HAUS", reqId: 3 },
-    ]);
-    expect(app!.root.querySelector<HTMLInputElement>("#word-input")!.value).toBe("");
-    app!.conn().feed({ type: "word-accepted", word: "HAUS", points: 4 });
-    expect(app!.root.textContent).toContain("Gefunden: HAUS");
+    // Playing is drag-only: the typed input is gone.
+    expect(app!.root.querySelector("#word-input")).toBeNull();
+    expect(app!.root.querySelector("#word-form")).toBeNull();
+  });
+
+  it("renders the drag surface idle and sizes board fonts on the grid container", () => {
+    driveToRoundOne("LAG4T");
+    // Idle trace shows the hint that explains dragging.
+    const trace = app!.root.querySelector<HTMLElement>("#trace")!;
+    expect(trace.classList.contains("hint")).toBe(true);
+    expect(trace.textContent).toContain("Ziehe über die Felder");
+
+    // Single-letter board: full base size on the grid container.
+    expect(app!.root.querySelector<HTMLElement>("#board")!.style.getPropertyValue("--tile-span")).toBe("1");
+
+    // A board with multi-letter notation widens the span knob; the grid
+    // container owns the font sizing (never per-tile `em`).
+    app!.conn().feed(roundStarted(MIXED, 2));
+    expect(app!.root.querySelector<HTMLElement>("#board")!.style.getPropertyValue("--tile-span")).toBe("3");
   });
 
   it("prefills a deep-linked room code and greets with a join", () => {
@@ -135,6 +143,159 @@ describe("mountable app", () => {
     // The real home button works its way back out of the ended screen.
     app!.root.querySelector<HTMLButtonElement>("#home-btn")!.click();
     expect(app!.root.querySelector("h1")!.textContent).toBe("WortMeister");
+  });
+
+  it("pointer drags show the live trace and submit it on release", () => {
+    driveToRoundOne("LAG4T");
+    const tiles = tileEls(app!.root);
+    const traceSeen: string[] = [];
+    synthesizePointerDrag([tiles[0]!, tiles[1]!, tiles[4]!], "mouse", () => {
+      traceSeen.push(app!.root.querySelector("#trace")!.textContent!);
+    });
+
+    // The live trace shows what the swipe will submit, step by step, and
+    // the hint is gone while dragging.
+    expect(traceSeen).toEqual(["H", "HA", "HAT", "Ziehe über die Felder, um ein Wort zu bilden."]);
+    const trace = app!.root.querySelector("#trace")!;
+    expect(trace.classList.contains("hint")).toBe(true);
+
+    // Release submits the traced string through the boundary, reqId next.
+    expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HAT", reqId: 3 });
+
+    // The synchronous verdict lands as a private chip with its points —
+    // immediately, before any broadcast scoreboard update.
+    expect(app!.root.querySelector("#error")).toBeNull();
+    app!.conn().feed({ type: "word-accepted", word: "HAT", points: 2 });
+    const chips = app!.root.querySelectorAll("#found li");
+    expect(chips).toHaveLength(1);
+    expect(chips[0]!.textContent).toContain("HAT");
+    expect(chips[0]!.textContent).toContain("+2");
+  });
+
+  it("backtracking unwinds the previous tile and the rest still submits", () => {
+    driveToRoundOne("LAG4T");
+    const tiles = tileEls(app!.root);
+    const traceSeen: string[] = [];
+    // H → A → back onto H (deselects A) → T: submits "HT", not "HAHT".
+    synthesizePointerDrag([tiles[0]!, tiles[1]!, tiles[0]!, tiles[4]!], "mouse", () => {
+      traceSeen.push(app!.root.querySelector("#trace")!.textContent!);
+    });
+    expect(traceSeen).toEqual(["H", "HA", "H", "HT", "Ziehe über die Felder, um ein Wort zu bilden."]);
+    expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HT", reqId: 3 });
+  });
+
+  it("ignores non-adjacent jumps mid-drag", () => {
+    driveToRoundOne("LAG4T");
+    const tiles = tileEls(app!.root);
+    // T (row 1, col 0) → U (row 0, col 2): rows and columns both differ
+    // by 2 — not 8-way adjacent, so the jump is ignored.
+    const traceSeen: string[] = [];
+    synthesizePointerDrag([tiles[4]!, tiles[2]!], "mouse", () => {
+      traceSeen.push(app!.root.querySelector("#trace")!.textContent!);
+    });
+    expect(traceSeen).toEqual(["T", "T", "Ziehe über die Felder, um ein Wort zu bilden."]);
+    expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "T", reqId: 3 });
+  });
+
+  it("a resubmitted word surfaces the word-duplicate error and adds nothing", () => {
+    driveToRoundOne("LAG4T");
+    const tiles = tileEls(app!.root);
+    synthesizePointerDrag([tiles[0]!, tiles[1]!, tiles[2]!]); // HAU
+    app!.conn().feed({ type: "word-accepted", word: "HAU", points: 3 });
+    expect(app!.root.querySelectorAll("#found li")).toHaveLength(1);
+
+    // Same swipe again: the server verdict is word-duplicate; the error
+    // renders as the existing typed German error, the chips unchanged.
+    synthesizePointerDrag([tiles[0]!, tiles[1]!, tiles[2]!]);
+    app!.conn().feed({ type: "error", code: "word-duplicate", message: "HAU" });
+    expect(app!.root.querySelector("#error")!.textContent).toContain("Wort schon gefunden.");
+    expect(app!.root.querySelectorAll("#found li")).toHaveLength(1);
+  });
+
+  it("touch drags resolve through retargeting and claim the gesture from the page", () => {
+    driveToRoundOne("LAG4T");
+    const tiles = tileEls(app!.root);
+    // The browser retargets touchmove to the touchstart tile; capture the
+    // event objects to inspect defaultPrevented after each dispatch.
+    const moves: TouchEvent[] = [];
+    tiles[7]!.addEventListener("touchmove", (ev) => moves.push(ev as TouchEvent));
+    synthesizeTouchDrag([tiles[7]!, tiles[11]!, tiles[10]!]);
+    // Gesture claimed while dragging: the page never scrolls or zooms.
+    expect(moves).toHaveLength(2);
+    expect(moves[0]!.defaultPrevented).toBe(true);
+    expect(moves[1]!.defaultPrevented).toBe(true);
+    // …and it submitted the retargeted finger path E → S → M.
+    expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "ESM", reqId: 3 });
+
+    // After release the drag is idle: a stray touchmove goes unclaimed.
+    const afterEnd = strayTouchMove(tiles[7]!);
+    expect(afterEnd.defaultPrevented).toBe(false);
+  });
+
+  it("clears the found-word chips when the next round starts", () => {
+    driveToRoundOne("LAG4T");
+    const tiles = tileEls(app!.root);
+    synthesizePointerDrag([tiles[0]!, tiles[1]!, tiles[2]!]); // HAU
+    app!.conn().feed({ type: "word-accepted", word: "HAU", points: 3 });
+    expect(app!.root.querySelectorAll("#found li")).toHaveLength(1);
+    // A fresh round resets the private list; the chip of the old round is gone.
+    app!.conn().feed(roundStarted(BOARD, 2));
+    expect(app!.root.querySelector("#found li.none")!.textContent).toBe("—");
+  });
+
+  it("the ring timer shows remaining, round score and the shared low-time look", async () => {
+    vi.useFakeTimers();
+    try {
+      driveToRoundOne("LAG4T");
+      const timer = app!.root.querySelector<HTMLElement>("#timer")!;
+
+      // Fresh round: full ring, digits at the deadline, round score reset.
+      expect(timer.style.getPropertyValue("--p")).toBe("1.0000");
+      expect(app!.root.querySelector("#countdown")!.textContent).toBe("2:00");
+      expect(app!.root.querySelector("#round-score")!.textContent).toBe("0 P");
+      expect(timer.classList.contains("low")).toBe(false);
+
+      // The synchronous verdict raises the centered round score at once…
+      app!.conn().feed({ type: "word-accepted", word: "HAU", points: 5 });
+      expect(app!.root.querySelector("#round-score")!.textContent).toBe("5 P");
+      // …and a full scoreboard broadcast re-anchors to the server's value.
+      app!.conn().feed({
+        type: "score-update",
+        roundNumber: 1,
+        scores: [{ seatId: 1, nickname: "Lena", roundScore: 7, cumulativeScore: 7 }],
+      });
+      expect(app!.root.querySelector("#round-score")!.textContent).toBe("7 P");
+
+      // A low-time tick: digits and ring take the one shared `low` look,
+      // ring fraction shrinking with the interpolated remaining time.
+      app!.conn().feed({
+        type: "tick",
+        phase: "playing",
+        remaining: 18_000,
+        deadline: Date.now() + 18_000,
+      });
+      await vi.advanceTimersByTimeAsync(251);
+      expect(app!.root.querySelector("#countdown")!.textContent).toBe("0:18");
+      const nowTimer = app!.root.querySelector<HTMLElement>("#timer")!;
+      expect(nowTimer.classList.contains("low")).toBe(true);
+      expect(Number(nowTimer.style.getPropertyValue("--p"))).toBeCloseTo(0.15, 2);
+      expect(app!.root.querySelector("#error")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("multi-letter tiles contribute their full spelling to the trace", () => {
+    driveToRoundOne("LAG4T");
+    app!.conn().feed(roundStarted(MIXED, 2)); // board[0] = "sch"
+    const tiles = tileEls(app!.root);
+    const traceSeen: string[] = [];
+    synthesizePointerDrag([tiles[0]!, tiles[1]!, tiles[2]!], "mouse", () => {
+      traceSeen.push(app!.root.querySelector("#trace")!.textContent!);
+    });
+    // `sch` spells its three letters; singles keep their one.
+    expect(traceSeen).toEqual(["sch", "schT", "schTE", "Ziehe über die Felder, um ein Wort zu bilden."]);
+    expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "schTE", reqId: 3 });
   });
 
   it("synthesizes mouse and touch drags across the rendered tile grid", () => {
@@ -187,10 +348,14 @@ describe("mountable app", () => {
       `108,108`,
     ]);
 
-    // A drag touches no boundary: nothing new was sent, screen untouched.
-    expect(app!.conn().sentTypes()).toEqual(["create-room", "start-round"]);
-    expect(app!.root.querySelector("h1")!.textContent).toContain("Runde 0");
-    expect(app!.root.querySelector<HTMLElement>("#countdown")!.textContent).toBe("2:00");
+    // Both drags crossed the boundary as traced words: "HAT" over the
+    // grid, then "ESM" coordinate-resolved through retargeted touch.
+    expect(app!.conn().sentTypes()).toEqual(["create-room", "start-round", "submit-word", "submit-word"]);
+    expect(app!.conn().sent().slice(-2)).toEqual([
+      { type: "submit-word", word: "HAT", reqId: 3 },
+      { type: "submit-word", word: "ESM", reqId: 4 },
+    ]);
+    expect(app!.root.querySelector("h1")!.textContent).toContain("Runde 1");
     expect(tileEls(app!.root).map((t) => t.textContent)).toEqual(BOARD.map((letter, i) => `${letter}${i}`));
   });
 });

@@ -223,8 +223,10 @@ export function roundStarted(board: readonly string[], roundNumber = 1): RoundSt
 /* ------------------------------------------------------------------ */
 
 /** Synthetic tile-cell layout of the test DOM (no layout engine exists):
- *  40px square cells in a 4-column grid with 4px gaps, row-major, matching
- *  style.css's board. */
+ *  40px square cells in a 4-column grid with 4px gaps, row-major. The app
+ *  resolves drags by coordinates (like a real browser), so the harness
+ *  stubs `document.elementFromPoint` with this geometry's inverse —
+ *  exactly the hit-testing the browser answers and happy-dom cannot. */
 const CELL = 40;
 const GAP = 4;
 const COLUMNS = 4;
@@ -238,6 +240,27 @@ export function tilePoint(idx: number): { x: number; y: number } {
     y: row * (CELL + GAP) + CELL / 2,
   };
 }
+
+/* Layout stub: `document.elementFromPoint` answered once per process —
+ * happy-dom's DOM answers null (no layout engine); a real browser answers
+ * with the darkest element under the point. The stub maps synthetic cell
+ * coordinates back to the currently rendered board's tile. */
+
+const realFromPoint = document.elementFromPoint.bind(document);
+
+document.elementFromPoint = (x: number, y: number): Element | null => {
+  const board = document.querySelector("#board");
+  if (board) {
+    const col = Math.floor(x / (CELL + GAP));
+    const row = Math.floor(y / (CELL + GAP));
+    if (col >= 0 && col < COLUMNS && row >= 0 && row < COLUMNS) {
+      const tiles = tileEls(board as HTMLElement);
+      return tiles[row * COLUMNS + col] ?? realFromPoint(x, y);
+    }
+    return board;
+  }
+  return realFromPoint(x, y);
+};
 
 /** The board's rendered tiles, in row-major order. */
 export function tileEls(root: HTMLElement): HTMLElement[] {
@@ -310,18 +333,17 @@ function dispatchTouch(
   type: "touchstart" | "touchmove" | "touchend",
   point: { x: number; y: number },
   currentTouches: Touch[]
-): void {
+): TouchEvent {
   if (hasTouchEvents()) {
-    target.dispatchEvent(
-      new TouchEvent(type, {
-        bubbles: true,
-        cancelable: true,
-        touches: currentTouches,
-        targetTouches: currentTouches,
-        changedTouches: touches(target, point),
-      })
-    );
-    return;
+    const ev = new TouchEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      touches: currentTouches,
+      targetTouches: currentTouches,
+      changedTouches: touches(target, point),
+    });
+    target.dispatchEvent(ev);
+    return ev;
   }
   const ev = new Event(type, { bubbles: true, cancelable: true });
   Object.defineProperties(ev, {
@@ -329,20 +351,36 @@ function dispatchTouch(
     changedTouches: { value: touches(target, point) },
   });
   target.dispatchEvent(ev);
+  return ev as unknown as TouchEvent;
+}
+
+/** One touchmove with no drag underway (the stray-gesture probe: asserts
+ *  the app leaves unstarted gestures to the browser). */
+export function strayTouchMove(tile: Element): TouchEvent {
+  return dispatchTouch(
+    tile,
+    "touchmove",
+    tilePoint(tileIndexOf(tile)),
+    touches(tile, tilePoint(tileIndexOf(tile)))
+  );
 }
 
 /** One synthesized pointer drag: pointer down on the first tile of `path`,
  *  moves across the rest, releases on the last. Coordinates come from the
- *  synthetic cell layout, so the tiles' own listeners can be found. */
+ *  synthetic cell layout, so the tiles' own listeners can be found.
+ *  `onStep` runs after each dispatched event (e.g. to observe the rendered
+ *  DOM mid-drag). */
 export function synthesizePointerDrag(
   path: readonly Element[],
-  pointerType: "mouse" | "touch" = "mouse"
+  pointerType: "mouse" | "touch" = "mouse",
+  onStep?: () => void
 ): void {
   if (path.length === 0) throw new Error("drag needs at least one tile");
   const pointerId = pointerType === "mouse" ? 1 : 7;
   const start = path[0]!;
   const downPoint = tilePoint(tileIndexOf(start));
   dispatchPointer(start, "pointerdown", { pointerId, pointerType, ...downPoint, buttons: 1 });
+  onStep?.();
   for (const tile of path.slice(1)) {
     dispatchPointer(tile, "pointermove", {
       pointerId,
@@ -350,6 +388,7 @@ export function synthesizePointerDrag(
       ...tilePoint(tileIndexOf(tile)),
       buttons: 1,
     });
+    onStep?.();
   }
   const last = path[path.length - 1]!;
   dispatchPointer(last, "pointerup", {
@@ -358,21 +397,26 @@ export function synthesizePointerDrag(
     ...tilePoint(tileIndexOf(last)),
     buttons: 0,
   });
+  onStep?.();
 }
 
 /** One synthesized touch drag across `path`: touchstart on the first tile,
  *  then a touchmove for each following tile's coordinates — all retargeted
- *  to the touchstart element — and a touchend carrying the last position. */
-export function synthesizeTouchDrag(path: readonly Element[]): void {
+ *  to the touchstart element — and a touchend carrying the last position.
+ *  `onStep` runs after each dispatched event. */
+export function synthesizeTouchDrag(path: readonly Element[], onStep?: () => void): void {
   if (path.length === 0) throw new Error("drag needs at least one tile");
   const startTile = path[0]!;
   const startPoint = tilePoint(tileIndexOf(startTile));
   dispatchTouch(startTile, "touchstart", startPoint, touches(startTile, startPoint));
+  onStep?.();
   const points = path.map((t) => ({ ...tilePoint(tileIndexOf(t)) }));
   for (let i = 1; i < path.length; i++) {
     const point = points[i]!;
     dispatchTouch(startTile, "touchmove", point, touches(startTile, point));
+    onStep?.();
   }
   const lastPoint = points[path.length - 1]!;
   dispatchTouch(startTile, "touchend", lastPoint, []);
+  onStep?.();
 }

@@ -21,6 +21,10 @@ export function fmt(ms: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+/** At ≤ 20 s remaining, the countdown takes the low-time look (ADR-0002):
+ *  one shared class for digits and ring, coloured through `--ping`. */
+export const LOW_TIME_MS = 20_000;
+
 export function applyDelta(store: GameStore, msg: ServerMessage): void {
   switch (msg.type) {
     case "snapshot":
@@ -32,12 +36,15 @@ export function applyDelta(store: GameStore, msg: ServerMessage): void {
       break;
     case "round-start":
       store.phase = "playing";
+      store.roundNumber = msg.round.roundNumber;
       store.round = msg.round;
       store.deadline = msg.round.deadline;
-      store.roundWords = new Set();
+      store.selfRoundScore = 0;
+      store.roundWords = new Map();
       break;
     case "round-end":
       store.phase = "intermission";
+      store.roundNumber = msg.roundNumber;
       store.finishedRound = {
         roundNumber: msg.roundNumber,
         reveal: msg.reveal,

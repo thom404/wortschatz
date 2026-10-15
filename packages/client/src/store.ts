@@ -23,7 +23,9 @@ export class GameStore {
    *  `round` (a bare `round-end` delta carries no board). */
   finishedRound: { roundNumber: number; reveal: RevealPayload } | null = null;
   deadline = 0;
-  roundWords = new Set<string>();
+  /** My score for THIS round alone — the ring timer's centered value. */
+  selfRoundScore = 0;
+  roundWords = new Map<string, number>();
   lastError: { code: ErrorCode; message?: string } | null = null;
   outcome: Outcome = "none";
 
@@ -73,7 +75,10 @@ export class GameStore {
     for (const s of scores) {
       const p = this.players.find((x) => x.seatId === s.seatId);
       if (p) p.cumulativeScore = s.cumulativeScore;
-      if (s.seatId === this.self.seatId) this.self.cumulativeScore = s.cumulativeScore;
+      if (s.seatId === this.self.seatId) {
+        this.self.cumulativeScore = s.cumulativeScore;
+        this.selfRoundScore = s.roundScore;
+      }
     }
   }
 
@@ -92,9 +97,13 @@ export class GameStore {
     if (p) p.connected = connected;
   }
 
-  acceptedForMe(word: string, _points: number): void {
-    this.roundWords.add(word);
-    void _points;
+  /** My private per-round found words with their points (from the
+   *  synchronous `word-accepted` verdict). Quietly adds nothing when the
+   *  word is already found. */
+  acceptedForMe(word: string, points: number): void {
+    if (this.roundWords.has(word)) return;
+    this.roundWords.set(word, points);
+    this.selfRoundScore += points;
   }
 
   get isHost(): boolean {
@@ -116,7 +125,7 @@ export class GameStore {
     this.round = null;
     this.finishedRound = null;
     this.deadline = 0;
-    this.roundWords = new Set();
+    this.roundWords = new Map();
     this.lastError = null;
     this.outcome = "none";
   }

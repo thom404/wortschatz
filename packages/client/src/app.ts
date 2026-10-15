@@ -1,7 +1,8 @@
 import { loadSession, clearSession, type ConnStatus } from "./api.js";
-import { applyDelta, remainingOf, fmt } from "./deltas.js";
+import { applyDelta, remainingOf, fmt, LOW_TIME_MS } from "./deltas.js";
 import { GameStore } from "./store.js";
 import type { ClientMessage, ServerMessage } from "@wordament/shared";
+import { neighbors, PROTOCOL, tileSpellingLength, tileStrings } from "@wordament/shared";
 import "./style.css";
 
 /**
@@ -45,6 +46,9 @@ export type ConnFactory = (opts: {
 
 type Unsubscribe = () => void;
 
+/** The live drag state: a selected tile path. `null` between drags. */
+type DragHandle = { kind: "pointer" | "touch"; id: number } | null;
+
 interface App {
   root: HTMLElement;
   connect: ConnFactory;
@@ -55,13 +59,20 @@ interface App {
   connStatus: ConnStatus;
   unsub: Unsubscribe | null;
   onPopState: () => void;
+  stopDrag: () => void;
+  trace: number[];
+  dragging: DragHandle;
 }
+
+/** The one sentence the drag surface shows between words. */
+const TRACE_HINT = "Ziehe über die Felder, um ein Wort zu bilden.";
 
 /**
  * Mounts the app into `rootEl`, which renders to the home screen
  * immediately. Returns the unmount function: it stops the countdown
  * render timer, stops any live connection, unsubscribes, removes the
- * popstate listener and clears the root. Call exactly once per mount.
+ * popstate listener, unbinds the drag surface and clears the root. Call
+ * exactly once per mount.
  */
 export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
   const app: App = {
@@ -76,11 +87,16 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
     onPopState: () => {
       if (!app.inRoom) home(app);
     },
+    stopDrag: () => {},
+    trace: [],
+    dragging: null,
   };
   window.addEventListener("popstate", app.onPopState);
+  app.stopDrag = wireDrag(app);
   home(app);
   return () => {
     teardown(app);
+    app.stopDrag();
     if (app.conn) {
       app.conn.stop();
       app.conn = null;
@@ -168,7 +184,7 @@ function startRoom(app: App, code: string, greet: GreetFn): void {
   window.history.pushState({}, "", `/r/${code}`);
   render(app);
   if (app.renderTimer) clearInterval(app.renderTimer);
-  app.renderTimer = setInterval(() => interpolateCountdown(app), 250);
+  app.renderTimer = setInterval(() => updateTimer(app), 250);
 }
 
 function onMessage(app: App, msg: ServerMessage): void {
@@ -240,10 +256,48 @@ function render(app: App): void {
   }
 }
 
-function interpolateCountdown(app: App): void {
+/** The ring timer (ADR-0002): conic-gradient progress ring over a solid
+ *  inner disc; digits and round score sit centered on the disc. The ring's
+ *  fraction is a `--p` knob (0..1), and the shared low-time look is one
+ *  `low` class styling both digits and ring through the `--ping` token. */
+function timerHtml(app: App): string {
+  const state = timerState(app);
+  return `
+    <div id="timer" class="timer${state.low ? " low" : ""}" style="--p:${state.fraction.toFixed(4)}">
+      <span id="countdown" class="timer-digits">${fmt(remainingOf(app.store))}</span>
+      <span id="round-score" class="timer-score">${app.store.selfRoundScore} P</span>
+    </div>`;
+}
+
+/** The ring timer's live state: progress fraction (0..1) across the wall
+ *  length of the current phase, and the shared low-time look toggle. */
+function timerState(app: App): { fraction: number; low: boolean } {
+  const remaining = remainingOf(app.store);
+  return {
+    fraction: Math.min(1, Math.max(0, remaining / totalPhaseMs(app.store.phase))),
+    low: remaining <= LOW_TIME_MS,
+  };
+}
+
+/** The wall length of the current countdown phase — the ring's 1.0 point. */
+function totalPhaseMs(phase: GameStore["phase"]): number {
+  return phase === "playing" ? PROTOCOL.ROUND_MS : PROTOCOL.INTERMISSION_MS;
+}
+
+function updateTimer(app: App): void {
   if (app.store.phase !== "playing" && app.store.phase !== "intermission") return;
   const el = app.root.querySelector<HTMLElement>("#countdown");
-  if (el) el.textContent = fmt(remainingOf(app.store));
+  if (!el) return;
+  const remaining = remainingOf(app.store);
+  el.textContent = fmt(remaining);
+  const timer = app.root.querySelector<HTMLElement>("#timer");
+  if (timer) {
+    const { fraction, low } = timerState(app);
+    timer.style.setProperty("--p", fraction.toFixed(4));
+    timer.classList.toggle("low", low);
+  }
+  const score = app.root.querySelector<HTMLElement>("#round-score");
+  if (score) score.textContent = `${app.store.selfRoundScore} P`;
 }
 
 function renderLobby(app: App): void {
@@ -282,48 +336,47 @@ function renderGame(app: App): void {
   document.title = `WortMeister — Runde ${app.store.roundNumber}`;
   const board = app.store.round?.board ?? [];
   const spectating = app.store.self.role === "spectator";
+  // Font sizing lives on the grid container via the widest tile span knob
+  // (ADR-0002): per-tile `em` resolves against the parent and breaks.
+  const tileSpan = Math.max(1, ...board.map((t) => tileSpellingLength(t)));
+  const timer = timerHtml(app);
   app.root.innerHTML = `
     <div class="sheet">
-      <h1>Runde ${app.store.roundNumber} <span id="countdown">${fmt(remainingOf(app.store))}</span></h1>
+      <div class="game-top">
+        <h1>Runde ${app.store.roundNumber}</h1>
+        ${timer}
+      </div>
       ${statusHtml(app)}
       ${app.store.lastError ? `<p id="error">${escapeHtml(app.store.errorText)}</p>` : ""}
       <section class="panel">
         <h2>Spielbrett</h2>
-        <div id="board" class="board">${board
+        <div id="trace" class="trace hint">${TRACE_HINT}</div>
+        <div id="board" class="board" style="--tile-span:${tileSpan}">${board
           .map((t, i) => `<div class="tile">${escapeHtml(t)}<span class="idx">${i}</span></div>`)
           .join("")}</div>
       </section>
-      <section class="panel">
-        <h2>Dein Wort</h2>
-        ${
-          spectating
-            ? `<p class="dim">Du schaust zu — ab der nächsten Runde spielst du mit.</p>`
-            : `<form id="word-form">
-                 <input id="word-input" maxlength="16" placeholder="Wort eintippen, Enter" autocomplete="off" autocapitalize="off" />
-                 <button>OK</button>
-               </form>
-               <p class="dim">Gefunden: ${[...app.store.roundWords].map(escapeHtml).join(" · ") || "—"}</p>`
-        }
-      </section>
-      <section class="panel">
-        <h2>Punkte</h2>
-        <ul id="players">${playersHtml(app.store)}</ul>
-      </section>
+      ${
+        spectating
+          ? `<section class="panel"><p class="dim">Du schaust zu — ab der nächsten Runde spielst du mit.</p></section>
+             <section class="panel">
+               <h2>Punkte</h2>
+               <ul id="players">${playersHtml(app.store)}</ul>
+             </section>`
+          : `<section class="panel">
+               <h2>Deine Funde</h2>
+               <ul id="found" class="chips">${foundHtml(app.store)}</ul>
+             </section>
+             <section class="panel">
+               <h2>Punkte</h2>
+               <ul id="players">${playersHtml(app.store)}</ul>
+             </section>`
+      }
       <button id="leave-btn">Raum verlassen</button>
     </div>`;
-  const form = app.root.querySelector<HTMLFormElement>("#word-form");
-  if (form) {
-    const inputEl = app.root.querySelector<HTMLInputElement>("#word-input")!;
-    inputEl.focus();
-    form.onsubmit = (ev) => {
-      ev.preventDefault();
-      const word = inputEl.value.trim();
-      if (!word) return;
-      app.conn!.request({ type: "submit-word", word });
-      inputEl.value = "";
-    };
-  }
   app.root.querySelector<HTMLButtonElement>("#leave-btn")!.onclick = () => leaveRoom(app);
+  // Re-render can happen mid-drag (server deltas don't pause the game);
+  // rehydrate the trace paint onto the fresh DOM.
+  paintTrace(app);
 }
 
 function renderIntermission(app: App): void {
@@ -372,6 +425,189 @@ function renderEnded(app: App, title: string): void {
 }
 
 /* ------------------------------------------------------------------ */
+/* Drag word-input                                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The pointer drag surface replacing the typed input (#19): pressing a
+ * tile begins the trace; moving through 8-way adjacent tiles extends it;
+ * moving onto the immediately previous tile deselects it (backtracking);
+ * releasing submits the traced string. The trace paints directly onto the
+ * rendered DOM (no full re-render mid-drag) and clears on release — the
+ * verdict arrives as a server message either way.
+ *
+ * Pointer events carry touch; touch events are bound too for platforms
+ * without PointerEvent, and no-op when a pointer drag is already live
+ * (browsers fire both for the same gesture). Scroll/zoom under the finger
+ * is prevented on the wire: `touch-action: none` on the board, plus
+ * `preventDefault` while a touch drag moves.
+ */
+function wireDrag(app: App): () => void {
+  const root = app.root;
+
+  const onPointerDown = (ev: PointerEvent) => {
+    beginTrace(app, { kind: "pointer", id: ev.pointerId }, ev.clientX, ev.clientY, ev.target);
+  };
+  const onPointerMove = (ev: PointerEvent) => {
+    continueTrace(
+      app,
+      ev.clientX,
+      ev.clientY,
+      ev.target,
+      app.dragging?.kind === "pointer" && app.dragging.id === ev.pointerId
+    );
+  };
+  const onPointerUp = (ev: PointerEvent) => {
+    if (app.dragging?.kind === "pointer" && app.dragging.id === ev.pointerId) releaseTrace(app, true);
+  };
+  const onPointerCancel = () => {
+    releaseTrace(app, false);
+  };
+
+  const onTouchStart = (ev: TouchEvent) => {
+    const t = ev.changedTouches[0];
+    if (!t) return;
+    if (beginTrace(app, { kind: "touch", id: t.identifier }, t.clientX, t.clientY, t.target))
+      ev.preventDefault();
+  };
+  const onTouchMove = (ev: TouchEvent) => {
+    const t = ev.changedTouches[0];
+    if (!t) return;
+    if (
+      continueTrace(
+        app,
+        t.clientX,
+        t.clientY,
+        t.target,
+        app.dragging?.kind === "touch" && app.dragging.id === t.identifier
+      )
+    )
+      ev.preventDefault();
+  };
+  const onTouchEnd = () => {
+    if (app.dragging?.kind === "touch") releaseTrace(app, true);
+  };
+
+  root.addEventListener("pointerdown", onPointerDown);
+  document.addEventListener("pointermove", onPointerMove);
+  document.addEventListener("pointerup", onPointerUp);
+  document.addEventListener("pointercancel", onPointerCancel);
+  document.addEventListener("touchstart", onTouchStart, { passive: false });
+  document.addEventListener("touchmove", onTouchMove, { passive: false });
+  document.addEventListener("touchend", onTouchEnd);
+  document.addEventListener("touchcancel", onPointerCancel);
+  return () => {
+    root.removeEventListener("pointerdown", onPointerDown);
+    document.removeEventListener("pointermove", onPointerMove);
+    document.removeEventListener("pointerup", onPointerUp);
+    document.removeEventListener("pointercancel", onPointerCancel);
+    document.removeEventListener("touchstart", onTouchStart);
+    document.removeEventListener("touchmove", onTouchMove);
+    document.removeEventListener("touchend", onTouchEnd);
+    document.removeEventListener("touchcancel", onPointerCancel);
+  };
+}
+
+/** Starts a trace if the press lands on a rendered game tile during play.
+ *  Returns whether the trace began (and thus whether the gesture was
+ *  claimed — touch handlers preventDefault only then). */
+function beginTrace(
+  app: App,
+  drag: NonNullable<DragHandle>,
+  x: number,
+  y: number,
+  target: EventTarget | null
+): boolean {
+  if (app.dragging) return false;
+  if (app.store.phase !== "playing" || app.store.self.role === "spectator") return false;
+  const idx = hitTileIndex(app, x, y, target);
+  if (idx < 0) return false;
+  app.trace = [idx];
+  app.dragging = drag;
+  paintTrace(app);
+  return true;
+}
+
+/** Extends/unwinds the live trace for the tile under the pointer. */
+function continueTrace(app: App, x: number, y: number, target: EventTarget | null, mine: boolean): boolean {
+  if (!mine) return false;
+  const idx = hitTileIndex(app, x, y, target);
+  if (idx < 0) return false;
+  const trace = app.trace;
+  const last = trace[trace.length - 1];
+  if (last === undefined) return false;
+  const prev = trace[trace.length - 2];
+  if (idx === last) return false; // still on the current tile
+  if (idx === prev)
+    trace.pop(); // backtracking unwinds the previous tile
+  else if (trace.includes(idx))
+    return false; // crossings stay out
+  else if (!neighbors(last).includes(idx))
+    return false; // adjacent steps only
+  else trace.push(idx);
+  paintTrace(app);
+  return true;
+}
+
+/** Ends the trace: painting restores the idle hint and, on a real release
+ *  during play, the traced string crosses the boundary as `submit-word`. */
+function releaseTrace(app: App, submit: boolean): void {
+  const word = traceWord(app);
+  app.trace = [];
+  app.dragging = null;
+  paintTrace(app);
+  if (submit && word && app.store.phase === "playing") {
+    app.conn?.request({ type: "submit-word", word });
+  }
+}
+
+/** The string a release would submit: each traced tile's letters, in
+ *  order. Either/or tiles contribute their first variant (swipes don't
+ *  choose variants — later tickets own special-tile input). */
+function traceWord(app: App): string {
+  const board = app.store.round?.board ?? [];
+  return app.trace.map((i) => tileStrings(board[i] ?? "")[0] ?? "").join("");
+}
+
+/** Point → tile resolution, the same for mouse and finger. Real browsers
+ *  answer with `elementFromPoint` (events retarget under touch, so the
+ *  event target is not the current tile); the target is only a fallback. */
+function hitTileIndex(app: App, x: number, y: number, target: EventTarget | null): number {
+  if (!app.store.round) return -1;
+  const board = app.root.querySelector("#board");
+  if (!board) return -1;
+  let el: Element | null = document.elementFromPoint(x, y);
+  el = el ? el.closest(".tile") : null;
+  if (!el && target instanceof Element) el = target.closest(".tile");
+  if (!el || !board.contains(el)) return -1;
+  const parent = el.parentElement;
+  if (!parent) return -1;
+  return Array.prototype.indexOf.call(parent.children, el);
+}
+
+/** Paints the trace onto the live DOM: `.sel` on selected tiles, the
+ *  would-be word (or the idle hint) in the trace line. */
+function paintTrace(app: App): void {
+  const board = app.root.querySelector("#board");
+  if (board) {
+    for (const el of board.children) el.classList.remove("sel");
+    for (const idx of app.trace) {
+      const el = board.children[idx];
+      if (el) el.classList.add("sel");
+    }
+  }
+  const el = app.root.querySelector<HTMLElement>("#trace");
+  if (!el) return;
+  if (app.trace.length > 0) {
+    el.classList.remove("hint");
+    el.textContent = traceWord(app);
+  } else {
+    el.classList.add("hint");
+    el.textContent = TRACE_HINT;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Fragments / helpers                                                 */
 /* ------------------------------------------------------------------ */
 
@@ -412,6 +648,15 @@ function revealHtml(store: GameStore): string {
           .join(" · ")}</dd>`
     )
     .join("");
+}
+
+/** The private found-word chips: what I found this round, with each word's
+ *  points value. Cleared at every round start. */
+function foundHtml(store: GameStore): string {
+  const chips = [...store.roundWords]
+    .map(([word, points]) => `<li><span>${escapeHtml(word)}</span> <small>+${points}</small></li>`)
+    .join("");
+  return chips || `<li class="none">—</li>`;
 }
 
 function setHomeError(app: App, msg: string): void {

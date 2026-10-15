@@ -6,6 +6,7 @@
   --accent: #2563eb;
   --border: #dbe3ee;
   --radius: 10px;
+  --ping: #dc2626;
 }
 body {
   margin: 0;
@@ -27,6 +28,57 @@ h1 {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+.game-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.timer {
+  --p: 1;
+  --ring: var(--accent);
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  /* Conic-gradient progress ring over a solid inner disc (ADR-0002). */
+  background: conic-gradient(var(--ring) calc(var(--p) * 360deg), var(--border) 0);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.timer::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  background: var(--panel);
+}
+.timer-digits,
+.timer-score {
+  position: relative;
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.timer-score {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--dim);
+}
+/* ≤ 20 s remaining: one shared `low` class takes both digits and ring to
+ * the low-time look via the shared `--ping` token (ADR-0002). */
+.timer.low {
+  --ring: var(--ping);
+}
+.timer.low .timer-digits {
+  color: var(--ping);
+}
+.timer.low .timer-score {
+  color: var(--ink);
 }
 h2 {
   font-size: 1rem;
@@ -86,6 +138,15 @@ ul {
   gap: 6px;
   max-width: 320px;
   margin: 8px auto;
+  /* The grid container owns tile font sizing (ADR-0002): one clamp from
+   * the widest tile span on the board — never per-tile `em`, whose parent
+   * resolution breaks scale-independence. Boards with multi-letter tiles
+   * shrink the shared basis so `sch`/`st` stay legible. */
+  font-size: clamp(0.8rem, calc(1.35rem / var(--tile-span, 1)), 1.35rem);
+  /* The board is the word-input surface: no scroll/zoom under the finger. */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .tile {
   aspect-ratio: 1;
@@ -96,9 +157,17 @@ ul {
   border: 1px solid var(--border);
   border-radius: 8px;
   font-weight: 700;
-  font-size: 1.3rem;
   text-transform: uppercase;
   position: relative;
+  transition:
+    background 0.1s,
+    color 0.1s,
+    border-color 0.1s;
+}
+.tile.sel {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
 }
 .tile .idx {
   position: absolute;
@@ -107,6 +176,44 @@ ul {
   font-size: 0.6rem;
   color: var(--dim);
   font-weight: 400;
+}
+.trace {
+  min-height: 1.6rem;
+  text-align: center;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.trace.hint {
+  color: var(--dim);
+  font-weight: 400;
+  text-transform: none;
+}
+.chips {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0;
+  margin: 4px 0 0;
+}
+.chips li {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.chips li small {
+  font-weight: 400;
+  color: var(--accent);
+  text-transform: none;
+}
+.chips li.none {
+  color: var(--dim);
+  font-weight: 400;
+  text-transform: none;
 }
 #error {
   color: #b91c1c;
