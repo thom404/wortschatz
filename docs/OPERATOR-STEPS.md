@@ -62,11 +62,35 @@ other homelab services) providing:
 
 - `DOMAIN=phanthom.cc`
 
+The compose file carries no `build:`: production never builds on the deploy
+host. `compose.yaml` pins a pulled image reference to an exact
+`sha-<full-sha>` tag from the CI publish flow (#27):
+
+```yaml
+image: ghcr.io/thom404/wordament-clone-german:sha-<full-sha>
+```
+
 Then:
 
 ```sh
+docker compose pull
 docker compose up -d
 ```
+
+`docker compose pull` fetches the pinned `sha-<full-sha>` image straight from
+GHCR — the same fully verified artifact CI built on a merge to main
+(#27) — with no build step on the host. `:latest` stays reserved for casual
+pulls and is never pinned in production.
+
+That `pull` + `up -d` pair is the standard refresh used below.
+
+New release: bump the pin by replacing the `sha-<full-sha>` tag in
+`compose.yaml` with the sha of the merge commit you want, copy the file up
+again, and re-run the standard refresh (GHCR keeps old `sha-` tags, so the
+previous sha remains pullable).
+
+Rollback: change the one `image:` line back to a previous sha tag and run
+the standard refresh again.
 
 The container is stateless (PORT env, no volume); no backup or homepage
 labels apply.
