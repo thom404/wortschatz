@@ -89,6 +89,16 @@ export class ScriptedConnection implements RoomConn {
     this.open = false;
   }
 
+  /** A close-status arrives with no server frame ahead — the state an
+   *  orderly close (kicked/room-ended disposal in production) reports
+   *  before its frame, or a close that never gets one. Marks the
+   *  boundary closed and tells the app. */
+  abruptClose(): void {
+    this.open = false;
+    this.statuses.push("closed");
+    this.onStatus("closed");
+  }
+
   send(msg: Omit<ClientMessage, "reqId"> & { reqId?: number }): void {
     if (this.open) this.outbox.push(msg as ClientMessage);
   }
@@ -107,13 +117,14 @@ export class ScriptedConnection implements RoomConn {
 
   /** Delivers one server message to the mounted app. Mirrors
    *  `RoomConnection.onMessage`: a snapshot persists the session token
-   *  and flips the status to `open`; server-initiated ends mark the
-   *  boundary closed first, then deliver the frame. */
+   *  under the snapshot's room code and flips the status to `open`;
+   *  server-initiated ends mark the boundary closed first, then deliver
+   *  the frame. */
   feed(msg: ServerMessage): void {
     if (msg.type === "snapshot") {
       const token = msg.self.token ?? "";
       if (token) {
-        saveSession(this.code, { token, nickname: msg.self.nickname, seatId: msg.self.seatId });
+        saveSession(msg.room.code, { token, nickname: msg.self.nickname, seatId: msg.self.seatId });
       }
       this.statuses.push("open");
       this.onStatus("open");

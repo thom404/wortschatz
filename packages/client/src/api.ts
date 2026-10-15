@@ -132,7 +132,10 @@ export class RoomConnection {
         nickname: msg.self.nickname,
         seatId: msg.self.seatId,
       };
-      if (sess.token) saveSession(this.code, sess);
+      // Sessions live per room code (api contract): the server's code,
+      // not the greeting key this connection was built with — creating
+      // a room greets with the nickname and is named by the snapshot.
+      if (sess.token) saveSession(msg.room.code, sess);
       this.onStatus("open");
     }
     if (msg.type === "kicked" || msg.type === "room-ended") {

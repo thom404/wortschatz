@@ -1,5 +1,12 @@
 import { WebSocket } from "ws";
-import type { ClientMessage, PlayerInfo, ScoreEntry, ServerMessage, SnapshotMsg } from "@wordament/shared";
+import type {
+  ClientMessage,
+  PlayerInfo,
+  RoomEndReason,
+  ScoreEntry,
+  ServerMessage,
+  SnapshotMsg,
+} from "@wordament/shared";
 import type { ServerConfigResolved } from "./config.js";
 import { Connection } from "./connection.js";
 import { Pinger } from "./hardening.js";
@@ -716,7 +723,7 @@ export class Rooms {
   /* ------------------------------------------------------------------ */
   /* Room end                                                            */
   /* ------------------------------------------------------------------ */
-  private endRoom(room: Room, reason: string, closeCode: number): void {
+  private endRoom(room: Room, reason: RoomEndReason, closeCode: number): void {
     room.closing = true;
     for (const s of room.seats.values()) {
       for (const sock of s.sockets) {
@@ -824,7 +831,7 @@ export class Rooms {
   /* ------------------------------------------------------------------ */
   /* Ops surface                                                         */
   /* ------------------------------------------------------------------ */
-  teardownAll(reason: string, closeCode = 1001): void {
+  teardownAll(reason: RoomEndReason, closeCode = 1001): void {
     for (const room of [...this.rooms.values()]) {
       this.endRoom(room, reason, closeCode);
     }

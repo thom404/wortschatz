@@ -270,6 +270,18 @@ describe("mountable app", () => {
     });
   });
 
+  it("a connection close with no server frame shows the connection-lost outcome screen", () => {
+    driveToRoundOne("LAG4T");
+    // An orderly close (production: server restart races, dispose before
+    // the frame) or the pre-frame state of a kicked/room-ended disposal.
+    app!.conn().abruptClose();
+    expect(app!.root.querySelector("h1")!.textContent).toBe("Verbindung beendet.");
+    expect(app!.conn().statuses).toEqual(["connecting", "open", "closed"]);
+    // The real action returns to the home screen.
+    app!.root.querySelector<HTMLButtonElement>("#home-btn")!.click();
+    expect(app!.root.querySelector("h1")!.textContent).toBe("WortMeister");
+  });
+
   it("routes home → lobby → game, fed by snapshot and deltas, through the scripted connection", () => {
     // Home: the mounted app renders its first screen.
     expect(app!.root.querySelector("h1")!.textContent).toBe("WortMeister");
@@ -349,18 +361,72 @@ describe("mountable app", () => {
     }
   });
 
-  it("renders an end screen when the server closes the room", () => {
-    driveToRoundOne("LAG4T");
-    app!.conn().feed({ type: "room-ended", reason: "host closed" });
-    // The boundary reports its orderly close before the outcome frame is
-    // delivered, and the connection-closed screen wins (pinned current
-    // behavior through a RoomConnection-faithful boundary).
-    expect(app!.root.querySelector("h1")!.textContent).toBe("Verbindung beendet.");
-    expect(app!.conn().stopped).toBe(true);
-    expect(app!.conn().statuses).toEqual(["connecting", "open", "closed"]);
-    // The real home button works its way back out of the ended screen.
-    app!.root.querySelector<HTMLButtonElement>("#home-btn")!.click();
-    expect(app!.root.querySelector("h1")!.textContent).toBe("WortMeister");
+  describe("out-of-room screens (#21)", () => {
+    it("being kicked shows the dedicated outcome screen with a real action back home", () => {
+      driveToRoundOne("LAG4T");
+      app!.conn().feed({ type: "kicked" });
+      // The boundary closes before the outcome frame is delivered
+      // (RoomConnection-faithful order) — the kicked screen still wins.
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Du wurdest aus dem Raum LAG4T entfernt.");
+      expect(app!.root.querySelector("#home-btn")).toBeTruthy();
+      expect(app!.conn().stopped).toBe(true);
+      app!.root.querySelector<HTMLButtonElement>("#home-btn")!.click();
+      expect(app!.root.querySelector("h1")!.textContent).toBe("WortMeister");
+    });
+
+    it("a host-closed room shows the dedicated ended screen", () => {
+      driveToRoundOne("LAG4T");
+      app!.conn().feed({ type: "room-ended", reason: "host-closed" });
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum LAG4T wurde beendet.");
+      app!.root.querySelector<HTMLButtonElement>("#home-btn")!.click();
+      expect(app!.root.querySelector("h1")!.textContent).toBe("WortMeister");
+    });
+
+    it("an expired room ends with its own dedicated screen", () => {
+      driveToRoundOne("LAG4T");
+      app!.conn().feed({ type: "room-ended", reason: "expired" });
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum LAG4T ist abgelaufen.");
+      // Same real action as every outcome screen: back to the home screen.
+      app!.root.querySelector<HTMLButtonElement>("#home-btn")!.click();
+      expect(app!.root.querySelector("h1")!.textContent).toBe("WortMeister");
+    });
+
+    it("a wrong room code surfaces the generic not-found outcome screen", () => {
+      typeInto("#jn-code", "ZZZ99");
+      typeInto("#jn-nick", "Ben");
+      click("#jn-btn");
+      expect(app!.conn().sent()).toEqual([{ type: "join", code: "ZZZ99", nickname: "Ben", reqId: 1 }]);
+      app!.conn().feed({ type: "error", code: "room-not-found", message: "ZZZ99" });
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum ZZZ99 nicht gefunden oder abgelaufen.");
+      app!.root.querySelector<HTMLButtonElement>("#home-btn")!.click();
+      expect(app!.root.querySelector("h1")!.textContent).toBe("WortMeister");
+    });
+
+    it("a deep link lands pre-filled with the code and the remembered nickname for instant joining", () => {
+      // One full flow saves the remembered session for this room code.
+      typeInto("#mk-nick", "Lena");
+      click("#mk-btn");
+      app!.conn().feed(lobbySnapshot({ code: "XQ7F2", nickname: "Lena" }));
+      app!.unmount();
+      window.history.pushState({}, "", "/r/xq7f2");
+      const deep = mountHarness();
+      try {
+        expect(deep.root.querySelector<HTMLInputElement>("#jn-code")!.value).toBe("XQ7F2");
+        expect(deep.root.querySelector<HTMLInputElement>("#jn-nick")!.value).toBe("Lena");
+        // The join invitation is announced in the join panel.
+        expect(deep.root.querySelector(".panel .note")!.textContent).toContain(
+          "Du wurdest in Raum XQ7F2 eingeladen"
+        );
+        // One click joins — through the remembered session token.
+        deep.root.querySelector<HTMLButtonElement>("#jn-btn")!.click();
+        expect(deep.conn().sent()).toEqual([
+          { type: "join", code: "XQ7F2", nickname: "Lena", token: "t-1", reqId: 1 },
+        ]);
+      } finally {
+        deep.unmount();
+        window.history.pushState({}, "", "/");
+      }
+    });
   });
 
   it("pointer drags show the live trace and submit it on release", () => {

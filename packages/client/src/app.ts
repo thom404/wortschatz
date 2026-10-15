@@ -1,7 +1,7 @@
 import { loadSession, clearSession, type ConnStatus } from "./api.js";
 import { applyDelta, remainingOf, fmt, LOW_TIME_MS } from "./deltas.js";
 import { GameStore } from "./store.js";
-import type { ClientMessage, PlayerInfo, ServerMessage } from "@wordament/shared";
+import type { ClientMessage, PlayerInfo, RoomsEndedMsg, ServerMessage } from "@wordament/shared";
 import { neighbors, PROTOCOL, tileSpellingLength, tileStrings } from "@wordament/shared";
 import "./style.css";
 
@@ -58,6 +58,11 @@ interface App {
   inRoom: boolean;
   connStatus: ConnStatus;
   unsub: Unsubscribe | null;
+  /** The room code this mount's connection was built for — creating a
+   *  room greets with the nickname, and the server names the room later
+   *  (first snapshot). The outcome screens that fire without a snapshot
+   *  (room-not-found) still name the code the user typed. */
+  roomCode: string;
   onPopState: () => void;
   stopDrag: () => void;
   trace: number[];
@@ -93,6 +98,7 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
     inRoom: false,
     connStatus: "connecting",
     unsub: null,
+    roomCode: "",
     onPopState: () => {
       if (!app.inRoom) home(app);
     },
@@ -127,7 +133,7 @@ function home(app: App): void {
   app.root.innerHTML = `
     <div class="sheet">
       <h1>WortMeister</h1>
-      <p>Gemeinsam deutsche Wörter finden — real-time, privat, ohne Konto.</p>
+      <p class="dim">Gemeinsam deutsche Wörter finden — real-time, privat, ohne Konto.</p>
       <section class="panel">
         <h2>Raum erstellen</h2>
         <label>Spitzname <input id="mk-nick" maxlength="24" placeholder="z. B. Lena" /></label>
@@ -135,6 +141,7 @@ function home(app: App): void {
       </section>
       <section class="panel">
         <h2>Raum beitreten</h2>
+        ${deepCode ? `<p class="note">Du wurdest in Raum ${escapeHtml(deepCode)} eingeladen.</p>` : ""}
         <label>Raumcode <input id="jn-code" maxlength="8" autocapitalize="characters" placeholder="ABC12" value="${deepCode ?? ""}" /></label>
         <label>Spitzname <input id="jn-nick" maxlength="24" placeholder="z. B. Ben" value="${stored?.nickname ?? ""}" /></label>
         <button id="jn-btn">Beitreten</button>
@@ -181,6 +188,7 @@ function deepLinkCode(): string | null {
 
 function startRoom(app: App, code: string, greet: GreetFn): void {
   app.inRoom = true;
+  app.roomCode = code;
   app.conn = app.connect({
     code,
     greet,
@@ -197,13 +205,18 @@ function startRoom(app: App, code: string, greet: GreetFn): void {
 }
 
 function onMessage(app: App, msg: ServerMessage): void {
-  const before = app.store.outcome;
   applyDelta(app.store, msg);
-  if (msg.type === "error" && app.store.phase === "lobby" && msg.code === "room-not-found") {
-    renderEnded(app, "Raum nicht gefunden oder abgelaufen.");
-    return;
-  }
-  if (app.store.outcome !== before) render(app);
+  // The outcome frames (#21) each render their own dedicated screen.
+  // The connection's orderly close is reported first (RoomConnection
+  // fires `closed` before the frame arrives), so the dispatch avoids
+  // the `inRoom`-gated render() — the boundary's word is the trigger.
+  // `room-not-found` fires the generic outcome wherever it lands: the
+  // server only emits it when the room is gone (bad join, a room the
+  // seat outlived) — never as a transient mid-game verdict.
+  if (msg.type === "kicked") return renderOutcome(app, kickedOutcome(app));
+  if (msg.type === "room-ended") return renderOutcome(app, roomEndedOutcome(app, msg));
+  if (msg.type === "error" && msg.code === "room-not-found")
+    return renderOutcome(app, roomNotFoundOutcome(app));
 }
 
 /** The address bar tells the room's real deep link: creating a room pushes
@@ -218,8 +231,12 @@ function syncRoomUrl(app: App): void {
 function onStatus(app: App, status: ConnStatus): void {
   app.connStatus = status;
   if (status === "closed" && app.store.outcome === "none") {
-    renderEnded(app, "Verbindung beendet.");
-    return;
+    // An unexpected transport close arrives with no server frame ahead;
+    // the boundary's own screen carries the generic German note (#21).
+    return renderOutcome(app, {
+      titleHtml: "Verbindung beendet.",
+      noteHtml: OUTCOME_NOTE,
+    });
   }
   render(app);
 }
@@ -256,10 +273,6 @@ function teardown(app: App): void {
 function render(app: App): void {
   if (!app.inRoom) return;
   syncRoomUrl(app);
-  if (app.store.outcome === "kicked")
-    return renderEnded(app, `Du wurdest aus dem Raum ${escapeHtml(app.store.code)} entfernt.`);
-  if (app.store.outcome === "room-ended")
-    return renderEnded(app, `Raum ${escapeHtml(app.store.code)} wurde beendet.`);
   switch (app.store.phase) {
     case "lobby":
       if (app.store.code) renderLobby(app);
@@ -427,7 +440,20 @@ function renderIntermission(app: App): void {
   app.root.querySelector<HTMLButtonElement>("#leave-btn")!.onclick = () => leaveRoom(app);
 }
 
-function renderEnded(app: App, title: string): void {
+/**
+ * The out-of-room outcome screens (#21): kicked, room ended (host
+ * closed or expired), room not found and an unexpected connection
+ * close — one settled screen each, a real action (back to home), built
+ * from the same component vocabulary and tokens as the in-room screens
+ * (ADR-0002). All texts are hardcoded German. Both fields carry the
+ * final HTML (titles embed the room code as a `<code>` chip).
+ */
+interface OutcomeScreen {
+  titleHtml: string;
+  noteHtml: string;
+}
+
+function renderOutcome(app: App, outcome: OutcomeScreen): void {
   if (app.conn) {
     app.conn.stop();
     app.conn = null;
@@ -437,10 +463,49 @@ function renderEnded(app: App, title: string): void {
   document.title = "WortMeister";
   app.root.innerHTML = `
     <div class="sheet">
-      <h1>${escapeHtml(title)}</h1>
-      <button id="home-btn">Zur Startseite</button>
+      <h1>${outcome.titleHtml}</h1>
+      <section class="panel">
+        <h2>Wie geht es weiter?</h2>
+        <p class="note">${outcome.noteHtml}</p>
+        <button id="home-btn">Zur Startseite</button>
+      </section>
     </div>`;
   app.root.querySelector<HTMLButtonElement>("#home-btn")!.onclick = () => exitToHome(app);
+}
+
+const OUTCOME_NOTE = "Du kannst einen neuen Raum erstellen oder einem anderen beitreten.";
+
+function roomCodeHtml(code: string): string {
+  return `<code>${escapeHtml(code)}</code>`;
+}
+
+function kickedOutcome(app: App): OutcomeScreen {
+  return {
+    titleHtml: `Du wurdest aus dem Raum ${roomCodeHtml(app.store.code)} entfernt.`,
+    noteHtml: `Der Gastgeber hat dich aus dem Raum entfernt. ${OUTCOME_NOTE}`,
+  };
+}
+
+function roomEndedOutcome(app: App, msg: RoomsEndedMsg): OutcomeScreen {
+  const code = roomCodeHtml(app.store.code);
+  if (msg.reason === "expired")
+    return {
+      titleHtml: `Raum ${code} ist abgelaufen.`,
+      noteHtml: OUTCOME_NOTE,
+    };
+  return {
+    titleHtml: `Raum ${code} wurde beendet.`,
+    noteHtml: OUTCOME_NOTE,
+  };
+}
+
+function roomNotFoundOutcome(app: App): OutcomeScreen {
+  // No snapshot ever named the store; the join code the user typed is
+  // the greeting key of the connection (kept on the app in startRoom).
+  return {
+    titleHtml: `Raum ${roomCodeHtml(app.roomCode)} nicht gefunden oder abgelaufen.`,
+    noteHtml: `Prüfe den Raumcode, oder erstelle einen neuen Raum.`,
+  };
 }
 
 /* ------------------------------------------------------------------ */

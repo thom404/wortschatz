@@ -104,9 +104,13 @@ export interface SnapshotMsg {
   finishedRound?: FinishedRoundInfo;
 }
 
+/** Why a room ended — the one word of server truth the end screen
+ *  renders (client outcome screens, #21). */
+export type RoomEndReason = "host-closed" | "expired" | "server-shutdown";
+
 export interface RoomsEndedMsg {
   type: "room-ended";
-  reason: string;
+  reason: RoomEndReason;
 }
 
 /** 1 Hz re-anchor during `playing` and `intermission`. */

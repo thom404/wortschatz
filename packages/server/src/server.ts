@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
 import { WebSocketServer } from "ws";
+import type { RoomEndReason } from "@wordament/shared";
 import { resolveConfig, type ServerConfig } from "./config.js";
 import { Rooms } from "./rooms.js";
 
@@ -72,7 +73,7 @@ export class WordamentServer {
   }
 
   /** SIGTERM path in production: stop timers, room-ended, close 1001, exit. */
-  async shutdown(closeCode: number = 1001, reason: string = "server-shutdown"): Promise<void> {
+  async shutdown(closeCode: number = 1001, reason: RoomEndReason = "server-shutdown"): Promise<void> {
     if (this.shuttingDown) return;
     this.shuttingDown = true;
     if (this.pingInterval) clearInterval(this.pingInterval);
