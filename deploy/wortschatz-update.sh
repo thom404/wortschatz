@@ -55,26 +55,45 @@ if [ ${#revision} -ne 40 ]; then
   die "org.opencontainers.image.revision missing/garbled on $IMAGE:latest (image not built by CI?)"
 fi
 
-# Previous pin recorded first; rollback returns to it.
-old_pin=$(grep -oE 'ghcr\.io/thom404/[^:]+:sha-[0-9a-f]{40}' compose.yaml | head -n1 || true)
+# Previous pin recorded first; rollback returns to it. The pin shape is a
+# repo convention (owner/<repo>:sha-<40hex> on an `image:` line), fixed
+# regardless of the IMAGE override: overridable stations (private GHCR
+# namespaces, alternate dir) only move the *target*, never the search shape.
+PIN_GLOB='ghcr\.io/thom404/[^:]+:sha-[0-9a-f]{40}'
+old_pin=$(grep -oE "$PIN_GLOB" compose.yaml | head -n1 || true)
 log "$(now) previous pin: ${old_pin:-none}"
 
-pin_to() {
-  sed -i -E "s#^([[:space:]]*)image: ghcr\.io/thom404/[^:]+:sha-[0-9a-f]{40}#\1image: ${IMAGE}:sha-${revision}#" compose.yaml \
-    && grep -qF "${IMAGE}:sha-${revision}" compose.yaml
+# Atomic rewrite: mutate a temp copy, verify it looks took-shape, then mv.
+write_pin() {
+  local target="$1" tmp
+  tmp=$(mktemp) || die "mktemp failed"
+  if sed -E "s#^([[:space:]]*)image: ${PIN_GLOB}#\1image: ${target}#" compose.yaml > "$tmp" \
+    && grep -qF "image: ${target}" "$tmp"; then
+    mv "$tmp" compose.yaml
+  else
+    rm -f "$tmp"
+    die "compose re-pin to '${target}' did not take shape"
+  fi
 }
 
-restore() {
-  sed -i -E "s#^([[:space:]]*)image: ghcr\.io/thom404/[^:]+:sha-[0-9a-f]{40}#\1image: ${old_pin}#" compose.yaml \
-    && grep -qF "${old_pin}" compose.yaml
-}
+pin_new()   { write_pin "${IMAGE}:sha-${revision}"; }
+restore_old(){ write_pin "${old_pin}"; }
 
 rollback() {
-  log "$(now) DEPLOY FAILED — rolling back to ${old_pin:-no previous pin}"
+  log "$(now) DEPLOY FAILED — rolling back (previous pin: ${old_pin:-none})"
   if [ -n "$old_pin" ]; then
-    restore && docker compose pull --quiet 2>/dev/null && docker compose up -d 2>/dev/null
+    if ! restore_old; then
+      log "$(now) WARN: could not restore the previous pin by rewrite; manual §3 pin-copy resumes last-good."
+    elif ! docker compose pull --quiet 2>/dev/null; then
+      log "$(now) WARN: last-good pin restored but its pull failed — the container may still serve an older or swapped layer."
+    elif ! docker compose up -d 2>/dev/null; then
+      log "$(now) WARN: last-good pin's up failed — container state unclear."
+    else
+      log "$(now) rollback finished; serving last-good pin: ${old_pin}"
+    fi
+  else
+    log "$(now) no previous pin to restore — the failing sha stays unless nothing was started; manual declutter via OPERATOR-STEPS §3."
   fi
-  log "$(now) rollback finished; serving last-good pin: ${old_pin:-none}"
   exit 1
 }
 
@@ -84,7 +103,7 @@ if [ "$old_pin" = "${IMAGE}:sha-${revision}" ]; then
   docker compose pull --quiet 2>/dev/null || rollback
   docker compose up -d 2>/dev/null || rollback
 else
-  pin_to "$revision" || die "re-pin to ${revision} failed"
+  pin_new
   docker compose pull --quiet 2>/dev/null \
     || { log "$(now) compose pull failed"; rollback; }
   docker compose up -d 2>/dev/null \
