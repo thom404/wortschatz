@@ -413,25 +413,37 @@ function renderGame(app: App): void {
 
 function renderIntermission(app: App): void {
   document.title = "WortMeister — Zwischenspiel";
+  const finishedRoundNumber = app.store.finishedRound?.roundNumber ?? app.store.roundNumber;
+  // The finished board stays on screen: for live players it survives from
+  // the round, and the intermission snapshot re-anchors it for joiners.
+  const board = app.store.round?.board ?? [];
+  const tileSpan = Math.max(1, ...board.map((t) => tileSpellingLength(t)));
   app.root.innerHTML = `
     <div class="sheet">
-      <h1>Zwischenspiel <span id="countdown">${fmt(remainingOf(app.store))}</span></h1>
       ${statusHtml(app)}
-      <section class="panel">
-        <h2>Runde ${app.store.finishedRound?.roundNumber ?? app.store.roundNumber}</h2>
-        <div class="board dim">${(app.store.round?.board ?? [])
-          .map((t) => `<div class="tile">${escapeHtml(displayTile(t))}</div>`)
-          .join("")}</div>
-        <dl id="reveal">${revealHtml(app.store)}</dl>
-      </section>
-      <section class="panel">
-        <h2>Punkte</h2>
-        <ul id="players" class="chips">${playerChipsHtml(app.store, "totals")}</ul>
-      </section>
+      <div id="dashboard" class="dashboard intermission">
+        <h1 class="area-title">Zwischenspiel</h1>
+        ${timerHtml(app)}
+        <section class="panel area-board">
+          <h2>Runde ${finishedRoundNumber}</h2>
+          <div id="board" class="board" style="--tile-span:${tileSpan}">${board
+            .map((t) => `<div class="tile">${escapeHtml(displayTile(t))}</div>`)
+            .join("")}</div>
+        </section>
+        <section class="panel area-reveal">
+          <h2>Gefundene Wörter</h2>
+          <dl id="reveal">${revealHtml(app.store)}</dl>
+        </section>
+        <section class="panel area-score">
+          <h2>Punkte</h2>
+          <ul id="players" class="chips">${playerChipsHtml(app.store, "session")}</ul>
+          <p class="dim">Geführt wird nach dem Gesamtergebnis der Sitzung.</p>
+        </section>
+      </div>
       ${
         app.store.isHost
           ? `<button id="skip-btn">Nächste Runde starten</button>`
-          : `<p class="dim">Die nächste Runde startet gleich …</p>`
+          : `<p class="dim next-round-hint">Die nächste Runde startet gleich …</p>`
       }
       <button id="leave-btn">Raum verlassen</button>
     </div>`;
@@ -709,9 +721,16 @@ function statusHtml(app: App): string {
  * - `seats`: the lobby's join-ordered roster, numbered by seat order.
  * - `ranked`: the live scoreboard — ordered by round score, ties share a
  *   place, join order settles the display order inside a tie.
- * - `totals`: cumulative standing (intermission; #22 owns its revisiting).
+ * - `totals`: cumulative standing (join order; the intermission revisits
+ *   it in `session` mode).
+ * - `session`: the intermission standings (#22) — round score and
+ *   cumulative session score side by side on one chip, ordered by
+ *   cumulative score (the session's winner key), ties sharing a place.
  */
-function playerChipsHtml(store: GameStore, mode: "seats" | "ranked" | "totals" = "seats"): string {
+function playerChipsHtml(
+  store: GameStore,
+  mode: "seats" | "ranked" | "totals" | "session" = "seats"
+): string {
   const render = (p: PlayerInfo, prefixHtml: string, scoreText: string): string => {
     const self = p.seatId === store.self.seatId;
     const me = self ? " me" : "";
@@ -730,6 +749,18 @@ function playerChipsHtml(store: GameStore, mode: "seats" | "ranked" | "totals" =
       .map((r) => render(r.player, `<span class="place">${r.place}</span>`, `${r.roundScore} P`))
       .join("");
   }
+  if (mode === "session") {
+    return store
+      .sessionRanked()
+      .map((r) =>
+        render(
+          r.player,
+          `<span class="place">${r.place}</span>`,
+          `Runde ${r.roundScore} P · Gesamt ${r.cumulativeScore} P`
+        )
+      )
+      .join("");
+  }
   return store.players
     .map((p, i) =>
       render(p, `<span class="no">${i + 1}.</span> `, mode === "totals" ? `${p.cumulativeScore} P` : "")
@@ -737,8 +768,11 @@ function playerChipsHtml(store: GameStore, mode: "seats" | "ranked" | "totals" =
     .join("");
 }
 
-/** The concrete reveal (#17): groups ascend by length; each word shows its
- *  points and the nicknames of the seats that found it. */
+/**
+ * The concrete reveal (#17, #22): groups ascend by length; each word shows
+ * its points and one found-by chip per finder. Missed words stay visible —
+ * dimmed, without invented credit. No tile paths, no first-finder marks.
+ */
 function revealHtml(store: GameStore): string {
   const reveal = store.finishedRound?.reveal;
   if (!reveal || reveal.groups.length === 0) return "<dt>Ergebnisse</dt><dd>—</dd>";
@@ -749,12 +783,13 @@ function revealHtml(store: GameStore): string {
           .map((w) => {
             const by = w.foundBy
               .map((id) => store.players.find((p) => p.seatId === id)?.nickname)
-              .filter(Boolean)
-              .join(", ");
-            const cls = w.foundBy.length === 0 ? ` class="missed"` : "";
-            return `<span${cls}>${escapeHtml(w.word)} <small>+${w.points}${by ? ` · ${escapeHtml(by)}` : ""}</small></span>`;
+              .filter((n): n is string => Boolean(n))
+              .map((n) => `<span class="fby">${escapeHtml(n)}</span>`)
+              .join("");
+            const missed = w.foundBy.length === 0 ? " missed" : "";
+            return `<span class="rw${missed}"><span class="rw-word">${escapeHtml(w.word)}</span><small class="rw-pts">+${w.points}</small>${by}</span>`;
           })
-          .join(" · ")}</dd>`
+          .join(" ")}</dd>`
     )
     .join("");
 }

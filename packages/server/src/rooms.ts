@@ -205,6 +205,10 @@ export class Rooms {
     });
     this.broadcast(room, { type: "player-joined", player: seatInfo(created) });
     this.sendSnapshot(ws, room, created, msg.reqId, created.token);
+    // Same repair as the token reclaim: newcomer and room stay on one
+    // source of truth for the standings (#22). The lobby carries nothing:
+    // no seat has scored yet.
+    if (room.phase !== "lobby") this.broadcastScores(room);
     this.tryAutoAdvance(room);
   }
   private findSeatByToken(room: Room, token: string): Seat | null {

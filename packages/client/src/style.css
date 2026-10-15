@@ -115,6 +115,24 @@ h2 {
     grid-area: score;
   }
 }
+/* The intermission's arrangement (#22): same one-DOM uniformity — the
+ * reveal (wide) leads, the finished board and the session standings ride
+ * the second column. */
+@media (min-width: 860px) {
+  .dashboard.intermission {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      "title timer"
+      "reveal board"
+      "reveal score";
+    align-items: start;
+  }
+  .area-reveal {
+    grid-area: reveal;
+  }
+}
 
 /* ------------------------------------------------------------------ */
 /* Panels                                                              */
@@ -387,7 +405,9 @@ code {
 }
 
 /* ------------------------------------------------------------------ */
-/* Reveal (intermission; rest visual pass lives in ticket #22)          */
+/* Reveal (intermission, #22): grouped by length; each word priced, one
+ * found-by chip per finder, missed words visible — dimmed, chip-free.
+ * No tile paths, no first-finder credit. */
 /* ------------------------------------------------------------------ */
 .reveal dl,
 dl#reveal {
@@ -399,8 +419,31 @@ dt {
 }
 dd {
   margin: 2px 0 0;
-  word-break: break-all;
+  overflow-wrap: anywhere;
 }
-dd span.missed {
+.rw {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-xs);
+  margin: 2px var(--gap-s) 2px 0;
+  font-weight: 600;
+}
+.rw-word {
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.rw-pts {
+  color: var(--accent);
+  font-weight: 400;
+}
+.rw .fby {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 1px var(--gap-2xs);
+  border-radius: var(--radius-pill);
+}
+.rw.missed {
   opacity: 0.55;
 }

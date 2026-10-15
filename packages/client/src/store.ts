@@ -106,6 +106,33 @@ export class GameStore {
     });
   }
 
+  /** The intermission's session standings (#22): ordered by cumulative
+   *  score — the key that decides the session's winner — with the same
+   *  ranking rules as `rankedPlayers`: ties share a place, display order
+   *  inside a tie settles by join order. */
+  sessionRanked(): { player: PlayerInfo; roundScore: number; cumulativeScore: number; place: number }[] {
+    const order = this.players
+      .map((player, index) => ({
+        player,
+        index,
+        roundScore: this.roundScores.get(player.seatId) ?? 0,
+        cumulativeScore: player.cumulativeScore,
+      }))
+      .sort((a, b) => b.cumulativeScore - a.cumulativeScore || a.index - b.index);
+    let place = 1;
+    let prevScore: number | null = null;
+    return order.map((entry, idx) => {
+      if (prevScore !== null && entry.cumulativeScore !== prevScore) place = idx + 1;
+      prevScore = entry.cumulativeScore;
+      return {
+        player: entry.player,
+        roundScore: entry.roundScore,
+        cumulativeScore: entry.cumulativeScore,
+        place,
+      };
+    });
+  }
+
   upsertPlayer(p: PlayerInfo): void {
     const existing = this.players.find((x) => x.seatId === p.seatId);
     if (existing) Object.assign(existing, p);

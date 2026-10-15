@@ -1,10 +1,13 @@
 import type {
   ClientMessage,
+  RoundEndMsg,
   RoundStartMsg,
   PlayerJoinedMsg,
   PlayerInfo,
+  RevealPayload,
   ServerMessage,
   SnapshotMsg,
+  TickMsg,
 } from "@wordament/shared";
 
 export type { PlayerInfo };
@@ -281,6 +284,49 @@ export function roundStarted(board: readonly string[], roundNumber = 1): RoundSt
   return {
     type: "round-start",
     round: { roundNumber, board: [...board], deadline: Date.now() + 120_000 },
+  };
+}
+
+/** Round end: the room-wide reveal, grouped by length ascending (#17). */
+export function roundEnded(roundNumber: number, reveal: RevealPayload): RoundEndMsg {
+  return { type: "round-end", roundNumber, reveal };
+}
+
+/** One 1 Hz re-anchor tick for either countdown phase. */
+export function tick(phase: "playing" | "intermission", remaining: number): TickMsg {
+  return { type: "tick", phase, remaining, deadline: Date.now() + remaining };
+}
+
+/** A snapshot taken mid-intermission — the late-joiner / reconnect channel:
+ *  the full standing roster plus the finished round (board + reveal). */
+export function intermissionSnapshot(opts: {
+  code: string;
+  selfSeatId: number;
+  nickname: string;
+  role?: "player" | "spectator";
+  hostSeatId?: number;
+  roundNumber?: number;
+  board: readonly string[];
+  reveal: RevealPayload;
+  players?: PlayerInfo[];
+}): SnapshotMsg {
+  const hostSeatId = opts.hostSeatId ?? 1;
+  const roundNumber = opts.roundNumber ?? 1;
+  const selfSeat = seat({
+    seatId: opts.selfSeatId,
+    nickname: opts.nickname,
+    role: opts.role ?? "player",
+  });
+  return {
+    type: "snapshot",
+    room: { code: opts.code, phase: "intermission", hostSeatId, roundNumber },
+    self: { ...selfSeat, cumulativeScore: 0, token: "t-2" },
+    players: opts.players ?? [seat({ seatId: hostSeatId, nickname: "Lena" }), selfSeat],
+    finishedRound: {
+      roundNumber,
+      board: [...opts.board],
+      reveal: opts.reveal,
+    },
   };
 }
 

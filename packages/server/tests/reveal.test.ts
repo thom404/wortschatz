@@ -77,6 +77,40 @@ describe("round-end reveal", () => {
 });
 
 describe("identical reveal across channels", () => {
+  test("a late joiner gets the finished round's standing as a room-wide score-update on join", async () => {
+    const { host, hostSnap, playerSnap } = await playedRound();
+    host.send({ type: "skip", reqId: 5 });
+    const end = (await host.expect((m) => m.type === "round-end", 6000)) as unknown as {
+      roundNumber: number;
+    };
+
+    // A brand-new seat joining during the intermission: the room's finished
+    // round never scored it, yet its screen must read the same standings as
+    // everyone else's — a room-wide score-update re-anchors them all.
+    const late = await joinPlayer(scene, hostSnap.room.code, "Spät");
+    const scores = (await late.player.expect((m) => m.type === "score-update", 2000)) as unknown as {
+      roundNumber: number;
+      scores: { seatId: number; roundScore: number; cumulativeScore: number }[];
+    };
+    const bySeat = new Map(scores.scores.map((s) => [s.seatId, s]));
+    expect(scores.roundNumber).toBe(end.roundNumber);
+    const pick = (s: { seatId: number; roundScore: number; cumulativeScore: number }) => ({
+      seatId: s.seatId,
+      roundScore: s.roundScore,
+      cumulativeScore: s.cumulativeScore,
+    });
+    expect(pick(bySeat.get(hostSnap.self.seatId)!)).toEqual({
+      seatId: hostSnap.self.seatId,
+      roundScore: 8, // ort (4) + test (4)
+      cumulativeScore: 8,
+    });
+    expect(pick(bySeat.get(playerSnap.self.seatId)!)).toEqual({
+      seatId: playerSnap.self.seatId,
+      roundScore: 11, // wort (7) + ort (4)
+      cumulativeScore: 11,
+    });
+  });
+
   test("intermission snapshot carries the payload round-end carried: late joiner and reconnecter alike", async () => {
     const { host, hostSnap, playerSnap } = await playedRound();
     const end = (await host.expect((m) => m.type === "round-end", 6000)) as {

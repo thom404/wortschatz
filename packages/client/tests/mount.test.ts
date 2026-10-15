@@ -1,19 +1,38 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  intermissionSnapshot,
   lobbySnapshot,
   mountHarness,
   playingSnapshot,
   playerJoined,
+  roundEnded,
   roundStarted,
   strayTouchMove,
   synthesizePointerDrag,
   synthesizeTouchDrag,
   seat,
+  tick,
   tileEls,
   type Mounted,
   type PlayerInfo,
 } from "./harness.js";
+import type { RevealPayload } from "@wordament/shared";
+
+/** The #17 reveal wire shape, worked out by hand from the hand-scored words:
+ *  ort 4 points, found by both seats; saat missed; test 4 points, Lena only. */
+const kREVEAL: RevealPayload = {
+  groups: [
+    { length: 3, words: [{ word: "ort", points: 4, foundBy: [1, 2] }] },
+    {
+      length: 4,
+      words: [
+        { word: "saat", points: 4, foundBy: [] },
+        { word: "test", points: 4, foundBy: [1] },
+      ],
+    },
+  ],
+};
 
 /**
  * First mount test (#18): the real app, mounted into a test DOM, driven
@@ -43,6 +62,12 @@ function click(sel: string): void {
 
 function typeInto(sel: string, value: string): void {
   app!.root.querySelector<HTMLInputElement>(sel)!.value = value;
+}
+
+/** The rendered intermission reveal, whitespace-normalized — the identity
+ *  mirrored between the round-end delta channel and the snapshot channel. */
+function revealText(root: HTMLElement): string {
+  return (root.querySelector("#reveal")?.textContent ?? "").replace(/\s+/g, " ").trim();
 }
 
 /** Home → lobby → (host starts) → round one, through the boundary. */
@@ -267,6 +292,153 @@ describe("mountable app", () => {
       const tiles = tileEls(app!.root);
       synthesizePointerDrag([tiles[7]!, tiles[11]!], "mouse"); // R → M (8-way adjacent, both singles)
       expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "RM", reqId: 3 });
+    });
+  });
+
+  describe("intermission screen (#22)", () => {
+    it("the round-end reveal renders grouped by length with per-word points, found-by chips and missed words visible", () => {
+      driveToRoundWith("LAG4T", [
+        seat({ seatId: 1, nickname: "Lena" }),
+        seat({ seatId: 2, nickname: "Ben" }),
+      ]);
+      app!.conn().feed(roundEnded(1, kREVEAL));
+
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Zwischenspiel");
+      // The finished board stays on screen (the honest, board-anchored
+      // intermission).
+      expect(tileEls(app!.root)).toHaveLength(16);
+
+      // Groups ascend by word length; every word carries its points.
+      const dts = [...app!.root.querySelectorAll<HTMLElement>("#reveal dt")];
+      expect(dts.map((d) => d.textContent)).toEqual(["3 Buchstaben", "4 Buchstaben"]);
+      const dd = (dt: Element) => dt.nextElementSibling!;
+      const ort = dd(dts[0]!).querySelector(".rw:not(.missed)")!;
+      expect(ort.querySelector(".rw-word")!.textContent).toBe("ort");
+      expect(ort.querySelector(".rw-pts")!.textContent).toBe("+4");
+      // Found-by chips: one per finder, the shared credit spelled out.
+      const finders = [...ort.querySelectorAll<HTMLElement>(".fby")].map((c) => c.textContent);
+      expect(finders).toEqual(["Lena", "Ben"]);
+
+      // Missed words stay visible — dimmed, chip-free, still listed.
+      const missed = dd(dts[1]!).querySelector(".rw.missed")!;
+      expect(missed.querySelector(".rw-word")!.textContent).toBe("saat");
+      expect(missed.querySelectorAll(".fby")).toHaveLength(0);
+      // No first-finder credit beyond the chips: the word itself is naked.
+      expect(ort.querySelector(".rw-word")!.textContent).not.toContain("Lena");
+    });
+
+    it("standings show round and cumulative session score side by side, read by cumulative score", () => {
+      driveToRoundWith("LAG4T", [
+        seat({ seatId: 1, nickname: "Lena" }),
+        seat({ seatId: 2, nickname: "Ben" }),
+        seat({ seatId: 3, nickname: "Cem" }),
+      ]);
+      app!.conn().feed({
+        type: "score-update",
+        roundNumber: 1,
+        scores: [
+          { seatId: 2, nickname: "Ben", roundScore: 7, cumulativeScore: 8 },
+          { seatId: 1, nickname: "Lena", roundScore: 5, cumulativeScore: 25 },
+          { seatId: 3, nickname: "Cem", roundScore: 2, cumulativeScore: 40 },
+        ],
+      });
+      app!.conn().feed(roundEnded(1, kREVEAL));
+
+      // Session standings: ordered by cumulative score — Cem leads the
+      // session despite Ben winning the round — ties settle by join order.
+      const chips = [...app!.root.querySelectorAll<HTMLElement>("#players .chip.player")];
+      expect(chips.map((c) => c.querySelector(".nick")!.textContent)).toEqual(["Cem", "Lena", "Ben"]);
+      expect(chips.map((c) => c.querySelector(".place")!.textContent)).toEqual(["1", "2", "3"]);
+      // Both scores ride one chip, side by side: round first, session total
+      // second.
+      expect(chips[0]!.textContent).toContain("Runde 2 P");
+      expect(chips[0]!.textContent).toContain("Gesamt 40 P");
+      expect(chips[1]!.textContent).toContain("Runde 5 P");
+      expect(chips[1]!.textContent).toContain("Gesamt 25 P");
+    });
+
+    it("the host gets a working skip control that starts the next round now", () => {
+      driveToRoundOne("LAG4T");
+      app!.conn().feed(roundEnded(1, kREVEAL));
+      const skip = app!.root.querySelector<HTMLButtonElement>("#skip-btn")!;
+      skip.click();
+      expect(app!.conn().sent().at(-1)).toEqual({ type: "skip", reqId: 3 });
+    });
+
+    it("a non-host sees the server-owned next-round indicator instead of a skip control", () => {
+      window.history.pushState({}, "", "/r/LATE5");
+      typeInto("#jn-code", "LATE5");
+      typeInto("#jn-nick", "Ben");
+      click("#jn-btn");
+      app!.conn().feed(
+        intermissionSnapshot({
+          code: "LATE5",
+          selfSeatId: 2,
+          nickname: "Ben",
+          hostSeatId: 1,
+          board: BOARD,
+          reveal: kREVEAL,
+        })
+      );
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Zwischenspiel");
+      expect(app!.root.querySelector("#skip-btn")).toBeNull();
+      // Unambiguous: the pause belongs to the server, not to any button.
+      expect(app!.root.querySelector(".next-round-hint")!.textContent).toContain(
+        "Die nächste Runde startet gleich"
+      );
+    });
+
+    it("auto-advances into the next round when the countdown expires — no click anywhere", async () => {
+      vi.useFakeTimers();
+      try {
+        driveToRoundOne("LAG4T");
+        app!.conn().feed(roundEnded(1, kREVEAL));
+        app!.conn().feed(tick("intermission", 2_000));
+        await vi.advanceTimersByTimeAsync(251);
+        // Interpolated intermission digits are live…
+        expect(app!.root.querySelector("#countdown")!.textContent).toBe("0:02");
+        app!.conn().feed(tick("intermission", 0));
+        await vi.advanceTimersByTimeAsync(251);
+        // …clamped at zero — the client never self-transitions.
+        expect(app!.root.querySelector("#countdown")!.textContent).toBe("0:00");
+        expect(document.title).toBe("WortMeister — Zwischenspiel");
+        // The expiry lands as the server's next round: everyone flips
+        // without so much as a hover over a button.
+        app!.conn().feed(roundStarted(BOARD, 2));
+        expect(app!.root.querySelector("h1")!.textContent).toContain("Runde 2");
+        expect(tileEls(app!.root)).toHaveLength(16);
+        // Nothing was sent but the original lobby truth — no skip, no start.
+        expect(app!.conn().sentTypes()).toEqual(["create-room", "start-round"]);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("a snapshot during the intermission renders the same reveal the round-end delta carried", () => {
+      driveToRoundWith("LAG4T", [
+        seat({ seatId: 1, nickname: "Lena" }),
+        seat({ seatId: 2, nickname: "Ben" }),
+      ]);
+      app!.conn().feed(roundEnded(1, kREVEAL));
+      const fromRoundEnd = revealText(app!.root);
+
+      // A late joiner arrives through the join panel, per snapshot.
+      window.history.pushState({}, "", "/r/SPAT7");
+      app!.unmount();
+      app = mountHarness();
+      app!.root.querySelector<HTMLInputElement>("#jn-nick")!.value = "Ben";
+      app!.root.querySelector<HTMLButtonElement>("#jn-btn")!.click();
+      app!.conn().feed(
+        intermissionSnapshot({
+          code: "SPAT7",
+          selfSeatId: 2,
+          nickname: "Ben",
+          hostSeatId: 1,
+          board: BOARD,
+          reveal: kREVEAL,
+        })
+      );
+      expect(revealText(app!.root)).toEqual(fromRoundEnd);
     });
   });
 
