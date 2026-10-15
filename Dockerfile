@@ -4,6 +4,9 @@
 # logs, PORT env (default 3000).
 FROM node:22-alpine AS build
 WORKDIR /app
+# Build identity (default "dev" locally): surfaced by GET /healthz so the
+# auto-deploy (#29) can verify the running container is this exact image.
+ARG GIT_SHA="dev"
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages/shared packages/shared
 COPY packages/server packages/server
@@ -23,7 +26,8 @@ RUN npm install --no-audit --no-fund \
 
 FROM node:22-alpine AS runtime
 WORKDIR /app
-ENV NODE_ENV=production
+ARG GIT_SHA="dev"
+ENV NODE_ENV=production WORDAMENT_GIT_SHA=${GIT_SHA}
 RUN addgroup -S wordament && adduser -S wordament -G wordament
 COPY --from=build --chown=wordament:wordament /app /app
 ENV PORT=3000 WORDAMENT_STATIC_DIR=/app/packages/client/dist

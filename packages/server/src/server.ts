@@ -118,8 +118,14 @@ export class WordamentServer {
       return;
     }
     if (url.pathname === "/healthz") {
-      res.writeHead(200, { "content-type": "text/plain" });
-      res.end("ok");
+      // #29: the sha is baked into the image (Dockerfile ENV); the deploy
+      // verifies the public URL answers with the exact merge-commit sha.
+      const body = JSON.stringify({
+        ok: true,
+        sha: process.env.WORDAMENT_GIT_SHA || null,
+      });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(body);
       return;
     }
     const dir = this.config.staticDir;

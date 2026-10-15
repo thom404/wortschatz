@@ -3,6 +3,13 @@ name: Image
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+
+# Serialize pushes so a fast-follow merge cannot race the previous build's
+# push to the same tags (later runs queue; the newest image lands last).
+concurrency:
+  group: production-image
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -32,3 +39,5 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}

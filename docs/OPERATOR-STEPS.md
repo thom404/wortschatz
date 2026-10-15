@@ -70,7 +70,7 @@ host. `compose.yaml` pins a pulled image reference to an exact
 image: ghcr.io/thom404/wortschatz:sha-<full-sha>
 ```
 
-Then:
+Then run the standard refresh:
 
 ```sh
 docker compose pull
@@ -84,13 +84,14 @@ pulls and is never pinned in production.
 
 That `pull` + `up -d` pair is the standard refresh used below.
 
-New release: bump the pin by replacing the `sha-<full-sha>` tag in
-`compose.yaml` with the sha of the merge commit you want, copy the file up
-again, and re-run the standard refresh (GHCR keeps old `sha-` tags, so the
-previous sha remains pullable).
-
-Rollback: change the one `image:` line back to a previous sha tag and run
-the standard refresh again.
+Since #29 (ADR-0005), the _bump of the pin itself is automated_ by the
+pull-based updater (§7): every merge to `main` publishes
+`sha-<full-merge-sha>` under `ghcr.io/thom404/wortschatz` (#27) and the
+poller re-pins this server-side `compose.yaml` to exactly that sha, pulls,
+restarts and verifies the public `/healthz` answers with the same sha. This
+repo's `compose.yaml` stays the deployment mold; the pin state on the server
+moves with it. Manual pre-emptive pin bumps still work (per the §3 flow) and
+the next poller tick re-pins over them.
 
 The container is stateless (PORT env, no volume); no backup or homepage
 labels apply.
@@ -116,3 +117,62 @@ network. Expected: TLS padlock, no 421/no HTTP→HTTPS hiccup, and the client
 lands in the join screen pre-filled with the room code. Repeat once from
 the LAN to confirm the `middlewares-rate-limit`
 does not throttle normal play.
+
+## 7. Auto-deploy: pull-based poller on the server (#29, ADR-0005)
+
+Deploys are now self-driven by the server. CI (the `Image` workflow) builds
+the image from each merge to `main` and pushes it to GHCR — it never contacts
+this box (no SSH key, no reachability, no Actions secrets for deploy; the
+repo went public in ADR-0004 so pulls work anonymously). A small poller runs
+on the host:
+
+- every 15 minutes (`Persistent=true` so it catches up after offline spells):
+  `docker manifest inspect ghcr.io/thom404/wortschatz:latest` (cheap, no
+  layer transfer) is compared against the digest marker in
+  `~/.local/state/wortschatz/latest-digest`;
+- on a fresh digest: pull `latest`, read the image's own
+  `org.opencontainers.image.revision` label (set by CI to the exact merge
+  commit), re-pin this server's `compose.yaml` `image:` line to
+  `sha-<merge-sha>`, then the standard refresh (`docker compose pull` +
+  `up -d`);
+- verify `https://wordament.phanthom.cc/healthz` answers 200 with
+  `{"ok":true,"sha":"<merge-sha>"}` — the same sha as the deploy;
+- on pull/restart/verify failure: restore the previous pin, roll the
+  container back, and leave the systemd unit failed for you to see — the
+  last-good container keeps running.
+
+### One-time install (root, on the server)
+
+```sh
+# from a checkout of this repo (or curl from raw.githubusercontent):
+cp deploy/wortschatz-update.sh /usr/local/bin/wortschatz-update
+chmod +x /usr/local/bin/wortschatz-update
+cp deploy/wortschatz-update.service deploy/wortschatz-update.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now wortschatz-update.timer
+systemctl list-timers wortschatz-update.timer
+```
+
+The first tick deploys whatever `latest` is in GHCR (the digest marker starts
+empty and falls through "digest changed"). Defaults live in the script:
+`COMPOSE_DIR=~/Docker/production/wordament`,
+`SERVICE_URL=https://wordament.phanthom.cc`,
+`VERIFY_TIMEOUT=60`; override any of them via a drop-in
+(`systemctl edit wortschatz-update` → `[Service] Environment=…`) without
+touching the script.
+
+### Operating an existing install
+
+- Trigger out-of-band: `systemctl start wortschatz-update.service`
+  (redeploy whatever `latest` carries right now). CI-side trigger: `gh
+workflow run Image --repo thom404/wortschatz` — it rebuilds `latest` at the
+  current `main` sha and the next tick deploys it.
+- Watch: `journalctl -u wortschatz-update -f` (deploy history: every pin
+  change, every verify, every rollback is logged).
+- Health identity: `curl -fsS https://wordament.phanthom.cc/healthz` reports
+  the exact build live behind the URL; the updater only records success when
+  that answer matches the image it just pinned.
+- Manual rollback (§3): re-pin the `image:` line to any previous
+  `sha-<full-sha>` and run the standard refresh — but note the next
+  successful poller tick re-pins forward to the newest digest again; to keep
+  an older version in place, stop the timer until you're ready.

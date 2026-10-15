@@ -1,0 +1,10 @@
+[Unit]
+Description=wortschatz pull-based auto-deploy (ADR-0005): poll GHCR, re-pin compose, roll the container
+Documentation=https://github.com/thom404/wortschatz/blob/main/docs/adr/0005-auto-deploy-homelab.md
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/wortschatz-update
+TimeoutStartSec=300
