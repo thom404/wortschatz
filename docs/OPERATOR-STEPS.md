@@ -70,7 +70,7 @@ host. `compose.yaml` pins a pulled image reference to an exact
 image: ghcr.io/thom404/wortschatz:sha-<full-sha>
 ```
 
-Then:
+Then run the standard refresh:
 
 ```sh
 docker compose pull
@@ -84,13 +84,13 @@ pulls and is never pinned in production.
 
 That `pull` + `up -d` pair is the standard refresh used below.
 
-New release: bump the pin by replacing the `sha-<full-sha>` tag in
-`compose.yaml` with the sha of the merge commit you want, copy the file up
-again, and re-run the standard refresh (GHCR keeps old `sha-` tags, so the
-previous sha remains pullable).
-
-Rollback: change the one `image:` line back to a previous sha tag and run
-the standard refresh again.
+Since #29, the _bump of the pin itself is automated_: every merge to `main`
+publishes `sha-<full-merge-sha>` under `ghcr.io/thom404/wortschatz` (#27) and
+the workflow re-pins the server-side `compose.yaml` to exactly that sha,
+pulls, restarts and verifies the public `/healthz` answers with the same sha
+(§7). Rollback is unchanged: change the one `image:` line back to a previous
+sha tag (old sha tags stay pullable) and re-run the standard refresh — the
+next auto-deploy then re-pins to the newest sha again.
 
 The container is stateless (PORT env, no volume); no backup or homepage
 labels apply.
@@ -116,3 +116,43 @@ network. Expected: TLS padlock, no 421/no HTTP→HTTPS hiccup, and the client
 lands in the join screen pre-filled with the room code. Repeat once from
 the LAN to confirm the `middlewares-rate-limit`
 does not throttle normal play.
+
+## 7. Auto-deploy on merge to main (#29)
+
+Every merge to `main` now: builds the image from that exact commit, pushes
+`ghcr.io/thom404/wortschatz:sha-<full-merge-sha>` (+ `:latest`) to GHCR,
+then SSHes into this server, re-pins the `image:` line in the server's
+`compose.yaml` to that same sha, `docker compose pull` + `up -d`, and
+verifies `https://wordament.phanthom.cc/healthz` answers HTTP 200 with
+`{"ok":true,"sha":"<merge-sha>"}` (the sha is baked into the image as
+`WORDAMENT_GIT_SHA`). When that final check fails, the workflow run is red —
+the last-green sha keeps running (`up -d` replaced it only if the pull and
+restart succeeded).
+
+The server's role stays pull-and-restart only: no build step, no compose
+write-back into the repo; the server's GHCR access is at most a read-only
+login (since the repo went public in ADR-0004, pulls actually work
+anonymously — login is optional but keeps the flow identical for private
+binding changes later).
+
+Retrigger a deploy without a new merge: run the `Image` workflow via
+workflow_dispatch — it rebuilds `latest` at the current `main` sha and
+redeploys that sha.
+
+### Provisioning the deploy credentials (one-time, wizard)
+
+The workflow needs four repo **secrets** — `SSH_HOST` (host or
+`host:port`), `SSH_USER`, `SSH_PRIVATE_KEY` (ed25519, no passphrase), and
+`SSH_KNOWN_HOSTS` (the `ssh-keyscan` output for that host) — plus an
+optional **variable** `DEPLOY_DIR` (defaults to
+`~/Docker/production/wordament`) and optional `SERVICE_URL` (defaults to
+`https://wordament.phanthom.cc`). Provision and execute:
+
+```sh
+bash .github/run-deploy-wizard.sh
+```
+
+It walks through: key generation → appending the public key to the server's
+`authorized_keys` → `docker login ghcr.io` server-side (read-only PAT) →
+`ssh-keyscan` → `gh secret set`/`gh variable set` (never echoing values).
+Nothing committed; the private key lives only as an Actions secret.
