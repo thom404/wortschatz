@@ -29,7 +29,7 @@ describe("submit-word", () => {
     const { host } = await match();
     const ack = await accept(host, "test", 10);
     expect(ack.word).toBe("test");
-    expect(ack.points).toBe(4); // injected seam: one point per letter
+    expect(ack.points).toBe(4); // real engine: t e s t are all value 1
   });
 
   test("every verdict broadcasts the scoreboard room-wide", async () => {
@@ -108,7 +108,7 @@ describe("submit-word", () => {
     expect(promoted.self.role).toBe("player");
     spec.send({ type: "submit-word", word: "test", reqId: 33 });
     const ack = await spec.expect((m) => m.type === "word-accepted" && m.reqId === 33, 4000);
-    expect(ack.points).toBe(4);
+    expect(ack.points).toBe(4); // t e s t are all value 1
     void host;
   });
 });

@@ -5,9 +5,10 @@
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { startServer } from "./index.js";
-import { placeholderReveal, placeholderScore } from "./defaults.js";
+import { placeholderReveal } from "./defaults.js";
 import { loadDictionary } from "./dictionary/loader.js";
 import { generateBoard } from "./boardgen/index.js";
+import { germanScore } from "./scoring/index.js";
 import type { Logger } from "./config.js";
 
 const logger: Logger = {
@@ -29,7 +30,7 @@ const server = await startServer({
   port: Number(process.env.PORT ?? 3000),
   dictionary,
   generateBoard: (seed) => generateBoard(seed, dictionary),
-  scoreWord: placeholderScore,
+  scoreWord: germanScore,
   reveal: placeholderReveal,
   staticDir,
 });
