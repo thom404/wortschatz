@@ -79,8 +79,8 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          query='.[] | select(((.body // "") + " " + .title) | test("#'"$ISSUE_NUMBER"'([^0-9]|$)")) | .number'
-          pr="$(gh pr list --state open --limit 100 --json number,title,body --jq "$query" | head -n1)"
+          referencing_pr='.[] | select(((.body // "") + " " + .title) | test("#'"$ISSUE_NUMBER"'([^0-9]|$)")) | .number'
+          pr="$(gh pr list --state open --limit 100 --json number,title,body --jq "$referencing_pr" | head -n1)"
           if [ -n "$pr" ]; then
             gh issue comment "$ISSUE_NUMBER" --body \
               "Skipping: pull request #${pr} already references this issue."
@@ -106,7 +106,7 @@ jobs:
         run: |
           set -euo pipefail
           opencode run --agent issue-implementer \
-            "Implement the specification in GitHub issue #${ISSUE_NUMBER}. Read the issue body and every comment, make the change in the working tree, and leave it for the workflow to commit."
+            "Implement the specification in GitHub issue #${ISSUE_NUMBER}."
 
       # A clean tree with needs-info is a successful no-op (the spec gate); a
       # clean tree without it is a failure.
