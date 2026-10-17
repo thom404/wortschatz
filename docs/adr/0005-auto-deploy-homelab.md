@@ -35,7 +35,7 @@ initiates the deploy differs.
 
 1. **Identity in the artifact.** The `Image` workflow (unchanged apart from
    its build job) bakes `github.sha` into the image two ways at build time:
-   with verified `WORDAMENT_GIT_SHA` (Dockerfile `ARG GIT_SHA` →
+   with verified `WORTSCHATZ_GIT_SHA` (Dockerfile `ARG GIT_SHA` →
    `ENV`, surfaced by `GET /healthz`, test at the `/healthz` seam in
    `packages/server/tests/static.test.ts`) and with
    `org.opencontainers.image.revision` (docker/metadata-action sets it to the

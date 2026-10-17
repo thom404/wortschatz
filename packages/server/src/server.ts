@@ -122,7 +122,7 @@ export class WordamentServer {
       // verifies the public URL answers with the exact merge-commit sha.
       const body = JSON.stringify({
         ok: true,
-        sha: process.env.WORDAMENT_GIT_SHA || null,
+        sha: process.env.WORTSCHATZ_GIT_SHA || null,
       });
       res.writeHead(200, { "content-type": "application/json" });
       res.end(body);

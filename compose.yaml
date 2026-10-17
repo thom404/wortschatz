@@ -2,14 +2,14 @@
 # `wordament-rtr` references the `chain-wordament` chain declared in the file
 # provider's `middlewares-chains.yml` (rate-limit + https-redirectscheme +
 # secure-headers + compress; no CSP — the app serves its own, cf. #24; no
-# ddns-allowlist — remote players must work). The wordament service itself is
+# ddns-allowlist — remote players must work). The wortschatz service itself is
 # stateless: PORT env, no volume. The image is pulled from GHCR, pinned to an
 # exact sha-<full-sha> tag of a main-branch merge build (#27, #32); the
 # operator bumps that pin per release and rolls back by re-pinning.
 # See docs/OPERATOR-STEPS.md for the file
 # provider chain, the per-host TLS entrypoint line and the deployment walk.
 services:
-  wordament:
+  wortschatz:
     image: ghcr.io/thom404/wortschatz:sha-88ccecd175d95aa73f107b0d9cdf266a6cb600e6
     restart: unless-stopped
     environment:
