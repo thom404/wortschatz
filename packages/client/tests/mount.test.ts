@@ -127,6 +127,10 @@ describe("mountable app", () => {
       expect(app!.root.querySelector("#start-btn")).toBeTruthy();
       expect(app!.root.querySelector("#players")).toBeTruthy();
 
+      // The count line reads the agreed copy, counting connected seats only
+      // (Cem is disconnected): "N von 8 verbunden".
+      expect(app!.root.querySelector("#players + p")!.textContent).toContain("2 von 8 verbunden");
+
       // The address bar carries the room's real deep link, not the greeting
       // key the creator pushed before the server named the room.
       expect(window.location.pathname).toBe("/r/LAG4T");
@@ -227,6 +231,11 @@ describe("mountable app", () => {
       const scorePanel = app!.root.querySelector(".panel:has(#players)")!;
       expect(scorePanel.classList.contains("area-score")).toBe(true);
 
+      // The agreed German headings: "Spielfeld" for the board, "Deine
+      // Wörter" for the private found-word list.
+      expect(boardPanel.querySelector("h2")!.textContent).toBe("Spielfeld");
+      expect(foundPanel.querySelector("h2")!.textContent).toBe("Deine Wörter");
+
       // Same component vocabulary as the lobby: panels wrap found-word chips
       // and player chips alike — a first accepted verdict shows the chip form.
       app!.conn().feed({ type: "word-accepted", word: "HAU", points: 3 });
@@ -266,7 +275,7 @@ describe("mountable app", () => {
         // The eviction note stands in the word list's place; Ben's own chip
         // wears the spectator badge.
         expect(deep.root.querySelector(".area-found")!.textContent).toContain(
-          "Du schaust zu — ab der nächsten Runde spielst du mit."
+          "Du schaust zu. Ab der nächsten Runde bist du dabei."
         );
         expect(deep.root.querySelector("#players .chip.player.me")!.textContent).toContain("Zuschauer");
 
@@ -480,7 +489,7 @@ describe("mountable app", () => {
     // Further seats arrive as deltas.
     app!.conn().feed(playerJoined(2, "Ben"));
     expect(app!.root.querySelector("#players")!.textContent).toContain("Ben");
-    expect(app!.root.textContent).toContain("2 verbunden von max. 8");
+    expect(app!.root.textContent).toContain("2 von 8 verbunden");
 
     // Starting the round crosses the boundary with the next reqId.
     click("#start-btn");
@@ -507,7 +516,7 @@ describe("mountable app", () => {
     // Idle trace shows the hint that explains dragging.
     const trace = app!.root.querySelector<HTMLElement>("#trace")!;
     expect(trace.classList.contains("hint")).toBe(true);
-    expect(trace.textContent).toContain("Ziehe über die Felder");
+    expect(trace.textContent).toContain("Wische über die Felder");
 
     // Single-letter board: full base size on the grid container.
     expect(app!.root.querySelector<HTMLElement>("#board")!.style.getPropertyValue("--tile-span")).toBe("1");
@@ -618,7 +627,7 @@ describe("mountable app", () => {
 
     // The live trace shows what the swipe will submit, step by step, and
     // the hint is gone while dragging.
-    expect(traceSeen).toEqual(["H", "HA", "HAT", "Ziehe über die Felder, um ein Wort zu bilden."]);
+    expect(traceSeen).toEqual(["H", "HA", "HAT", "Wische über die Felder, um ein Wort zu bilden."]);
     const trace = app!.root.querySelector("#trace")!;
     expect(trace.classList.contains("hint")).toBe(true);
 
@@ -643,7 +652,7 @@ describe("mountable app", () => {
     synthesizePointerDrag([tiles[0]!, tiles[1]!, tiles[0]!, tiles[4]!], "mouse", () => {
       traceSeen.push(app!.root.querySelector("#trace")!.textContent!);
     });
-    expect(traceSeen).toEqual(["H", "HA", "H", "HT", "Ziehe über die Felder, um ein Wort zu bilden."]);
+    expect(traceSeen).toEqual(["H", "HA", "H", "HT", "Wische über die Felder, um ein Wort zu bilden."]);
     expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HT", reqId: 3 });
   });
 
@@ -656,7 +665,7 @@ describe("mountable app", () => {
     synthesizePointerDrag([tiles[4]!, tiles[2]!], "mouse", () => {
       traceSeen.push(app!.root.querySelector("#trace")!.textContent!);
     });
-    expect(traceSeen).toEqual(["T", "T", "Ziehe über die Felder, um ein Wort zu bilden."]);
+    expect(traceSeen).toEqual(["T", "T", "Wische über die Felder, um ein Wort zu bilden."]);
     expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "T", reqId: 3 });
   });
 
@@ -781,7 +790,7 @@ describe("mountable app", () => {
       traceSeen.push(app!.root.querySelector("#trace")!.textContent!);
     });
     // `sch` spells its three letters; singles keep their one.
-    expect(traceSeen).toEqual(["sch", "schT", "schTE", "Ziehe über die Felder, um ein Wort zu bilden."]);
+    expect(traceSeen).toEqual(["sch", "schT", "schTE", "Wische über die Felder, um ein Wort zu bilden."]);
     expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "schTE", reqId: 3 });
   });
 
