@@ -27,14 +27,18 @@ export const LOW_TIME_MS = 20_000;
 
 /**
  * The render consequence of one server delta. A play-time delta changes only
- * the live countdown, so the running ring timer must re-anchor **in place**
- * and never be rebuilt. Tick is the first play-time delta; every other
- * message is a structural change (Round start, Intermission, roster
- * join/leave/disconnect, host change, screen change, Room end) that rebuilds
- * the screen. See [GLOSSARY](../GLOSSARY.md): Play-time delta.
+ * live, already-rendered game state — the countdown, the scoreboard and the
+ * private found-word chips — so those regions must update **in place** and the
+ * running ring timer must never be rebuilt. Tick, score-update and
+ * word-accepted are play-time deltas; every other message is a structural
+ * change (Round start, Intermission, roster join/leave/disconnect, host
+ * change, screen change, Room end) that rebuilds the screen.
+ * See [GLOSSARY](../GLOSSARY.md): Play-time delta.
  */
 export function deltaKind(msg: ServerMessage): DeltaKind {
-  return msg.type === "tick" ? "play-time" : "structural";
+  return msg.type === "tick" || msg.type === "score-update" || msg.type === "word-accepted"
+    ? "play-time"
+    : "structural";
 }
 
 export function applyDelta(store: GameStore, msg: ServerMessage): void {

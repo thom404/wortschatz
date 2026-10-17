@@ -52,11 +52,14 @@ present.
 
 ## Play-time delta
 
-A server delta that changes only the live countdown, so the client must
-re-anchor the running ring timer **in place** without rebuilding the screen.
-The once-per-second **Tick** is the first play-time delta. Every other message
-is a structural change (Round start, Intermission, roster join/leave/disconnect,
-host change, screen change, Room end) that still rebuilds the whole screen. See
+A server delta that changes only live, already-rendered game state — the
+countdown, the scoreboard and the private found-word chips — so the client
+must update those regions **in place** without rebuilding the screen, keeping
+the running ring timer's identity. The once-per-second **Tick**, a round score
+change (`score-update`) and an accepted word (`word-accepted`) are play-time
+deltas. Every other message is a structural change (Round start, Intermission,
+roster join/leave/disconnect, host change, screen change, Room end) that still
+rebuilds the whole screen. See
 [ADR-0009](docs/adr/0009-play-time-deltas-in-place.md).
 
 ## Room

@@ -929,6 +929,37 @@ describe("mountable app", () => {
     }
   });
 
+  it("a score-update and a word-accepted verdict update in place without replacing the ring timer", () => {
+    driveToRoundOne("LAG4T");
+    const timer = app!.root.querySelector<HTMLElement>("#timer")!;
+    const digits = app!.root.querySelector<HTMLElement>("#countdown")!;
+
+    // A round-score change refreshes the scoreboard and the centered round
+    // score, but the very same ring timer and digits survive.
+    app!.conn().feed({
+      type: "score-update",
+      roundNumber: 1,
+      scores: [{ seatId: 1, nickname: "Lena", roundScore: 7, cumulativeScore: 7 }],
+    });
+    expect(app!.root.querySelector("#timer")).toBe(timer);
+    expect(app!.root.querySelector("#countdown")).toBe(digits);
+    expect(app!.root.querySelector("#round-score")!.textContent).toBe("7 P");
+    expect(app!.root.querySelector<HTMLElement>("#players")!.textContent).toContain("7 P");
+
+    // An accepted word refreshes the private found-word chips and the centered
+    // round score, again without replacing the ring timer.
+    app!.conn().feed({ type: "word-accepted", word: "HAU", points: 5 });
+    expect(app!.root.querySelector("#timer")).toBe(timer);
+    expect(app!.root.querySelector("#countdown")).toBe(digits);
+    expect(app!.root.querySelector("#round-score")!.textContent).toBe("12 P");
+    expect(app!.root.querySelector("#found .chip.find")!.textContent).toContain("HAU");
+
+    // A structural delta (a roster join) still rebuilds the whole screen: a
+    // fresh ring timer takes the old one's place.
+    app!.conn().feed(playerJoined(2, "Ben"));
+    expect(app!.root.querySelector("#timer")).not.toBe(timer);
+  });
+
   it("multi-letter tiles contribute their full spelling to the trace", () => {
     driveToRoundOne("LAG4T");
     app!.conn().feed(roundStarted(MIXED, 2)); // board[0] = "sch"
