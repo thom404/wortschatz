@@ -1,10 +1,12 @@
-# ADR-0006: Autonomous issue agent for `ready-for-agent` issues
+# ADR-0006: Autonomous issue agent triggered by `agent-run`
 
 - Status: Accepted
 - Date: 2026-10-17
 - Ticket: [#60](https://github.com/thom404/wortschatz/issues/60)
   (spec: autonomous issue agent for `ready-for-agent` issues), implemented by
-  [#61](https://github.com/thom404/wortschatz/issues/61)–[#66](https://github.com/thom404/wortschatz/issues/66)
+  [#61](https://github.com/thom404/wortschatz/issues/61)–[#66](https://github.com/thom404/wortschatz/issues/66);
+  the manual trigger that split the command from the marker landed in
+  [#91](https://github.com/thom404/wortschatz/issues/91)/[#92](https://github.com/thom404/wortschatz/issues/92)
 - Depends on: [ADR-0004](0004-branch-protection-main.md) (main is PR-only; the
   required `checks` status must report on every pull request)
 - Workflow: [`.github/workflows/issue-agent.yml`](../../.github/workflows/issue-agent.yml)
@@ -15,8 +17,10 @@
 
 The maintainer writes a specification for an issue and then writes the code by
 hand. For an issue that is already fully specified, that second step is slow and
-repetitive. The wanted shape is: label the issue, let an agent implement it,
-then review the result as an ordinary pull request.
+repetitive. The wanted shape is: add the trigger label, let an agent implement
+it, then review the result as an ordinary pull request. The trigger is explicit
+and separate from the issue's triage state, so marking an issue as specified can
+never start a run by accident.
 
 The obvious tool, the official OpenCode GitHub action, does not fit this repo:
 
@@ -39,13 +43,27 @@ working tree; the workflow — never the agent — commits, pushes, and opens th
 pull request.**
 
 1. **Trigger and label lifecycle.** The workflow triggers on the `issues`
-   event, action `labeled`, only for the label `ready-for-agent`, and on
-   `workflow_dispatch` with an issue number. A job condition admits only issues
-   whose `author_association` is `OWNER`, `MEMBER`, or `COLLABORATOR`, so an
-   outsider cannot inject work. A concurrency group keyed by the issue number
-   serialises runs without cancelling one in progress, so a second run queues.
-   When a run starts it removes `ready-for-agent`, making a second label event
-   an explicit retry.
+   event, action `labeled`, only for the label `agent-run`, and on
+   `workflow_dispatch` with an issue number. The three labels split command from
+   state:
+
+   - `agent-run` is the **command**. A human adds it by hand; it is the only
+     label that starts a run. A run removes it as it starts, so a second
+     `agent-run` is an explicit retry and the label always means "a run is
+     requested".
+   - `ready-for-agent` is the **marker**. It records that the issue is fully
+     specified and safe for an agent to pick up, and it starts nothing. People
+     and tools may add it freely.
+   - `agent-running` is the **status marker**. The run adds it while the agent
+     works and an always-run cleanup removes it when the run ends, on success
+     and on failure. It is information only and gates nothing.
+
+   For a label event, a job condition admits only issues whose
+   `author_association` is `OWNER`, `MEMBER`, or `COLLABORATOR`, so an outsider
+   cannot inject work; a manual dispatch is run by a collaborator by definition.
+   A concurrency group keyed by the issue number serialises runs without
+   cancelling one in progress, so a second run queues.
+
 2. **Preflight skip guard.** Before `npm ci` and before the agent, the workflow
    runs one skip guard with three checks in order: an existing target branch
    (`git/matching-refs`), an open pull request whose body or title references
@@ -55,11 +73,12 @@ pull request.**
    An issue is blocked when GitHub's native dependencies report one or more
    **open, same-repo** blockers (`issue_dependencies_summary.blocked_by > 0`);
    the blocker check lists them from the native dependency endpoint and comments
-   `Skipping: blocked by #a, #b.`. Closed blockers do not count, and a reopened
-   blocker counts again. A blocker skip leaves `ready-for-agent` on the issue,
-   so re-adding the label — or a manual dispatch — is the retry. The guard fails
-   closed: if the dependency lookup fails, or it reports blockers it cannot
-   list, the step fails rather than proceeding, and the failure lifecycle
+   `Skipping: blocked by #a, #b.` plus a note to add `agent-run` again once the
+   blockers close. Closed blockers do not count, and a reopened blocker counts
+   again. A blocker skip removes `agent-run` and leaves `ready-for-agent` on the
+   issue, so re-adding `agent-run` — or a manual dispatch — is the retry. The
+   guard fails closed: if the dependency lookup fails, or it reports blockers it
+   cannot list, the step fails rather than proceeding, and the failure lifecycle
    (item 10) applies `ready-for-human`. (The blocker gate landed in
    [#78](https://github.com/thom404/wortschatz/issues/78).)
 3. **Agent invocation and contract.** The workflow runs the OpenCode CLI in
@@ -105,8 +124,9 @@ create`, `gh pr merge`, `gh issue close`, `git reset --hard`, and `rm -rf`;
    settings.
 10. **Failure lifecycle.** If any step fails — verification, agent error,
     push, or pull-request creation — a final always-on-failure step comments
-    the failure on the issue, removes `ready-for-agent`, and applies
-    `ready-for-human`. The issue stays open and no pull request is left behind.
+    the failure on the issue, removes `agent-run`, `agent-running`, and
+    `ready-for-agent`, and applies `ready-for-human`. The issue stays open and no
+    pull request is left behind.
 11. **Resource limits.** The job has a 45-minute timeout; the agent definition
     has an 80-step limit. This bounds a runaway loop.
 12. **Test seam.** The feature adds one seam at the workflow boundary: a label
@@ -120,24 +140,30 @@ create`, `gh pr merge`, `gh issue close`, `git reset --hard`, and `rm -rf`;
 
 ## Consequences
 
-- A fully specified issue can go from label to reviewable pull request without
-  the maintainer writing the implementation, while review, the branch
-  protection of `main`, and the required `checks` status stay exactly as
-  ADR-0004 defines them. The agent proposes; the maintainer merges.
+- A fully specified issue can go from an explicit `agent-run` to a reviewable
+  pull request without the maintainer writing the implementation, while review,
+  the branch protection of `main`, and the required `checks` status stay exactly
+  as ADR-0004 defines them. The agent proposes; the maintainer merges.
 - The workflow only runs from the default branch for `issues` events, so the
-  change must merge before a label event can start it; the manual trigger from
-  the feature branch smoke-tests it first.
+  change must merge before an `agent-run` label event can start it; the manual
+  trigger from the feature branch smoke-tests it first.
 - Two new secrets must be created by hand once: `OPENCODE_API_KEY` and
   `AGENT_GITHUB_TOKEN` (fine-grained, contents + pull-request + issue write,
   scoped to this repository). The workflow cannot create them. See
   `docs/OPERATOR-STEPS.md` §8.
-- The label lifecycle is deterministic: a run removes `ready-for-agent` as it
-  starts and a failure adds `ready-for-human`, so an issue never stays looking
-  ready for an agent after a failed run.
+- Two operational labels must exist before the trigger works: `agent-run` (the
+  command) and `agent-running` (the status marker). They are created once by
+  hand in the repository settings.
+- The trigger is a command, so marking an issue as specified can never start a
+  run by accident: `ready-for-agent` records state and `agent-run` starts work.
+  The label lifecycle is deterministic — a run removes `agent-run` and adds
+  `agent-running` as it starts, the always-run cleanup removes `agent-running`,
+  and a failure also removes `ready-for-agent` and adds `ready-for-human` — so
+  an issue never stays looking ready for an agent after a failed run.
 - A blocker skip is retried by hand: GitHub fires no event on the dependent
   issue when a blocker closes, and no automatic re-trigger or scheduled sweep
   is added — deliberately deferred (#78). After unblocking, the maintainer
-  re-adds `ready-for-agent` or dispatches the workflow by hand.
+  re-adds `agent-run` or dispatches the workflow by hand.
 - The blast radius of the agent is bounded by the contract and the
   permissions, but a determined prompt could still edit any in-scope file. The
   guardrails and the PAT scope are the limit; the token can push and comment
@@ -164,5 +190,10 @@ create`, `gh pr merge`, `gh issue close`, `git reset --hard`, and `rm -rf`;
   existing `checks` job already runs lint, typecheck, and tests on every pull
   request; a second path could drift.
 - **Running the workflow on comment events**: rejected — the wanted trigger is
-  the label, which is the triage vocabulary's "ready for an agent" signal; a
-  comment is a different interaction.
+  an explicit label a human adds (`agent-run`), while the triage state
+  (`ready-for-agent`) is a marker that starts nothing; a comment is a different
+  interaction.
+- **Triggering on the `ready-for-agent` marker**: rejected — it conflates the
+  state "this ticket is specified" with the command "start a run now", so
+  marking a ticket could start a run before its blocker links exist; the two
+  are split into `ready-for-agent` (marker) and `agent-run` (command).

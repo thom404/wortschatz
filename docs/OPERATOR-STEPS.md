@@ -180,7 +180,9 @@ workflow run Image --repo thom404/wortschatz` — it rebuilds `latest` at the
 ## 8. Autonomous issue agent: one-time secret setup (#60, ADR-0006)
 
 The `Issue agent` workflow (`.github/workflows/issue-agent.yml`) runs a headless
-OpenCode agent when an issue is labelled `ready-for-agent`. It needs two
+OpenCode agent when a human adds the `agent-run` label to an issue. The
+`ready-for-agent` label is a marker only and starts nothing, and the workflow
+shows `agent-running` while a run is in flight. It needs two
 Actions secrets, set once by hand in the repository settings
 (`Settings → Secrets and variables → Actions → New repository secret`). The
 workflow cannot create them.
@@ -194,7 +196,12 @@ workflow cannot create them.
    identity is what pushes the branch and opens the pull request, so the `CI`
    workflow starts on it and the required `checks` status reports (ADR-0004).
 
-Until both secrets exist, a label event fails immediately and the failure step
-applies `ready-for-human`. Smoke-test the workflow with
+Two labels must also exist in the repository (`Issues → Labels`):
+**`agent-run`** — the command that starts a run — and **`agent-running`**, the
+status marker the workflow adds while a run is in flight. The workflow cannot
+create them, and a run cannot start without the trigger label.
+
+Until both secrets exist, a run fails immediately and the failure step applies
+`ready-for-human`. Smoke-test the workflow with
 `gh workflow run "Issue agent" --field issue=<n>` (the manual trigger accepts
-an issue number and does not require the label).
+an issue number and does not require the `agent-run` label).

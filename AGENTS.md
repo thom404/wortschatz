@@ -2,16 +2,19 @@
 
 ## Autonomous issue agent
 
-Applying the `ready-for-agent` label to a fully specified issue starts
+Adding the `agent-run` label to a fully specified issue starts
 `.github/workflows/issue-agent.yml`, which runs the headless OpenCode agent
-`.opencode/agent/issue-implementer.md`. A run whose issue still has open
-same-repo blockers (GitHub's native dependencies) is skipped before the agent
-starts: it comments the blocking issues and keeps `ready-for-agent`, so
-re-adding the label once the blocker closes retries it. Otherwise the agent
-edits the working tree only; the workflow commits, pushes `feature/<n>-<slug>`,
-and opens a pull request that says `Closes #<n>`. The agent never merges or
-closes anything, and a failed run comments the failure and applies
-`ready-for-human`. See [ADR-0006](docs/adr/0006-autonomous-issue-agent.md).
+`.opencode/agent/issue-implementer.md`. `ready-for-agent` is a marker only: it
+records that the issue is specified and starts nothing. The workflow shows
+`agent-running` while a run is in flight and clears it when the run ends. A run
+whose issue still has open same-repo blockers (GitHub's native dependencies) is
+skipped before the agent starts: it removes `agent-run`, comments the blocking
+issues, and asks the reader to add `agent-run` again once they close. Otherwise
+the agent edits the working tree only; the workflow commits, pushes
+`feature/<n>-<slug>`, and opens a pull request that says `Closes #<n>`. The
+agent never merges or closes anything, and a failed run comments the failure and
+applies `ready-for-human`. See
+[ADR-0006](docs/adr/0006-autonomous-issue-agent.md).
 Secret setup is in [`docs/OPERATOR-STEPS.md`](docs/OPERATOR-STEPS.md) §8:
 `OPENCODE_API_KEY` and a fine-grained `AGENT_GITHUB_TOKEN` (contents,
 pull-request, and issue write).
