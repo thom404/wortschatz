@@ -422,7 +422,7 @@ function renderGame(app: App): void {
 }
 
 function renderIntermission(app: App): void {
-  document.title = `${APP_NAME} — Zwischenspiel`;
+  document.title = `${APP_NAME} — Pause`;
   const finishedRoundNumber = app.store.finishedRound?.roundNumber ?? app.store.roundNumber;
   // The finished board stays on screen: for live players it survives from
   // the round, and the intermission snapshot re-anchors it for joiners.
@@ -432,7 +432,7 @@ function renderIntermission(app: App): void {
     <div class="sheet">
       ${statusHtml(app)}
       <div id="dashboard" class="dashboard intermission">
-        <h1 class="area-title">Zwischenspiel</h1>
+        <h1 class="area-title">Pause</h1>
         ${timerHtml(app)}
         <section class="panel area-board">
           <h2>Runde ${finishedRoundNumber}</h2>
@@ -447,7 +447,7 @@ function renderIntermission(app: App): void {
         <section class="panel area-score">
           <h2>Punkte</h2>
           <ul id="players" class="chips">${playerChipsHtml(app.store, "session")}</ul>
-          <p class="dim">Geführt wird nach dem Gesamtergebnis der Sitzung.</p>
+          <p class="dim">Es zählt das Gesamtergebnis der Sitzung.</p>
         </section>
       </div>
       ${
@@ -487,7 +487,6 @@ function renderOutcome(app: App, outcome: OutcomeScreen): void {
     <div class="sheet">
       <h1>${outcome.titleHtml}</h1>
       <section class="panel">
-        <h2>Wie geht es weiter?</h2>
         <p class="note">${outcome.noteHtml}</p>
         <button id="home-btn">Zur Startseite</button>
       </section>

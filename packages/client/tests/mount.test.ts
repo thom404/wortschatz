@@ -312,7 +312,8 @@ describe("mountable app", () => {
       ]);
       app!.conn().feed(roundEnded(1, REVEAL));
 
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Zwischenspiel");
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Pause");
+      expect(app!.root.textContent).toContain("Es zählt das Gesamtergebnis der Sitzung.");
       // The finished board stays on screen (the honest, board-anchored
       // intermission).
       expect(tileEls(app!.root)).toHaveLength(16);
@@ -389,7 +390,7 @@ describe("mountable app", () => {
           reveal: REVEAL,
         })
       );
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Zwischenspiel");
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Pause");
       expect(app!.root.querySelector("#skip-btn")).toBeNull();
       // Unambiguous: the pause belongs to the server, not to any button.
       expect(app!.root.querySelector(".next-round-hint")!.textContent).toContain(
@@ -410,7 +411,7 @@ describe("mountable app", () => {
         await vi.advanceTimersByTimeAsync(251);
         // …clamped at zero — the client never self-transitions.
         expect(app!.root.querySelector("#countdown")!.textContent).toBe("0:00");
-        expect(document.title).toBe("Wortschatz — Zwischenspiel");
+        expect(document.title).toBe("Wortschatz — Pause");
         // The expiry lands as the server's next round: everyone flips
         // without so much as a hover over a button.
         app!.conn().feed(roundStarted(BOARD, 2));
@@ -549,6 +550,11 @@ describe("mountable app", () => {
       // The boundary closes before the outcome frame is delivered
       // (RoomConnection-faithful order) — the kicked screen still wins.
       expect(app!.root.querySelector("h1")!.textContent).toBe("Du wurdest aus dem Raum LAG4T entfernt.");
+      // No "Wie geht es weiter?" heading: the note speaks for itself.
+      expect(app!.root.textContent).not.toContain("Wie geht es weiter?");
+      expect(app!.root.querySelector(".panel .note")!.textContent).toBe(
+        "Der Gastgeber hat dich aus dem Raum entfernt. Du kannst einen neuen Raum erstellen oder einem anderen beitreten."
+      );
       expect(app!.root.querySelector("#home-btn")).toBeTruthy();
       expect(app!.conn().stopped).toBe(true);
       app!.root.querySelector<HTMLButtonElement>("#home-btn")!.click();
