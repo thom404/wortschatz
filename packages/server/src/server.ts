@@ -23,7 +23,7 @@ const MIME: Record<string, string> = {
  * Minimal app-level CSP (#24, spec #15 story 41): everything self-origin;
  * same-origin WebSocket connections stay permitted; no third-party origins
  * (assets are bundled/self-hosted, font stack is system, inline unused — no
- * `'unsafe-inline'` anywhere). The Traefik chain (`chain-wordament`)
+ * `'unsafe-inline'` anywhere). The Traefik chain (`chain-wortschatz`)
  * deliberately carries no CSP: content-safety is asserted here, at the
  * app's own static seam, as a plain wire-visible header.
  */

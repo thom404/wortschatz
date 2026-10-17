@@ -64,12 +64,14 @@ compatibility and because a ruleset is inspectable at
   at the time, deliberately: the npm workspace scope `@wordament/*` (touching
   every import, issue [#37](https://github.com/thom404/wortschatz/issues/37))
   and the
-  deployment domain `wordament.phanthom.cc` (operator-level change, issue
+  deployment domain (operator-level change, issue
   [#38](https://github.com/thom404/wortschatz/issues/38)) — both tracked
   follow-ups for this ticket's TM-hygiene goal. Follow-up
   [#37](https://github.com/thom404/wortschatz/issues/37) has since renamed the
   workspace scope, container user/group and deployment-internal env vars to
-  `wortschatz`; the domain remains tracked in #38.
+  `wortschatz`; follow-up #44 has since renamed the repo-side deployment
+  domain references to `wortschatz.phanthom.cc`, while the operator cutover
+  (DNS, shared Traefik config, cert issuance, redirect) remains in #38.
 - **Reproducing the ruleset from this repo alone** (⚠ the ruleset lives on
   GitHub's side and is not version-controlled; this command recreates it —
   check-run name `checks` matches the job in `.github/workflows/ci.yml`):
