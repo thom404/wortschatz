@@ -74,7 +74,7 @@ interface App {
 const APP_NAME = "Wortschatz";
 
 /** The one sentence the drag surface shows between words. */
-const TRACE_HINT = "Ziehe über die Felder, um ein Wort zu bilden.";
+const TRACE_HINT = "Wische über die Felder, um ein Wort zu bilden.";
 
 /** Display is independent of data (ADR-0002): the notation's markers drop
  *  off — prefixes render without their trailing `-`, suffixes without
@@ -352,7 +352,7 @@ function renderLobby(app: App): void {
       <section class="panel">
         <h2>Spieler</h2>
         <ul id="players" class="chips">${playerChipsHtml(app.store)}</ul>
-        <p class="dim">${app.store.players.filter((p) => p.connected).length} verbunden von max. 8</p>
+        <p class="dim">${app.store.players.filter((p) => p.connected).length} von 8 verbunden</p>
         ${
           app.store.isHost
             ? `<button id="start-btn">Runde starten</button><span id="start-hint" class="dim"></span>`
@@ -389,7 +389,7 @@ function renderGame(app: App): void {
         <h1 class="area-title">Runde ${app.store.roundNumber}</h1>
         ${timerHtml(app)}
         <section class="panel area-board">
-          <h2>Spielbrett</h2>
+          <h2>Spielfeld</h2>
           ${spectating ? "" : `<div id="trace" class="trace hint">${TRACE_HINT}</div>`}
           <div id="board" class="board" style="--tile-span:${tileSpan}">${board
             .map(
@@ -401,10 +401,10 @@ function renderGame(app: App): void {
           spectating
             ? `<section class="panel area-found">
                  <h2>Zuschauer</h2>
-                 <p class="note">Du schaust zu — ab der nächsten Runde spielst du mit.</p>
+                 <p class="note">Du schaust zu. Ab der nächsten Runde bist du dabei.</p>
                </section>`
             : `<section class="panel area-found">
-                 <h2>Deine Funde</h2>
+                 <h2>Deine Wörter</h2>
                  <ul id="found" class="chips">${foundHtml(app.store)}</ul>
                </section>`
         }
