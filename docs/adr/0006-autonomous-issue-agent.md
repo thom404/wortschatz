@@ -46,10 +46,22 @@ pull request.**
    serialises runs without cancelling one in progress, so a second run queues.
    When a run starts it removes `ready-for-agent`, making a second label event
    an explicit retry.
-2. **Preflight skip guard.** Before doing anything, the workflow checks for an
-   existing target branch (`git/matching-refs`) and for an open pull request
-   whose body or title references the issue. If either exists it comments why
-   and stops, without starting the agent and without creating anything.
+2. **Preflight skip guard.** Before `npm ci` and before the agent, the workflow
+   runs one skip guard with three checks in order: an existing target branch
+   (`git/matching-refs`), an open pull request whose body or title references
+   the issue, and open blockers. The first match wins and produces a single
+   comment; the step writes its skip flag and exits successfully, so a skipped
+   run installs nothing, starts no agent, and creates no branch or pull request.
+   An issue is blocked when GitHub's native dependencies report one or more
+   **open, same-repo** blockers (`issue_dependencies_summary.blocked_by > 0`);
+   the blocker check lists them from the native dependency endpoint and comments
+   `Skipping: blocked by #a, #b.`. Closed blockers do not count, and a reopened
+   blocker counts again. A blocker skip leaves `ready-for-agent` on the issue,
+   so re-adding the label — or a manual dispatch — is the retry. The guard fails
+   closed: if the dependency lookup fails, or it reports blockers it cannot
+   list, the step fails rather than proceeding, and the failure lifecycle
+   (item 10) applies `ready-for-human`. (The blocker gate landed in
+   [#78](https://github.com/thom404/wortschatz/issues/78).)
 3. **Agent invocation and contract.** The workflow runs the OpenCode CLI in
    headless mode (`opencode run`) with the project-scoped agent
    `issue-implementer` on `opencode-go/deepseek-v4.1-flash`. The agent
@@ -98,10 +110,13 @@ create`, `gh pr merge`, `gh issue close`, `git reset --hard`, and `rm -rf`;
 11. **Resource limits.** The job has a 45-minute timeout; the agent definition
     has an 80-step limit. This bounds a runaway loop.
 12. **Test seam.** The feature adds one seam at the workflow boundary: a label
-    event and its observable GitHub effects (label changes, comments, branch,
-    pull request, and the CI result). It reuses the existing `CI / checks` job
-    as the code-verification seam; no second verification path and no new
-    application seam are introduced.
+    event (or a manual dispatch) and its observable GitHub effects (label
+    changes, comments, branch, pull request, and the CI result). The blocker
+    skip joins the existing skip-guard seam rather than adding a seam of its
+    own: it is exercised the same manual way at the boundary as the existing
+    "work already exists" check, and an unblocked run reuses the existing
+    `CI / checks` job as the code-verification seam; no second verification
+    path and no new application seam are introduced.
 
 ## Consequences
 
@@ -119,6 +134,10 @@ create`, `gh pr merge`, `gh issue close`, `git reset --hard`, and `rm -rf`;
 - The label lifecycle is deterministic: a run removes `ready-for-agent` as it
   starts and a failure adds `ready-for-human`, so an issue never stays looking
   ready for an agent after a failed run.
+- A blocker skip is retried by hand: GitHub fires no event on the dependent
+  issue when a blocker closes, and no automatic re-trigger or scheduled sweep
+  is added — deliberately deferred (#78). After unblocking, the maintainer
+  re-adds `ready-for-agent` or dispatches the workflow by hand.
 - The blast radius of the agent is bounded by the contract and the
   permissions, but a determined prompt could still edit any in-scope file. The
   guardrails and the PAT scope are the limit; the token can push and comment
