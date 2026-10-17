@@ -13,7 +13,7 @@
  * membership; entries shorter than three letters are dropped at load;
  * colliding entries are deduped.
  */
-import { PROTOCOL, neighbors, tileStrings, type Tile } from "@wordament/shared";
+import { PROTOCOL, neighbors, tileStrings, type Tile } from "@wortschatz/shared";
 import { buildDawg, walk, type DawgNode } from "./dawg.js";
 
 export function normalizeWord(word: string): string {

@@ -1,5 +1,5 @@
 import type { WebSocket } from "ws";
-import type { ClientMessage, ServerMessage } from "@wordament/shared";
+import type { ClientMessage, ServerMessage } from "@wortschatz/shared";
 import { RateLimiter } from "./hardening.js";
 import type { ServerConfigResolved } from "./config.js";
 

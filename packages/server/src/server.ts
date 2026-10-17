@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
 import { WebSocketServer } from "ws";
-import type { RoomEndReason } from "@wordament/shared";
+import type { RoomEndReason } from "@wortschatz/shared";
 import { resolveConfig, type ServerConfig } from "./config.js";
 import { Rooms } from "./rooms.js";
 

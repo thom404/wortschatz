@@ -1,5 +1,5 @@
 {
-  "name": "@wordament/client",
+  "name": "@wortschatz/client",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -8,7 +8,7 @@
     "build": "vite build"
   },
   "dependencies": {
-    "@wordament/shared": "*"
+    "@wortschatz/shared": "*"
   },
   "devDependencies": {
     "vite": "^5.4.0"

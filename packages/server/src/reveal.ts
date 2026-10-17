@@ -7,7 +7,7 @@
  * tile paths, no first-finder credit — the reveal trusts the enumerated list
  * and the submit path, redisplaying rather than re-deciding.
  */
-import type { RevealPayload, RevealGroup } from "@wordament/shared";
+import type { RevealPayload, RevealGroup } from "@wortschatz/shared";
 import type { RevealFn } from "./config.js";
 
 export const revealAll: RevealFn = ({ words, wordsBySeat, points }) => {
