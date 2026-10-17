@@ -617,6 +617,89 @@ describe("mountable app", () => {
     });
   });
 
+  describe("greeting rejection (#49)", () => {
+    // Greeting rejections must be tested without a remembered session, or
+    // the greet would reclaim a leftover seat instead of the typed name.
+    beforeEach(() => localStorage.clear());
+
+    it("a taken nickname returns to the home form with the German copy and the typed inputs intact", () => {
+      typeInto("#jn-code", "ABC12");
+      typeInto("#jn-nick", "Anja");
+      click("#jn-btn");
+      expect(app!.conn().sent()).toEqual([{ type: "join", code: "ABC12", nickname: "Anja", reqId: 1 }]);
+
+      app!.conn().feed({ type: "error", code: "nickname-taken" });
+
+      // A usable home screen — never the connection-lost outcome or any
+      // room screen, even though the join was answered.
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+      expect(app!.root.querySelector("#jn-btn")).toBeTruthy();
+      expect(app!.root.querySelector("#board")).toBeNull();
+      expect(app!.root.querySelector("#players")).toBeNull();
+      expect(app!.root.textContent).not.toContain("Verbindung beendet.");
+
+      // The shared German copy lands in the existing home error surface.
+      expect(app!.root.querySelector("#home-errors")!.textContent).toBe(
+        "Dieser Name ist bereits vergeben. Wähle einen anderen."
+      );
+
+      // The typed code and name survive for a corrected retry, and the
+      // address bar never claims the room.
+      expect(app!.root.querySelector<HTMLInputElement>("#jn-code")!.value).toBe("ABC12");
+      expect(app!.root.querySelector<HTMLInputElement>("#jn-nick")!.value).toBe("Anja");
+      expect(window.location.pathname).toBe("/");
+
+      // The rejected connection is stopped, not left open.
+      expect(app!.conn().stopped).toBe(true);
+      expect(app!.conn().statuses).toEqual(["connecting"]);
+    });
+
+    it("a full room surfaces its German copy on the home screen", () => {
+      typeInto("#jn-code", "ABC12");
+      typeInto("#jn-nick", "Anja");
+      click("#jn-btn");
+      app!.conn().feed({ type: "error", code: "room-full" });
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+      expect(app!.root.querySelector("#home-errors")!.textContent).toBe(
+        "Der Raum ist voll (max. 8 Spieler)."
+      );
+      expect(app!.root.querySelector("#board")).toBeNull();
+      expect(app!.conn().stopped).toBe(true);
+    });
+
+    it("a malformed greeting surfaces its German copy on the home screen", () => {
+      typeInto("#jn-code", "ABC12");
+      typeInto("#jn-nick", "Anja");
+      click("#jn-btn");
+      app!.conn().feed({ type: "error", code: "invalid-message" });
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+      expect(app!.root.querySelector("#home-errors")!.textContent).toBe("Ungültige Nachricht.");
+      expect(app!.root.querySelector("#board")).toBeNull();
+      expect(app!.conn().stopped).toBe(true);
+    });
+
+    it("retrying after a rejection sends exactly one new join and clears the old error", () => {
+      typeInto("#jn-code", "ABC12");
+      typeInto("#jn-nick", "Anja");
+      click("#jn-btn");
+      app!.conn().feed({ type: "error", code: "nickname-taken" });
+      expect(app!.conn().stopped).toBe(true);
+      expect(app!.root.querySelector("#home-errors")!.textContent).not.toBe("");
+
+      // Correct the name and retry: one fresh connection with one greeting,
+      // and the previous error is gone.
+      typeInto("#jn-nick", "Ben");
+      click("#jn-btn");
+      expect(app!.connections()).toHaveLength(2);
+      expect(app!.conn().sent()).toEqual([{ type: "join", code: "ABC12", nickname: "Ben", reqId: 1 }]);
+      expect(app!.root.querySelector("#home-errors")!.textContent).toBe("");
+
+      // The fresh attempt still reaches a room on the confirming snapshot.
+      app!.conn().feed(lobbySnapshot({ code: "ABC12", nickname: "Ben" }));
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum ABC12");
+    });
+  });
+
   it("pointer drags show the live trace and submit it on release", () => {
     driveToRoundOne("LAG4T");
     const tiles = tileEls(app!.root);
