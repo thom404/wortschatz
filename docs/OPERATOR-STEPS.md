@@ -176,3 +176,25 @@ workflow run Image --repo thom404/wortschatz` — it rebuilds `latest` at the
   `sha-<full-sha>` and run the standard refresh — but note the next
   successful poller tick re-pins forward to the newest digest again; to keep
   an older version in place, stop the timer until you're ready.
+
+## 8. Autonomous issue agent: one-time secret setup (#60, ADR-0006)
+
+The `Issue agent` workflow (`.github/workflows/issue-agent.yml`) runs a headless
+OpenCode agent when an issue is labelled `ready-for-agent`. It needs two
+Actions secrets, set once by hand in the repository settings
+(`Settings → Secrets and variables → Actions → New repository secret`). The
+workflow cannot create them.
+
+1. **`OPENCODE_API_KEY`** — an OpenCode Go subscription key, used to run the
+   model `opencode-go/deepseek-v4.1-flash`. Get it from the OpenCode Go console
+   (`/connect` → _OpenCode Go_) and paste the `oc_sk_…` value.
+2. **`AGENT_GITHUB_TOKEN`** — a fine-grained personal access token scoped to
+   **only** `thom404/wortschatz`, with **Contents: Read and write**,
+   **Pull requests: Read and write**, and **Issues: Read and write**. This
+   identity is what pushes the branch and opens the pull request, so the `CI`
+   workflow starts on it and the required `checks` status reports (ADR-0004).
+
+Until both secrets exist, a label event fails immediately and the failure step
+applies `ready-for-human`. Smoke-test the workflow with
+`gh workflow run "Issue agent" --field issue=<n>` (the manual trigger accepts
+an issue number and does not require the label).

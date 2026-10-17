@@ -1,5 +1,17 @@
 # wortschatz
 
+## Autonomous issue agent
+
+Applying the `ready-for-agent` label to a fully specified issue starts
+`.github/workflows/issue-agent.yml`, which runs the headless OpenCode agent
+`.opencode/agent/issue-implementer.md`. The agent edits the working tree only;
+the workflow commits, pushes `feature/<n>-<slug>`, and opens a pull request that
+says `Closes #<n>`. The agent never merges or closes anything, and a failed run
+comments the failure and applies `ready-for-human`. See
+[ADR-0006](docs/adr/0006-autonomous-issue-agent.md). Secret setup is in
+[`docs/OPERATOR-STEPS.md`](docs/OPERATOR-STEPS.md) §8: `OPENCODE_API_KEY` and a
+fine-grained `AGENT_GITHUB_TOKEN` (contents, pull-request, and issue write).
+
 ## Agent skills
 
 ### Issue tracker
