@@ -141,17 +141,17 @@ function home(app: App): void {
   app.root.innerHTML = `
     <div class="sheet">
       <h1>${APP_NAME}</h1>
-      <p class="dim">Gemeinsam deutsche Wörter finden — real-time, privat, ohne Konto.</p>
+      <p class="dim">Ein Mehrspieler-Wörterspiel.</p>
       <section class="panel">
         <h2>Raum erstellen</h2>
-        <label>Spitzname <input id="mk-nick" maxlength="24" placeholder="z. B. Lena" /></label>
-        <button id="mk-btn">Neuen Raum erstellen</button>
+        <label>Name <input id="mk-nick" maxlength="24" placeholder="z. B. Anja" /></label>
+        <button id="mk-btn">Raum erstellen</button>
       </section>
       <section class="panel">
         <h2>Raum beitreten</h2>
         ${deepCode ? `<p class="note">Du wurdest in Raum ${escapeHtml(deepCode)} eingeladen.</p>` : ""}
         <label>Raumcode <input id="jn-code" maxlength="8" autocapitalize="characters" placeholder="ABC12" value="${deepCode ?? ""}" /></label>
-        <label>Spitzname <input id="jn-nick" maxlength="24" placeholder="z. B. Ben" value="${stored?.nickname ?? ""}" /></label>
+        <label>Name <input id="jn-nick" maxlength="24" placeholder="z. B. Jörg" value="${stored?.nickname ?? ""}" /></label>
         <button id="jn-btn">Beitreten</button>
       </section>
       <p id="home-errors"></p>
@@ -160,7 +160,7 @@ function home(app: App): void {
   app.root.querySelector<HTMLButtonElement>("#mk-btn")!.onclick = () => {
     const nickname = input(app, "mk-nick");
     if (!nickname) {
-      setHomeError(app, "Bitte gib einen Spitznamen ein.");
+      setHomeError(app, "Bitte gib einen Namen ein.");
       return;
     }
     startRoom(app, nickname, () => ({ type: "create-room", nickname }));
@@ -173,7 +173,7 @@ function home(app: App): void {
       return;
     }
     if (!nickname) {
-      setHomeError(app, "Bitte gib einen Spitznamen ein.");
+      setHomeError(app, "Bitte gib einen Namen ein.");
       return;
     }
     const greet: GreetFn = () => {

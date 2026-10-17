@@ -7,8 +7,8 @@
  * so returning players find the app set up for them.
  */
 export const SKINS = [
-  { id: "standard", label: "Standard (hell)", note: "Leichtes Blau, ruhig." },
-  { id: "arcade", label: "Arcade (dunkel)", note: "Dunkles Neon." },
+  { id: "standard", label: "Standard (hell)" },
+  { id: "arcade", label: "Arcade (dunkel)" },
 ] as const;
 
 export type SkinId = (typeof SKINS)[number]["id"];
@@ -47,11 +47,10 @@ export function applySkin(id: SkinId): void {
 export function skinSwitcherHtml(current: SkinId): string {
   return `
     <section class="panel">
-      <h2>Erscheinungsbild</h2>
-      <label>Farbwelt <select id="skin-select">${SKINS.map(
+      <h2>Skin</h2>
+      <select id="skin-select">${SKINS.map(
         (s) => `<option value="${s.id}"${s.id === current ? " selected" : ""}>${s.label}</option>`
-      ).join("")}</select></label>
-      <p class="dim">Gilt überall in der App, sofort.</p>
+      ).join("")}</select>
     </section>`;
 }
 
