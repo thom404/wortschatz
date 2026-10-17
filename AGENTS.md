@@ -12,6 +12,13 @@ comments the failure and applies `ready-for-human`. See
 [`docs/OPERATOR-STEPS.md`](docs/OPERATOR-STEPS.md) §8: `OPENCODE_API_KEY` and a
 fine-grained `AGENT_GITHUB_TOKEN` (contents, pull-request, and issue write).
 
+## German UI copy
+
+All user-facing strings are German and hardcoded inline. Write new copy in the
+recorded voice and follow the preferred/avoided terms in
+[`docs/ux-copy.md`](docs/ux-copy.md); the decision is
+[ADR-0007](docs/adr/0007-german-ui-copy-voice.md).
+
 ## Agent skills
 
 ### Issue tracker
