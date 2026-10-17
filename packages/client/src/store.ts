@@ -8,9 +8,11 @@ export type Outcome = "none" | "kicked" | "room-ended";
 
 /**
  * The render consequence of one store change (see `deltas.ts`). A play-time
- * delta re-anchors the live countdown **in place**, so the ring timer keeps
- * its identity; a structural change rebuilds the whole screen. Tick is the
- * first play-time delta. See [GLOSSARY](../GLOSSARY.md): Play-time delta.
+ * delta updates live, already-rendered game state **in place** — the
+ * countdown, the scoreboard and the private found-word chips — so the ring
+ * timer keeps its identity; a structural change rebuilds the whole screen.
+ * Tick, score-update and word-accepted are play-time deltas.
+ * See [GLOSSARY](../GLOSSARY.md): Play-time delta.
  */
 export type DeltaKind = "play-time" | "structural";
 

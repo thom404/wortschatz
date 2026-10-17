@@ -327,12 +327,13 @@ function teardown(app: App): void {
 
 function render(app: App, kind: DeltaKind = "structural"): void {
   if (!app.inRoom) return;
-  // A play-time delta changes only the live countdown: it re-anchors the
-  // running ring timer in place, so the `#timer` element and its digits keep
-  // their identity and never flash the ring's full-circle default. Every
-  // structural change rebuilds the whole screen below.
+  // A play-time delta changes only live, already-rendered game state: it
+  // refreshes the running ring timer, the scoreboard and the found-word chips
+  // in place, so the `#timer` element and its digits keep their identity and
+  // never flash the ring's full-circle default. Every structural change
+  // rebuilds the whole screen below.
   if (kind === "play-time") {
-    updateTimer(app);
+    updateLive(app);
     return;
   }
   syncRoomUrl(app);
@@ -393,6 +394,40 @@ function updateTimer(app: App): void {
   }
   const score = app.root.querySelector<HTMLElement>("#round-score");
   if (score) score.textContent = `${app.store.selfRoundScore} P`;
+}
+
+/** The in-place refresh of every live, play-time region (ADR-0009): the ring
+ *  timer, the scoreboard/standings and the private found-word chips. Each
+ *  helper targets its own rendered element and no-ops when the current screen
+ *  has none, so the `#timer` identity is never touched. */
+function updateLive(app: App): void {
+  updateTimer(app);
+  updateScoreboard(app);
+  updateFound(app);
+}
+
+/** The scoreboard's mode in the current phase: the ranked round scoreboard
+ *  while playing, the cumulative session standings during the intermission,
+ *  the join-ordered roster otherwise. */
+function scoreboardMode(phase: GameStore["phase"]): "seats" | "ranked" | "session" {
+  if (phase === "playing") return "ranked";
+  if (phase === "intermission") return "session";
+  return "seats";
+}
+
+/** Rewrites the live player chips in place — chip children change, the
+ *  `#players` list element itself survives. */
+function updateScoreboard(app: App): void {
+  const el = app.root.querySelector<HTMLElement>("#players");
+  if (!el) return;
+  el.innerHTML = playerChipsHtml(app.store, scoreboardMode(app.store.phase));
+}
+
+/** Rewrites the private found-word chips in place; absent for spectators. */
+function updateFound(app: App): void {
+  const el = app.root.querySelector<HTMLElement>("#found");
+  if (!el) return;
+  el.innerHTML = foundHtml(app.store);
 }
 
 function renderLobby(app: App): void {
