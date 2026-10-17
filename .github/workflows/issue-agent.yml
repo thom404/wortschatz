@@ -1,0 +1,172 @@
+name: Issue agent
+
+# A fully specified issue is labelled `ready-for-agent` and a headless agent
+# implements it, or the workflow is started by hand for a specific issue.
+# See docs/adr/0006-autonomous-issue-agent.md.
+
+on:
+  issues:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: Issue number to implement
+        required: true
+        type: number
+
+# One run per issue at a time; a second run queues rather than cancels the first.
+concurrency:
+  group: issue-agent-${{ github.event.issue.number || inputs.issue }}
+  cancel-in-progress: false
+
+# The push and every `gh` call authenticate with AGENT_GITHUB_TOKEN so the CI
+# workflow starts on the pull request (ADR-0004); the GITHUB_TOKEN only reads.
+permissions:
+  contents: read
+
+jobs:
+  implement:
+    # Only a label event for `ready-for-agent` on an issue from the owner, a
+    # member, or a collaborator starts a run. An outsider cannot inject work.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.action == 'labeled' &&
+       github.event.label.name == 'ready-for-agent' &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association))
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN }}
+      ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve issue
+        id: issue
+        run: |
+          set -euo pipefail
+          title="$(gh issue view "$ISSUE_NUMBER" --json title --jq '.title')"
+          slug="$(printf '%s' "$title" | tr '[:upper:]' '[:lower:]' \
+            | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' | cut -d- -f1-5)"
+          {
+            echo "title=$title"
+            echo "branch=feature/${ISSUE_NUMBER}-${slug}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Skip guard
+        id: guard
+        env:
+          BRANCH: ${{ steps.issue.outputs.branch }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/${GITHUB_REPOSITORY}/git/matching-refs/heads/${BRANCH}" \
+            --jq '.[].ref' | grep -q .; then
+            gh issue comment "$ISSUE_NUMBER" --body \
+              "Skipping: branch \`${BRANCH}\` already exists."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          referencing_pr='.[] | select(((.body // "") + " " + .title) | test("#'"$ISSUE_NUMBER"'([^0-9]|$)")) | .number'
+          pr="$(gh pr list --state open --limit 100 --json number,title,body --jq "$referencing_pr" | head -n1)"
+          if [ -n "$pr" ]; then
+            gh issue comment "$ISSUE_NUMBER" --body \
+              "Skipping: pull request #${pr} already references this issue."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      # A second label event is an explicit retry, so the label comes off now.
+      - name: Remove ready-for-agent
+        if: steps.guard.outputs.skip != 'true'
+        run: gh issue edit "$ISSUE_NUMBER" --remove-label ready-for-agent
+
+      - name: Install OpenCode CLI
+        if: steps.guard.outputs.skip != 'true'
+        run: npm install --global opencode-ai@latest
+
+      - name: Run issue-implementer
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENCODE_DISABLE_AUTOUPDATE: "1"
+        run: |
+          set -euo pipefail
+          opencode run --agent issue-implementer \
+            "Implement the specification in GitHub issue #${ISSUE_NUMBER}."
+
+      # A clean tree with needs-info is a successful no-op (the spec gate); a
+      # clean tree without it is a failure.
+      - name: Spec gate
+        id: gate
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "action=proceed" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if gh issue view "$ISSUE_NUMBER" --json labels --jq '.labels[].name' \
+            | grep -qx needs-info; then
+            echo "action=noop" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::The agent made no changes and did not apply needs-info."
+            exit 1
+          fi
+
+      - name: Lint
+        if: steps.gate.outputs.action == 'proceed'
+        run: npm run lint
+
+      - name: Typecheck
+        if: steps.gate.outputs.action == 'proceed'
+        run: npm run typecheck
+
+      - name: Test
+        if: steps.gate.outputs.action == 'proceed'
+        run: npm test
+
+      - name: Open pull request
+        if: steps.gate.outputs.action == 'proceed'
+        env:
+          AGENT_GITHUB_TOKEN: ${{ secrets.AGENT_GITHUB_TOKEN }}
+          BRANCH: ${{ steps.issue.outputs.branch }}
+          TITLE: ${{ steps.issue.outputs.title }}
+        run: |
+          set -euo pipefail
+          git config user.name "wortschatz-agent"
+          git config user.email "wortschatz-agent@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add -A
+          printf '%s\n\nImplements #%s\n' "$TITLE" "$ISSUE_NUMBER" > /tmp/commit-message
+          git commit -F /tmp/commit-message
+          git push \
+            "https://x-access-token:${AGENT_GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "HEAD:refs/heads/${BRANCH}"
+          printf 'Closes #%s\n\nImplemented by the issue agent for issue #%s.\n' \
+            "$ISSUE_NUMBER" "$ISSUE_NUMBER" > /tmp/pr-body
+          pr_url="$(gh pr create --base "$DEFAULT_BRANCH" --head "$BRANCH" \
+            --title "$TITLE" --body-file /tmp/pr-body)"
+          gh issue comment "$ISSUE_NUMBER" --body \
+            "Opened ${pr_url} (run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+
+      - name: Report failure
+        if: failure() || cancelled()
+        run: |
+          gh issue edit "$ISSUE_NUMBER" --remove-label ready-for-agent || true
+          gh issue edit "$ISSUE_NUMBER" --add-label ready-for-human || true
+          gh issue comment "$ISSUE_NUMBER" --body \
+            "The issue agent run failed and this issue needs a human. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
