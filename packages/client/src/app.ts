@@ -3,7 +3,13 @@ import { applyDelta, remainingOf, fmt, LOW_TIME_MS } from "./deltas.js";
 import { GameStore } from "./store.js";
 import { qrSvg } from "./qr.js";
 import { applySkin, loadSkin, skinSwitcherHtml, wireSkinSwitcher } from "./skins.js";
-import type { ClientMessage, PlayerInfo, RoomsEndedMsg, ServerMessage } from "@wortschatz/shared";
+import type {
+  ClientMessage,
+  PlayerInfo,
+  RoomsEndedMsg,
+  ServerErrorMsg,
+  ServerMessage,
+} from "@wortschatz/shared";
 import { neighbors, PROTOCOL, tileSpellingLength, tileStrings } from "@wortschatz/shared";
 import "./style.css";
 
@@ -208,14 +214,25 @@ function startRoom(app: App, code: string, greet: GreetFn): void {
   });
   if (app.unsub) app.unsub();
   app.unsub = app.store.subscribe(() => render(app));
+  // A retry follows a prior home error (a validation request or a rejected
+  // greeting); the fresh attempt owns the form from here.
+  setHomeError(app, "");
   app.conn.start();
-  window.history.pushState({}, "", `/r/${code}`);
+  // The address bar stays on the home URL until a snapshot names the room
+  // (syncRoomUrl): a rejected greeting must never claim `/r/<code>`.
   render(app);
   if (app.renderTimer) clearInterval(app.renderTimer);
   app.renderTimer = setInterval(() => updateTimer(app), 250);
 }
 
 function onMessage(app: App, msg: ServerMessage): void {
+  // A greeting the server rejects before any snapshot is neither an
+  // in-room error nor an unexpected close: the connection never became a
+  // room, so the typed German verdict belongs on the home join form.
+  // `room-not-found` keeps its dedicated outcome screen (#21) instead.
+  if (isGreetingRejection(app, msg) && msg.code !== "room-not-found") {
+    return rejectGreeting(app, msg);
+  }
   applyDelta(app.store, msg);
   // The outcome frames (#21) each render their own dedicated screen.
   // The connection's orderly close is reported first (RoomConnection
@@ -230,9 +247,36 @@ function onMessage(app: App, msg: ServerMessage): void {
     return renderOutcome(app, roomNotFoundOutcome(app));
 }
 
-/** The address bar tells the room's real deep link: creating a room pushes
- *  the greeting key (nickname) before the server names the room, so the
- *  first snapshot replaces it with the true /r/<code>. */
+/** A greeting rejection: an `error` frame that arrives while the join is
+ *  still unconfirmed — no snapshot has named the room yet. This is the
+ *  status a rejected greeting must be told apart by, distinct from an
+ *  in-room error (a room is known) and an unexpected close (a status). */
+function isGreetingRejection(app: App, msg: ServerMessage): msg is ServerErrorMsg {
+  return app.inRoom && !app.store.code && msg.type === "error";
+}
+
+/** Rejected greeting (join/create): stop the connection so a retry starts
+ *  fresh, stay on the home form still on screen — its typed code and
+ *  nickname survive — and surface the shared German copy in `#home-errors`. */
+function rejectGreeting(app: App, msg: ServerErrorMsg): void {
+  app.store.lastError = msg;
+  const errorText = app.store.errorText;
+  if (app.conn) {
+    app.conn.stop();
+    app.conn = null;
+  }
+  if (app.unsub) {
+    app.unsub();
+    app.unsub = null;
+  }
+  app.inRoom = false;
+  teardown(app);
+  app.store.reset();
+  setHomeError(app, errorText);
+}
+
+/** The address bar tells the room's real deep link — but only once a
+ *  snapshot has named the room; a rejected greeting never claims it. */
 function syncRoomUrl(app: App): void {
   if (!app.store.code) return;
   const want = `/r/${app.store.code}`;
