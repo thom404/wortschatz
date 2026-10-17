@@ -60,9 +60,10 @@ compatibility and because a ruleset is inspectable at
   renaming the job in `ci.yml` requires re-pointing the ruleset.
 - Rename side-effects handled: git remote, `package.json`/lock root name,
   `compose.yaml` + `OPERATOR-STEPS.md` GHCR path (`ghcr.io/thom404/wortschatz`),
-  issue links in the ADRs, issue-tracker pointers in `AGENTS.md`. Not renamed,
-  deliberately: the npm workspace scope `@wordament/*` (touching every import,
-  issue [#37](https://github.com/thom404/wortschatz/issues/37)) and the
+  issue links in the ADRs, issue-tracker pointers in `AGENTS.md`. Not renamed
+  at the time, deliberately: the npm workspace scope `@wordament/*` (touching
+  every import, issue [#37](https://github.com/thom404/wortschatz/issues/37))
+  and the
   deployment domain `wordament.phanthom.cc` (operator-level change, issue
   [#38](https://github.com/thom404/wortschatz/issues/38)) — both tracked
   follow-ups for this ticket's TM-hygiene goal. Follow-up
