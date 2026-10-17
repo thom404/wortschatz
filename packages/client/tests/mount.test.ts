@@ -136,6 +136,45 @@ describe("mountable app", () => {
       expect(window.location.pathname).toBe("/r/LAG4T");
     });
 
+    it("the lobby shows an Einladen QR card whose payload is the same deep link as the text fallback", () => {
+      typeInto("#mk-nick", "Lena");
+      click("#mk-btn");
+      app!.conn().feed(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
+
+      // The agreed German copy: heading and camera instruction.
+      const panel = app!.root.querySelector<HTMLElement>(".panel.invite")!;
+      expect(panel.querySelector("h2")!.textContent).toBe("Einladen");
+      expect(panel.querySelector(".note")!.textContent).toBe(
+        "Scanne den Code mit der Kamera, um beizutreten."
+      );
+
+      // The QR element exists and encodes exactly the text link beside it —
+      // origin + /r/<CODE>, code uppercased — so the two can never disagree.
+      const qr = app!.root.querySelector<SVGElement>("#qr")!;
+      expect(qr).toBeTruthy();
+      const expected = `${location.origin}/r/LAG4T`;
+      expect(app!.root.querySelector<HTMLElement>("#join-link")!.textContent).toBe(expected);
+      expect(qr.getAttribute("data-payload")).toBe(expected);
+    });
+
+    it("the QR core keeps its literal dark-on-light colours under both skins", () => {
+      typeInto("#mk-nick", "Lena");
+      click("#mk-btn");
+      app!.conn().feed(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
+
+      const standard = app!.root.querySelector("#qr")!.outerHTML;
+      expect(standard).toContain('fill="#000000"');
+      expect(standard).toContain('fill="#ffffff"');
+      expect(standard).not.toContain("var(");
+
+      // Switching the skin app-wide and re-rendering the lobby leaves the QR
+      // byte-for-byte identical: its colours never came from the token system.
+      document.body.dataset.skin = "arcade";
+      app!.conn().feed(playerJoined(2, "Ben"));
+      expect(app!.root.querySelector("#qr")!.outerHTML).toBe(standard);
+      delete (document.body as { dataset: DOMStringMap }).dataset.skin;
+    });
+
     it("the scoreboard live-updates per score-update: round-score order, ties share a place, join order breaks the tie", () => {
       driveToRoundWith("LAG4T", [
         seat({ seatId: 1, nickname: "Lena" }),
