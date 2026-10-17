@@ -16,8 +16,8 @@ set -uo pipefail
 
 REPO="${REPO:-thom404/wortschatz}"
 IMAGE="${IMAGE:-ghcr.io/${REPO}}"
-COMPOSE_DIR="${COMPOSE_DIR:-$HOME/Docker/production/wordament}"
-SERVICE_URL="${SERVICE_URL:-https://wordament.phanthom.cc}"
+COMPOSE_DIR="${COMPOSE_DIR:-$HOME/Docker/production/wortschatz}"
+SERVICE_URL="${SERVICE_URL:-https://wortschatz.phanthom.cc}"
 STATE_DIR="${STATE_DIR:-$HOME/.local/state/wortschatz}"
 VERIFY_TIMEOUT="${VERIFY_TIMEOUT:-60}"
 

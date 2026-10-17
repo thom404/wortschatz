@@ -52,7 +52,7 @@ close or expiry (60 s empty, 30 min idle).
 ## Room code
 
 The short (~5-character) ambiguity-free code that identifies a room and forms the
-shareable deep link `wordament.phanthom.cc/r/<code>`.
+shareable deep link `wortschatz.phanthom.cc/r/<code>`.
 
 ## Round
 
