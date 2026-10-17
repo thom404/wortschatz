@@ -18,6 +18,7 @@ import {
   type PlayerInfo,
 } from "./harness.js";
 import type { RevealPayload } from "@wortschatz/shared";
+import { SKINS } from "../src/skins.js";
 
 /** The #17 reveal wire shape, worked out by hand from the hand-scored words:
  *  ort 4 points, found by both seats; saat missed; test 4 points, Lena only. */
@@ -815,6 +816,33 @@ describe("mountable app", () => {
     expect(tileEls(app!.root).map((t) => t.textContent)).toEqual(BOARD.map((letter, i) => `${letter}${i}`));
   });
 
+  describe("home copy (#53)", () => {
+    it("shows the new tagline, create button, Name labels and example placeholders", () => {
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+      expect(app!.root.querySelector(".sheet > p.dim")!.textContent).toBe("Ein Mehrspieler-Wörterspiel.");
+      expect(app!.root.querySelector("#mk-btn")!.textContent).toBe("Raum erstellen");
+
+      // Both name inputs are labelled `Name` in the agreed voice, not `Spitzname`.
+      const labels = [...app!.root.querySelectorAll<HTMLLabelElement>("label")];
+      expect(labels.map((l) => l.textContent!.trim())).toEqual(["Name", "Raumcode", "Name"]);
+
+      // The worked-example names are deliberate Easter eggs.
+      expect(app!.root.querySelector<HTMLInputElement>("#mk-nick")!.placeholder).toBe("z. B. Anja");
+      expect(app!.root.querySelector<HTMLInputElement>("#jn-nick")!.placeholder).toBe("z. B. Jörg");
+    });
+
+    it("asks for a name in plain German when create or join is submitted empty", () => {
+      click("#mk-btn");
+      expect(app!.root.querySelector("#home-errors")!.textContent).toBe("Bitte gib einen Namen ein.");
+      expect(app!.connections()).toHaveLength(0);
+
+      typeInto("#jn-code", "ABC12");
+      click("#jn-btn");
+      expect(app!.root.querySelector("#home-errors")!.textContent).toBe("Bitte gib einen Namen ein.");
+      expect(app!.connections()).toHaveLength(0);
+    });
+  });
+
   describe("home skin choice (#23)", () => {
     // The choice is observable only at its boundaries: the root attribute
     // (body[data-skin]), the localStorage value and remounts of the app.
@@ -845,6 +873,22 @@ describe("mountable app", () => {
       click("#mk-btn");
       app!.conn().feed(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
       expect(app!.root.querySelector("#skin-select")).toBeNull();
+    });
+
+    it("the panel is headed Skin with a Skin selector — no Erscheinungsbild, Farbwelt or explanatory note", () => {
+      const panel = app!.root.querySelector<HTMLElement>(".panel:has(#skin-select)")!;
+      expect(panel.querySelector("h2")!.textContent).toBe("Skin");
+      expect(panel.querySelector("#skin-select")).toBeTruthy();
+      expect(panel.textContent).not.toContain("Erscheinungsbild");
+      expect(panel.textContent).not.toContain("Farbwelt");
+      expect(panel.textContent).not.toContain("Gilt überall in der App");
+
+      // The option labels the switcher kept.
+      const select = panel.querySelector<HTMLSelectElement>("#skin-select")!;
+      expect([...select.options].map((o) => o.textContent)).toEqual(["Standard (hell)", "Arcade (dunkel)"]);
+
+      // Registry entries carry no unused `note` string.
+      for (const skin of SKINS) expect(skin).not.toHaveProperty("note");
     });
 
     it("choosing Arcade applies app-wide instantly and carries through every screen of the mount", () => {
