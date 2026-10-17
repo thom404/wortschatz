@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
 import { WebSocketServer } from "ws";
-import type { RoomEndReason } from "@wordament/shared";
+import type { RoomEndReason } from "@wortschatz/shared";
 import { resolveConfig, type ServerConfig } from "./config.js";
 import { Rooms } from "./rooms.js";
 
@@ -122,7 +122,7 @@ export class WordamentServer {
       // verifies the public URL answers with the exact merge-commit sha.
       const body = JSON.stringify({
         ok: true,
-        sha: process.env.WORDAMENT_GIT_SHA || null,
+        sha: process.env.WORTSCHATZ_GIT_SHA || null,
       });
       res.writeHead(200, { "content-type": "application/json" });
       res.end(body);

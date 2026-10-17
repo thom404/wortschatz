@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { PROTOCOL } from "@wordament/shared";
+import { PROTOCOL } from "@wortschatz/shared";
 import { Pinger, RateLimiter } from "../src/hardening.js";
 import type { WebSocket } from "ws";
 

@@ -17,7 +17,7 @@ import {
   type Mounted,
   type PlayerInfo,
 } from "./harness.js";
-import type { RevealPayload } from "@wordament/shared";
+import type { RevealPayload } from "@wortschatz/shared";
 
 /** The #17 reveal wire shape, worked out by hand from the hand-scored words:
  *  ort 4 points, found by both seats; saat missed; test 4 points, Lena only. */

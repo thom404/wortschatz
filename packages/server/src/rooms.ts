@@ -6,7 +6,7 @@ import type {
   ScoreEntry,
   ServerMessage,
   SnapshotMsg,
-} from "@wordament/shared";
+} from "@wortschatz/shared";
 import type { ServerConfigResolved } from "./config.js";
 import { Connection } from "./connection.js";
 import { Pinger } from "./hardening.js";

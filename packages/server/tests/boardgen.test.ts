@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TILE_BAG, isEitherOr, isPrefix, isSuffix, tileSpellingLength } from "@wordament/shared";
+import { TILE_BAG, isEitherOr, isPrefix, isSuffix, tileSpellingLength } from "@wortschatz/shared";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { generateBoard, isFormable, passesGate } from "../src/boardgen/index.js";

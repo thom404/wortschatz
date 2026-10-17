@@ -19,7 +19,7 @@ const logger: Logger = {
 
 const here = resolve(join(fileURLToPath(import.meta.url), "..", "..", ".."));
 // Static SPA lives in the client build; overridable for container layouts.
-const staticDir = process.env.WORDAMENT_STATIC_DIR ?? resolve(join(here, "client", "dist"));
+const staticDir = process.env.WORTSCHATZ_STATIC_DIR ?? resolve(join(here, "client", "dist"));
 
 // Artifact-first load; outside Docker this falls back to building the DAWG
 // from the committed raw list (structured warning from the loader).

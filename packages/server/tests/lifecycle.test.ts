@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import type { SnapshotMsg } from "@wordament/shared";
+import type { SnapshotMsg } from "@wortschatz/shared";
 import { createRoom, FAST_CLOCK, joinPlayer, makeScene, fullCfg, type Scene } from "./scene.js";
 import { connect, type TestClient } from "./test-client.js";
 

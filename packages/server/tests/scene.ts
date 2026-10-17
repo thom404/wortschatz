@@ -5,7 +5,7 @@ import { revealAll } from "../src/reveal.js";
 import { PROTOCOL, type ServerConfig } from "../src/index.js";
 import type { TestClient } from "./test-client.js";
 import { connect } from "./test-client.js";
-import type { SnapshotMsg } from "@wordament/shared";
+import type { SnapshotMsg } from "@wortschatz/shared";
 
 export const FAST_CLOCK: Partial<ServerConfig> = {
   roundMs: 1600,

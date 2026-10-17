@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { SnapshotMsg, WordAcceptedMsg } from "@wordament/shared";
+import type { SnapshotMsg, WordAcceptedMsg } from "@wortschatz/shared";
 import { PlaceholderDictionary } from "../src/defaults.js";
 import { createRoom, FAST_CLOCK, joinPlayer, makeScene, type Scene } from "./scene.js";
 import type { TestClient } from "./test-client.js";

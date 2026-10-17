@@ -1,4 +1,4 @@
-import type { ClientMessage, ServerMessage, SnapshotMsg } from "@wordament/shared";
+import type { ClientMessage, ServerMessage, SnapshotMsg } from "@wortschatz/shared";
 
 /**
  * One room-bound WebSocket per page life. Handles:

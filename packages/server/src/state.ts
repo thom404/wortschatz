@@ -2,8 +2,8 @@
  * Room and seat domain types. Server-internal: never inspected by tests,
  * which see only the wire seam.
  */
-import type { RoomPhase, RevealPayload } from "@wordament/shared";
-import { PROTOCOL } from "@wordament/shared";
+import type { RoomPhase, RevealPayload } from "@wortschatz/shared";
+import { PROTOCOL } from "@wortschatz/shared";
 import type { WebSocket } from "ws";
 
 export interface Seat {

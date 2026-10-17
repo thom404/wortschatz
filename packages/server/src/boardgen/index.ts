@@ -18,7 +18,7 @@ import {
   neighbors,
   tileStrings,
   type Tile,
-} from "@wordament/shared";
+} from "@wortschatz/shared";
 import { makeRng, type Rng } from "./rng.js";
 
 /** Solvability gate, frozen by simulation (ADR-0003 §7). */

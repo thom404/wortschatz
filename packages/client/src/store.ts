@@ -1,4 +1,4 @@
-import type { PlayerInfo, ScoreEntry, SnapshotMsg, ErrorCode, RevealPayload } from "@wordament/shared";
+import type { PlayerInfo, ScoreEntry, SnapshotMsg, ErrorCode, RevealPayload } from "@wortschatz/shared";
 
 /**
  * Client state. Built ONLY from server messages (snapshot + deltas); never

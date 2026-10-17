@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { fullCfg } from "./scene.js";
 import { startServer, type Logger } from "../src/index.js";
-import type { SnapshotMsg } from "@wordament/shared";
+import type { SnapshotMsg } from "@wortschatz/shared";
 import { connect } from "./test-client.js";
 
 function capturingLog(): { lines: Array<Record<string, unknown>>; logger: Logger } {

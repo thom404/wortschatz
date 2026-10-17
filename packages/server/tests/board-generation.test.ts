@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { PROTOCOL, TILE_BAG, tileSpellingLength } from "@wordament/shared";
+import { PROTOCOL, TILE_BAG, tileSpellingLength } from "@wortschatz/shared";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createRoom, FAST_CLOCK, joinPlayer, makeScene, type Scene } from "./scene.js";

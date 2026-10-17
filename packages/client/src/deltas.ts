@@ -1,5 +1,5 @@
 import type { GameStore } from "./store.js";
-import type { SnapshotMsg, ServerMessage } from "@wordament/shared";
+import type { SnapshotMsg, ServerMessage } from "@wortschatz/shared";
 
 /**
  * Local countdown interpolation, per spec: clients never own the clock. The

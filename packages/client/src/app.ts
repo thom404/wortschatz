@@ -2,8 +2,8 @@ import { loadSession, clearSession, type ConnStatus } from "./api.js";
 import { applyDelta, remainingOf, fmt, LOW_TIME_MS } from "./deltas.js";
 import { GameStore } from "./store.js";
 import { applySkin, loadSkin, skinSwitcherHtml, wireSkinSwitcher } from "./skins.js";
-import type { ClientMessage, PlayerInfo, RoomsEndedMsg, ServerMessage } from "@wordament/shared";
-import { neighbors, PROTOCOL, tileSpellingLength, tileStrings } from "@wordament/shared";
+import type { ClientMessage, PlayerInfo, RoomsEndedMsg, ServerMessage } from "@wortschatz/shared";
+import { neighbors, PROTOCOL, tileSpellingLength, tileStrings } from "@wortschatz/shared";
 import "./style.css";
 
 /**

@@ -8,7 +8,7 @@ import type {
   ServerMessage,
   SnapshotMsg,
   TickMsg,
-} from "@wordament/shared";
+} from "@wortschatz/shared";
 
 export type { PlayerInfo };
 import { saveSession, type ConnStatus } from "../src/api.js";

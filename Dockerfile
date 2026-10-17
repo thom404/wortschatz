@@ -27,10 +27,10 @@ RUN npm install --no-audit --no-fund \
 FROM node:22-alpine AS runtime
 WORKDIR /app
 ARG GIT_SHA="dev"
-ENV NODE_ENV=production WORDAMENT_GIT_SHA=${GIT_SHA}
-RUN addgroup -S wordament && adduser -S wordament -G wordament
-COPY --from=build --chown=wordament:wordament /app /app
-ENV PORT=3000 WORDAMENT_STATIC_DIR=/app/packages/client/dist
+ENV NODE_ENV=production WORTSCHATZ_GIT_SHA=${GIT_SHA}
+RUN addgroup -S wortschatz && adduser -S wortschatz -G wortschatz
+COPY --from=build --chown=wortschatz:wortschatz /app /app
+ENV PORT=3000 WORTSCHATZ_STATIC_DIR=/app/packages/client/dist
 EXPOSE 3000
-USER wordament
+USER wortschatz
 CMD ["node", "packages/server/dist/main.js"]

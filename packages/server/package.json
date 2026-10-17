@@ -1,5 +1,5 @@
 {
-  "name": "@wordament/server",
+  "name": "@wortschatz/server",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,7 +10,7 @@
     }
   },
   "dependencies": {
-    "@wordament/shared": "*",
+    "@wortschatz/shared": "*",
     "ws": "^8.18.0"
   },
   "devDependencies": {

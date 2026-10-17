@@ -4,8 +4,8 @@
  * (dictionary, board generation, scoring/reveal) are opaque injected seams
  * owned by tickets #7 and #6 — this wire-spec ticket fixes only their shape.
  */
-import { PROTOCOL } from "@wordament/shared";
-import type { RevealPayload } from "@wordament/shared";
+import { PROTOCOL } from "@wortschatz/shared";
+import type { RevealPayload } from "@wortschatz/shared";
 import { randomBytes } from "node:crypto";
 
 /** Opaque dictionary seam (deep module per ADR-0001; ticket #7 owns impl). */

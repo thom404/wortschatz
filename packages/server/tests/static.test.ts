@@ -74,7 +74,7 @@ describe("static SPA serving", () => {
   // merge commit; /healthz answers with the sha baked into the image, so the
   // public URL reveals the deployed version, not just liveness.
   test("healthz reports the deployed git sha", async () => {
-    vi.stubEnv("WORDAMENT_GIT_SHA", "c8d1a2b3e4f5");
+    vi.stubEnv("WORTSCHATZ_GIT_SHA", "c8d1a2b3e4f5");
     try {
       const res = await fetch(`http://localhost:${scene.handle.port}/healthz`);
       expect(res.status).toBe(200);
