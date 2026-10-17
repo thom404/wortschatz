@@ -78,6 +78,24 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # The summary counts only open, same-repo blockers. Fail closed if the
+          # lookup fails, and if it disagrees with the dependency list.
+          open_blocker_count="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}" \
+            --jq '.issue_dependencies_summary.blocked_by // 0')"
+          if [ "$open_blocker_count" -gt 0 ]; then
+            blocker_list="$(gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/dependencies/blocked_by" \
+              --jq '.[] | select(.state == "open" and .repository.full_name == env.GITHUB_REPOSITORY) | "#\(.number)"' \
+              | paste -sd, - | sed 's/,/, /g')"
+            if [ -z "$blocker_list" ]; then
+              echo "::error::Issue #${ISSUE_NUMBER} reports ${open_blocker_count} open blocker(s), but none could be listed."
+              exit 1
+            fi
+            gh issue comment "$ISSUE_NUMBER" --body \
+              "Skipping: blocked by ${blocker_list}."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
       # A skip stops here: no dependencies, no agent, just the comment above.
