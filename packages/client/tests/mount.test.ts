@@ -664,8 +664,32 @@ describe("mountable app", () => {
     // renders as the existing typed German error, the chips unchanged.
     synthesizePointerDrag([tiles[0]!, tiles[1]!, tiles[2]!]);
     app!.conn().feed({ type: "error", code: "word-duplicate", message: "HAU" });
-    expect(app!.root.querySelector("#error")!.textContent).toContain("Wort schon gefunden.");
+    expect(app!.root.querySelector("#error")!.textContent).toBe("Das Wort hast du schon.");
     expect(app!.root.querySelectorAll("#found li")).toHaveLength(1);
+  });
+
+  it("the lobby renders the need-players error as a natural German request", () => {
+    typeInto("#mk-nick", "Lena");
+    click("#mk-btn");
+    app!.conn().feed(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
+
+    // The lone host clicks start; the server's typed verdict lands on the
+    // lobby's start hint, not as an internal constant.
+    click("#start-btn");
+    app!.conn().feed({ type: "error", code: "need-players" });
+    expect(app!.root.querySelector("#start-hint")!.textContent).toBe(
+      "Für eine Runde braucht es mindestens 2 Spieler."
+    );
+  });
+
+  it("the taken-name error calls the conflict a Name, not a Spitzname", () => {
+    driveToRoundOne("LAG4T");
+    // Every catalog entry renders through the game screen's error paragraph
+    // (#50's copy-testing seam), so the taken-name wording is covered too.
+    app!.conn().feed({ type: "error", code: "nickname-taken" });
+    const error = app!.root.querySelector("#error")!.textContent;
+    expect(error).toBe("Dieser Name ist bereits vergeben. Wähle einen anderen.");
+    expect(error).not.toContain("Spitzname");
   });
 
   it("touch drags resolve through retargeting and claim the gesture from the page", () => {
