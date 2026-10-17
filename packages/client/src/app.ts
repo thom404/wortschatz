@@ -70,6 +70,9 @@ interface App {
   dragging: DragHandle;
 }
 
+/** The user-facing app name: the browser title and the home heading. */
+const APP_NAME = "Wortschatz";
+
 /** The one sentence the drag surface shows between words. */
 const TRACE_HINT = "Ziehe über die Felder, um ein Wort zu bilden.";
 
@@ -132,12 +135,12 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
 /* ------------------------------------------------------------------ */
 
 function home(app: App): void {
-  document.title = "WortMeister";
+  document.title = APP_NAME;
   const deepCode = deepLinkCode();
   const stored = deepCode ? loadSession(deepCode) : null;
   app.root.innerHTML = `
     <div class="sheet">
-      <h1>WortMeister</h1>
+      <h1>${APP_NAME}</h1>
       <p class="dim">Gemeinsam deutsche Wörter finden — real-time, privat, ohne Konto.</p>
       <section class="panel">
         <h2>Raum erstellen</h2>
@@ -340,7 +343,7 @@ function updateTimer(app: App): void {
 }
 
 function renderLobby(app: App): void {
-  document.title = `WortMeister — Raum ${app.store.code}`;
+  document.title = `${APP_NAME} — Raum ${app.store.code}`;
   app.root.innerHTML = `
     <div class="sheet">
       <h1>Raum ${escapeHtml(app.store.code)}</h1>
@@ -372,7 +375,7 @@ function renderLobby(app: App): void {
 }
 
 function renderGame(app: App): void {
-  document.title = `WortMeister — Runde ${app.store.roundNumber}`;
+  document.title = `${APP_NAME} — Runde ${app.store.roundNumber}`;
   const board = app.store.round?.board ?? [];
   const spectating = app.store.self.role === "spectator";
   // Font sizing lives on the grid container via the widest tile span knob
@@ -419,7 +422,7 @@ function renderGame(app: App): void {
 }
 
 function renderIntermission(app: App): void {
-  document.title = "WortMeister — Zwischenspiel";
+  document.title = `${APP_NAME} — Zwischenspiel`;
   const finishedRoundNumber = app.store.finishedRound?.roundNumber ?? app.store.roundNumber;
   // The finished board stays on screen: for live players it survives from
   // the round, and the intermission snapshot re-anchors it for joiners.
@@ -479,7 +482,7 @@ function renderOutcome(app: App, outcome: OutcomeScreen): void {
   }
   app.inRoom = false;
   teardown(app);
-  document.title = "WortMeister";
+  document.title = APP_NAME;
   app.root.innerHTML = `
     <div class="sheet">
       <h1>${outcome.titleHtml}</h1>

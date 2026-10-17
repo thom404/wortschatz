@@ -401,7 +401,7 @@ describe("mountable app", () => {
         await vi.advanceTimersByTimeAsync(251);
         // …clamped at zero — the client never self-transitions.
         expect(app!.root.querySelector("#countdown")!.textContent).toBe("0:00");
-        expect(document.title).toBe("WortMeister — Zwischenspiel");
+        expect(document.title).toBe("Wortschatz — Zwischenspiel");
         // The expiry lands as the server's next round: everyone flips
         // without so much as a hover over a button.
         app!.conn().feed(roundStarted(BOARD, 2));
@@ -451,12 +451,12 @@ describe("mountable app", () => {
     expect(app!.conn().statuses).toEqual(["connecting", "open", "closed"]);
     // The real action returns to the home screen.
     app!.root.querySelector<HTMLButtonElement>("#home-btn")!.click();
-    expect(app!.root.querySelector("h1")!.textContent).toBe("WortMeister");
+    expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
   });
 
   it("routes home → lobby → game, fed by snapshot and deltas, through the scripted connection", () => {
     // Home: the mounted app renders its first screen.
-    expect(app!.root.querySelector("h1")!.textContent).toBe("WortMeister");
+    expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
 
     // Creating a room goes out on the boundary as the connection greets.
     typeInto("#mk-nick", "Lena");
@@ -465,7 +465,7 @@ describe("mountable app", () => {
     expect(app!.conn().sent()).toEqual([{ type: "create-room", nickname: "Lena", reqId: 1 }]);
     expect(app!.conn().statuses).toEqual(["connecting"]);
     // Nothing but the home screen until the server's first word.
-    expect(app!.root.querySelector("h1")!.textContent).toBe("WortMeister");
+    expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
 
     // The lobby arrives via a full snapshot; it is what flips the
     // boundary to `open`.
@@ -543,7 +543,7 @@ describe("mountable app", () => {
       expect(app!.root.querySelector("#home-btn")).toBeTruthy();
       expect(app!.conn().stopped).toBe(true);
       app!.root.querySelector<HTMLButtonElement>("#home-btn")!.click();
-      expect(app!.root.querySelector("h1")!.textContent).toBe("WortMeister");
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
     });
 
     it("a host-closed room shows the dedicated ended screen", () => {
@@ -551,7 +551,7 @@ describe("mountable app", () => {
       app!.conn().feed({ type: "room-ended", reason: "host-closed" });
       expect(app!.root.querySelector("h1")!.textContent).toBe("Raum LAG4T wurde beendet.");
       app!.root.querySelector<HTMLButtonElement>("#home-btn")!.click();
-      expect(app!.root.querySelector("h1")!.textContent).toBe("WortMeister");
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
     });
 
     it("an expired room ends with its own dedicated screen", () => {
@@ -560,7 +560,7 @@ describe("mountable app", () => {
       expect(app!.root.querySelector("h1")!.textContent).toBe("Raum LAG4T ist abgelaufen.");
       // Same real action as every outcome screen: back to the home screen.
       app!.root.querySelector<HTMLButtonElement>("#home-btn")!.click();
-      expect(app!.root.querySelector("h1")!.textContent).toBe("WortMeister");
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
     });
 
     it("a wrong room code surfaces the generic not-found outcome screen", () => {
@@ -571,7 +571,7 @@ describe("mountable app", () => {
       app!.conn().feed({ type: "error", code: "room-not-found", message: "ZZZ99" });
       expect(app!.root.querySelector("h1")!.textContent).toBe("Raum ZZZ99 nicht gefunden oder abgelaufen.");
       app!.root.querySelector<HTMLButtonElement>("#home-btn")!.click();
-      expect(app!.root.querySelector("h1")!.textContent).toBe("WortMeister");
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
     });
 
     it("a deep link lands pre-filled with the code and the remembered nickname for instant joining", () => {
