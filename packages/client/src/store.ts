@@ -6,6 +6,14 @@ import type { PlayerInfo, ScoreEntry, SnapshotMsg, ErrorCode, RevealPayload } fr
  */
 export type Outcome = "none" | "kicked" | "room-ended";
 
+/**
+ * The render consequence of one store change (see `deltas.ts`). A play-time
+ * delta re-anchors the live countdown **in place**, so the ring timer keeps
+ * its identity; a structural change rebuilds the whole screen. Tick is the
+ * first play-time delta. See [GLOSSARY](../GLOSSARY.md): Play-time delta.
+ */
+export type DeltaKind = "play-time" | "structural";
+
 /** The scoreboard's and the standings' shared ranking fabric: order by an
  *  ascending-score key descending, ties staying in join order (the roster
  *  array's order), then standard competition ranking over the result — a
@@ -63,15 +71,15 @@ export class GameStore {
   lastError: { code: ErrorCode; message?: string } | null = null;
   outcome: Outcome = "none";
 
-  private listeners = new Set<() => void>();
+  private listeners = new Set<(kind: DeltaKind) => void>();
 
-  subscribe(fn: () => void): () => void {
+  subscribe(fn: (kind: DeltaKind) => void): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
   }
 
-  notify(): void {
-    for (const fn of this.listeners) fn();
+  notify(kind: DeltaKind = "structural"): void {
+    for (const fn of this.listeners) fn(kind);
   }
 
   applySnapshot(snap: SnapshotMsg): void {

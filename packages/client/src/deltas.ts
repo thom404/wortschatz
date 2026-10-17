@@ -1,4 +1,4 @@
-import type { GameStore } from "./store.js";
+import type { GameStore, DeltaKind } from "./store.js";
 import type { SnapshotMsg, ServerMessage } from "@wortschatz/shared";
 
 /**
@@ -24,6 +24,18 @@ export function fmt(ms: number): string {
 /** At ≤ 20 s remaining, the countdown takes the low-time look (ADR-0002):
  *  one shared class for digits and ring, coloured through `--ping`. */
 export const LOW_TIME_MS = 20_000;
+
+/**
+ * The render consequence of one server delta. A play-time delta changes only
+ * the live countdown, so the running ring timer must re-anchor **in place**
+ * and never be rebuilt. Tick is the first play-time delta; every other
+ * message is a structural change (Round start, Intermission, roster
+ * join/leave/disconnect, host change, screen change, Room end) that rebuilds
+ * the screen. See [GLOSSARY](../GLOSSARY.md): Play-time delta.
+ */
+export function deltaKind(msg: ServerMessage): DeltaKind {
+  return msg.type === "tick" ? "play-time" : "structural";
+}
 
 export function applyDelta(store: GameStore, msg: ServerMessage): void {
   switch (msg.type) {
@@ -80,5 +92,5 @@ export function applyDelta(store: GameStore, msg: ServerMessage): void {
     default:
       break;
   }
-  store.notify();
+  store.notify(deltaKind(msg));
 }

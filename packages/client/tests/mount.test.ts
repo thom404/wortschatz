@@ -903,6 +903,32 @@ describe("mountable app", () => {
     }
   });
 
+  it("a Tick re-anchors the ring timer in place while a structural delta rebuilds the screen", () => {
+    vi.useFakeTimers();
+    try {
+      driveToRoundOne("LAG4T");
+      const timer = app!.root.querySelector<HTMLElement>("#timer")!;
+      const digits = app!.root.querySelector<HTMLElement>("#countdown")!;
+
+      // A play-time delta: the server re-anchors the countdown, and the very
+      // same ring timer and digits survive — updated, never replaced.
+      app!.conn().feed(tick("playing", 90_000));
+      expect(app!.root.querySelector("#timer")).toBe(timer);
+      expect(app!.root.querySelector("#countdown")).toBe(digits);
+      expect(digits.textContent).toBe("1:30");
+      expect(Number(timer.style.getPropertyValue("--p"))).toBeCloseTo(0.75, 2);
+
+      // A structural delta (a roster join) still rebuilds the whole screen:
+      // a fresh ring timer takes the old one's place.
+      app!.conn().feed(playerJoined(2, "Ben"));
+      expect(app!.root.querySelector("#timer")).not.toBe(timer);
+      expect(app!.root.querySelector("#countdown")).not.toBe(digits);
+      expect(app!.root.querySelector("#countdown")!.textContent).toBe("1:30");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("multi-letter tiles contribute their full spelling to the trace", () => {
     driveToRoundOne("LAG4T");
     app!.conn().feed(roundStarted(MIXED, 2)); // board[0] = "sch"

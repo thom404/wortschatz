@@ -1,6 +1,6 @@
 import { loadSession, clearSession, type ConnStatus } from "./api.js";
 import { applyDelta, remainingOf, fmt, LOW_TIME_MS } from "./deltas.js";
-import { GameStore } from "./store.js";
+import { GameStore, type DeltaKind } from "./store.js";
 import { qrSvg } from "./qr.js";
 import { applySkin, loadSkin, skinSwitcherHtml, wireSkinSwitcher } from "./skins.js";
 import type {
@@ -213,7 +213,7 @@ function startRoom(app: App, code: string, greet: GreetFn): void {
     onStatus: (status) => onStatus(app, status),
   });
   if (app.unsub) app.unsub();
-  app.unsub = app.store.subscribe(() => render(app));
+  app.unsub = app.store.subscribe((kind) => render(app, kind));
   // A retry follows a prior home error (a validation request or a rejected
   // greeting); the fresh attempt owns the form from here.
   setHomeError(app, "");
@@ -325,8 +325,16 @@ function teardown(app: App): void {
 /* Render                                                              */
 /* ------------------------------------------------------------------ */
 
-function render(app: App): void {
+function render(app: App, kind: DeltaKind = "structural"): void {
   if (!app.inRoom) return;
+  // A play-time delta changes only the live countdown: it re-anchors the
+  // running ring timer in place, so the `#timer` element and its digits keep
+  // their identity and never flash the ring's full-circle default. Every
+  // structural change rebuilds the whole screen below.
+  if (kind === "play-time") {
+    updateTimer(app);
+    return;
+  }
   syncRoomUrl(app);
   switch (app.store.phase) {
     case "lobby":

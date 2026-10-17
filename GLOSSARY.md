@@ -50,6 +50,15 @@ The pre-round phase of a room, before the host starts round one. Players join, t
 nickname and a seat, and wait; the first round starts when at least 2 players are
 present.
 
+## Play-time delta
+
+A server delta that changes only the live countdown, so the client must
+re-anchor the running ring timer **in place** without rebuilding the screen.
+The once-per-second **Tick** is the first play-time delta. Every other message
+is a structural change (Round start, Intermission, roster join/leave/disconnect,
+host change, screen change, Room end) that still rebuilds the whole screen. See
+[ADR-0009](docs/adr/0009-play-time-deltas-in-place.md).
+
 ## Room
 
 A single private game session, identified by a room code, holding at most 8 players
