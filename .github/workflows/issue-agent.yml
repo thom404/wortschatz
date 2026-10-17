@@ -1,7 +1,8 @@
 name: Issue agent
 
-# A fully specified issue is labelled `ready-for-agent` and a headless agent
-# implements it, or the workflow is started by hand for a specific issue.
+# A human adds the `agent-run` label to start a headless agent on a fully
+# specified issue, or the workflow is started by hand for a specific issue.
+# `ready-for-agent` is a marker only and starts nothing.
 # See docs/adr/0006-autonomous-issue-agent.md.
 
 on:
@@ -26,12 +27,12 @@ permissions:
 
 jobs:
   implement:
-    # Only a label event for `ready-for-agent` on an issue from the owner, a
-    # member, or a collaborator starts a run. An outsider cannot inject work.
+    # Only the `agent-run` label on an issue from the owner, a member, or a
+    # collaborator starts a run. An outsider cannot inject work.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.action == 'labeled' &&
-       github.event.label.name == 'ready-for-agent' &&
+       github.event.label.name == 'agent-run' &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association))
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -57,26 +58,29 @@ jobs:
             echo "branch=feature/${ISSUE_NUMBER}-${slug}"
           } >> "$GITHUB_OUTPUT"
 
+      # The first guard that matches wins: it drops the `agent-run` command
+      # label, comments why, and exits without ever adding `agent-running`.
+      # The blocker check fails closed.
       - name: Skip guard
         id: guard
         env:
           BRANCH: ${{ steps.issue.outputs.branch }}
         run: |
           set -euo pipefail
-          if gh api "repos/${GITHUB_REPOSITORY}/git/matching-refs/heads/${BRANCH}" \
-            --jq '.[].ref' | grep -q .; then
-            gh issue comment "$ISSUE_NUMBER" --body \
-              "Skipping: branch \`${BRANCH}\` already exists."
+          skip() {
+            gh issue edit "$ISSUE_NUMBER" --remove-label agent-run || true
+            gh issue comment "$ISSUE_NUMBER" --body "$1"
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
+          }
+          if gh api "repos/${GITHUB_REPOSITORY}/git/matching-refs/heads/${BRANCH}" \
+            --jq '.[].ref' | grep -q .; then
+            skip "Skipping: branch \`${BRANCH}\` already exists."
           fi
           referencing_pr='.[] | select(((.body // "") + " " + .title) | test("#'"$ISSUE_NUMBER"'([^0-9]|$)")) | .number'
           pr="$(gh pr list --state open --limit 100 --json number,title,body --jq "$referencing_pr" | head -n1)"
           if [ -n "$pr" ]; then
-            gh issue comment "$ISSUE_NUMBER" --body \
-              "Skipping: pull request #${pr} already references this issue."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            exit 0
+            skip "Skipping: pull request #${pr} already references this issue."
           fi
           # The summary counts only open, same-repo blockers. Fail closed if the
           # lookup fails, and if it disagrees with the dependency list.
@@ -91,12 +95,17 @@ jobs:
               echo "::error::Issue #${ISSUE_NUMBER} reports ${open_blocker_count} open blocker(s), but none could be listed."
               exit 1
             fi
-            gh issue comment "$ISSUE_NUMBER" --body \
-              "Skipping: blocked by ${blocker_list}."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            exit 0
+            skip "Skipping: blocked by ${blocker_list}. Add \`agent-run\` again once the blockers close."
           fi
           echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      # The guard passed, so the run is in flight: drop the command label and
+      # show the status marker until the cleanup step below clears it.
+      - name: Mark running
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          gh issue edit "$ISSUE_NUMBER" --remove-label agent-run || true
+          gh issue edit "$ISSUE_NUMBER" --add-label agent-running
 
       # A skip stops here: no dependencies, no agent, just the comment above.
       - name: Setup Node
@@ -109,11 +118,6 @@ jobs:
       - name: Install dependencies
         if: steps.guard.outputs.skip != 'true'
         run: npm ci
-
-      # A second label event is an explicit retry, so the label comes off now.
-      - name: Remove ready-for-agent
-        if: steps.guard.outputs.skip != 'true'
-        run: gh issue edit "$ISSUE_NUMBER" --remove-label ready-for-agent
 
       - name: Install OpenCode CLI
         if: steps.guard.outputs.skip != 'true'
@@ -184,9 +188,16 @@ jobs:
           gh issue comment "$ISSUE_NUMBER" --body \
             "Opened ${pr_url} (run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
 
+      # The status marker never lingers: this runs on success and on failure.
+      - name: Clear running
+        if: always()
+        run: gh issue edit "$ISSUE_NUMBER" --remove-label agent-running || true
+
       - name: Report failure
         if: failure() || cancelled()
         run: |
+          gh issue edit "$ISSUE_NUMBER" --remove-label agent-run || true
+          gh issue edit "$ISSUE_NUMBER" --remove-label agent-running || true
           gh issue edit "$ISSUE_NUMBER" --remove-label ready-for-agent || true
           gh issue edit "$ISSUE_NUMBER" --add-label ready-for-human || true
           gh issue comment "$ISSUE_NUMBER" --body \
