@@ -25,6 +25,13 @@ The server-owned absolute end time (epoch ms) of the current room phase — the
 against it, but the deadline is authoritative and the client's local zero is cosmetic.
 See Tick.
 
+## Deep link
+
+The absolute join URL for a room: `location.origin` + `/r/` + the uppercased
+**Room code**. The lobby shows it as text and encodes the same string as a QR
+code, so a phone camera can join. Both render from one value, so they never
+disagree. See [ADR-0008](docs/adr/0008-lobby-qr-invite.md).
+
 ## Host
 
 The player who controls the room. The **creator** of a room is its first host; if the

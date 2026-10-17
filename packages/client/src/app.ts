@@ -1,6 +1,7 @@
 import { loadSession, clearSession, type ConnStatus } from "./api.js";
 import { applyDelta, remainingOf, fmt, LOW_TIME_MS } from "./deltas.js";
 import { GameStore } from "./store.js";
+import { qrSvg } from "./qr.js";
 import { applySkin, loadSkin, skinSwitcherHtml, wireSkinSwitcher } from "./skins.js";
 import type { ClientMessage, PlayerInfo, RoomsEndedMsg, ServerMessage } from "@wortschatz/shared";
 import { neighbors, PROTOCOL, tileSpellingLength, tileStrings } from "@wortschatz/shared";
@@ -344,10 +345,19 @@ function updateTimer(app: App): void {
 
 function renderLobby(app: App): void {
   document.title = `${APP_NAME} — Raum ${app.store.code}`;
+  // One source of truth for the join target (#48): the QR payload and the
+  // plain-text fallback are the same absolute deep link, code uppercased.
+  const code = app.store.code.toUpperCase();
+  const deepLink = `${location.origin}/r/${code}`;
   app.root.innerHTML = `
     <div class="sheet">
       <h1>Raum ${escapeHtml(app.store.code)}</h1>
-      <p>Lade Freunde über den Deep-Link ein:<br /><code>${escapeHtml(location.origin)}<wbr />/r/${escapeHtml(app.store.code)}</code></p>
+      <section class="panel invite">
+        <h2>Einladen</h2>
+        <p class="note">Scanne den Code mit der Kamera, um beizutreten.</p>
+        ${qrSvg(deepLink)}
+        <p class="invite-link"><code id="join-link">${escapeHtml(location.origin)}<wbr />/r/${escapeHtml(code)}</code></p>
+      </section>
       ${statusHtml(app)}
       <section class="panel">
         <h2>Spieler</h2>

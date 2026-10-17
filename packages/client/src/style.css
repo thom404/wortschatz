@@ -172,6 +172,21 @@ h2 {
   margin-bottom: var(--gap-s);
 }
 
+/* Lobby invite (#48): the fixed-contrast core is the SVG itself — its own
+ * literal white background and black modules, so the code stays scannable
+ * under every skin. This rule only sizes/centres it and touches no colour. */
+.qr {
+  display: block;
+  width: 200px;
+  max-width: 100%;
+  height: auto;
+  margin: var(--gap-s) auto;
+}
+.invite-link {
+  margin: 0;
+  text-align: center;
+}
+
 /* ------------------------------------------------------------------ */
 /* Ring timer (ADR-0002)                                               */
 /* ------------------------------------------------------------------ */
