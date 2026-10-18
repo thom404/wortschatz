@@ -37,7 +37,7 @@
   --gap-s: 8px;
   --gap-xs: 6px;
   --gap-2xs: 4px;
-  --board-gap: 6px;
+  --board-gap: 6px; /* tile gap; also the drag clear-hit margin in app.ts */
   --chip-pad-y: 3px;
   --chip-pad-x: 12px;
   --badge-pad-y: 1px;

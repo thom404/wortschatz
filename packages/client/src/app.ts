@@ -787,18 +787,58 @@ function beginTrace(app: App, x: number, y: number, target: EventTarget | null):
 }
 
 /**
+ * How far (px) inside every edge of a tile a movement sample must land to
+ * count as a clear hit. It is the gap between adjacent board tiles
+ * (`--board-gap` in `style.css`): a sample in that gap, or clipping a tile's
+ * edge or corner, rounds unpredictably to whichever neighbour the browser's
+ * sub-pixel arithmetic picks, so it must not move the trace. Kept well below
+ * half a cell, so a genuinely crossed tile still offers clear ground.
+ */
+const CLEAR_HIT_MARGIN = 6;
+
+/**
+ * The tile a movement sample clearly hits, or -1 when the sample is
+ * ambiguous. `hitTileIndex` resolves a sample to exactly one tile — the
+ * browser's sub-pixel rounding decides which — and this filters out every
+ * resolution the finger is not well inside: within the board gap of any
+ * edge. Ignoring those samples lets a stair-step bridge to the next clear
+ * sample cover the ground, so no crossed tile is lost while a corner clip
+ * neither adds nor unwinds a tile. The opening press stays lenient and uses
+ * `hitTileIndex` directly.
+ */
+function clearHitTileIndex(app: App, x: number, y: number, target: EventTarget | null): number {
+  const idx = hitTileIndex(app, x, y, target);
+  if (idx < 0) return -1;
+  const el = app.root.querySelector("#board")?.children[idx];
+  if (!el) return -1;
+  const box = el.getBoundingClientRect();
+  if (
+    x - box.left < CLEAR_HIT_MARGIN ||
+    box.right - x < CLEAR_HIT_MARGIN ||
+    y - box.top < CLEAR_HIT_MARGIN ||
+    box.bottom - y < CLEAR_HIT_MARGIN
+  ) {
+    return -1;
+  }
+  return idx;
+}
+
+/**
  * Extends/unwinds the live trace for the tile under the pointer. Callers
  * check the movement sample belongs to the live gesture before calling.
  *
- * A movement sample normally lands on one 8-way neighbour. A fast swipe can
- * deliver two consecutive samples of one gesture more than one tile apart;
- * then the tiles between them are appended as an 8-way **stair-step walk**
- * from the last selected tile toward the new sample, so no crossed tile is
- * lost. The path stays valid: a step onto an already-selected tile is
- * rejected, and a sample landing on the immediately previous tile unwinds it.
+ * Only a sample the finger is clearly inside a tile (see
+ * `clearHitTileIndex`) may move the trace; an ambiguous sample — in the gap,
+ * or clipping an edge or corner — is ignored. A movement sample normally
+ * lands on one 8-way neighbour. A fast swipe can deliver two consecutive
+ * samples of one gesture more than one tile apart; then the tiles between
+ * them are appended as an 8-way **stair-step walk** from the last selected
+ * tile toward the new sample, so no crossed tile is lost. The path stays
+ * valid: a step onto an already-selected tile is rejected, and a sample
+ * landing on the immediately previous tile unwinds it.
  */
 function continueTrace(app: App, x: number, y: number, target: EventTarget | null): boolean {
-  const idx = hitTileIndex(app, x, y, target);
+  const idx = clearHitTileIndex(app, x, y, target);
   if (idx < 0) return false;
   const trace = app.trace;
   const last = trace[trace.length - 1];
