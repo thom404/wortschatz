@@ -32,6 +32,15 @@ The absolute join URL for a room: `location.origin` + `/r/` + the uppercased
 code, so a phone camera can join. Both render from one value, so they never
 disagree. See [ADR-0008](docs/adr/0008-lobby-qr-invite.md).
 
+## Gesture
+
+One continuous board drag from press to release, independent of the event
+streams the browser reports it through: a pointer stream and a touch stream may
+both describe the same finger. A gesture builds exactly one trace, and a real
+release (`pointerup` / `touchend`) or `touchcancel` ends it; a touch
+`pointercancel` does not end it while its touch stream continues. Exactly one
+`submit-word` crosses the wire per gesture.
+
 ## Host
 
 The player who controls the room. The **creator** of a room is its first host; if the

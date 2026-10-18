@@ -11,6 +11,8 @@ import {
   strayTouchMove,
   synthesizePointerDrag,
   synthesizeTouchDrag,
+  firePointerEvent,
+  fireTouchEvent,
   seat,
   tick,
   tileEls,
@@ -848,6 +850,126 @@ describe("mountable app", () => {
     // After release the drag is idle: a stray touchmove goes unclaimed.
     const afterEnd = strayTouchMove(tiles[7]!);
     expect(afterEnd.defaultPrevented).toBe(false);
+  });
+
+  describe("one gesture across pointer and touch streams (#97)", () => {
+    /** The H → A → T tiles of the shared BOARD, all 8-way adjacent. */
+    function hatTiles(): [HTMLElement, HTMLElement, HTMLElement] {
+      const tiles = tileEls(app!.root);
+      return [tiles[0]!, tiles[1]!, tiles[4]!];
+    }
+
+    it("a pointerdown drag continues through touchmove (Firefox for Android)", () => {
+      driveToRoundOne("LAG4T");
+      const [h, a, t] = hatTiles();
+      const traceSeen: string[] = [];
+      const seen = () => traceSeen.push(app!.root.querySelector("#trace")!.textContent!);
+
+      // The browser commits to a pointer drag, then delivers the movement
+      // only as touch events.
+      firePointerEvent(h, "pointerdown", { pointerType: "touch" });
+      seen();
+      fireTouchEvent(h, "touchstart", { to: h });
+      fireTouchEvent(h, "touchmove", { to: a });
+      seen();
+      fireTouchEvent(h, "touchmove", { to: t });
+      seen();
+      fireTouchEvent(h, "touchend", { to: t });
+      seen();
+
+      expect(traceSeen).toEqual(["H", "HA", "HAT", "Wische über die Felder, um ein Wort zu bilden."]);
+      expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HAT", reqId: 3 });
+    });
+
+    it("counts a move carried by both streams once and submits a single frame", () => {
+      driveToRoundOne("LAG4T");
+      const [h, a, t] = hatTiles();
+      firePointerEvent(h, "pointerdown", { pointerType: "touch" });
+      fireTouchEvent(h, "touchstart", { to: h });
+
+      // The same H → A move arrives over the pointer stream, then again over
+      // touch: the tile is added once and the trace never repeats it.
+      firePointerEvent(a, "pointermove", { pointerType: "touch" });
+      fireTouchEvent(h, "touchmove", { to: a });
+      expect(app!.root.querySelector("#trace")!.textContent).toBe("HA");
+      firePointerEvent(t, "pointermove", { pointerType: "touch" });
+      fireTouchEvent(h, "touchmove", { to: t });
+      expect(app!.root.querySelector("#trace")!.textContent).toBe("HAT");
+
+      // Both streams then report the release of the same finger.
+      firePointerEvent(t, "pointerup", { pointerType: "touch" });
+      fireTouchEvent(h, "touchend", { to: t });
+
+      const submits = app!
+        .conn()
+        .sent()
+        .filter((m) => m.type === "submit-word");
+      expect(submits).toEqual([{ type: "submit-word", word: "HAT", reqId: 3 }]);
+    });
+
+    it("a pointercancel does not discard a word the touch stream keeps building", () => {
+      driveToRoundOne("LAG4T");
+      const [h, a, t] = hatTiles();
+      firePointerEvent(h, "pointerdown", { pointerType: "touch" });
+      fireTouchEvent(h, "touchstart", { to: h });
+      firePointerEvent(a, "pointermove", { pointerType: "touch" });
+
+      // The browser cancels the pointer stream, but the same finger keeps
+      // moving over touch: the gesture survives.
+      firePointerEvent(a, "pointercancel", { pointerType: "touch" });
+      fireTouchEvent(h, "touchmove", { to: t });
+      expect(app!.root.querySelector("#trace")!.textContent).toBe("HAT");
+      fireTouchEvent(h, "touchend", { to: t });
+      expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HAT", reqId: 3 });
+    });
+
+    it("a mouse pointercancel ends the gesture without submitting", () => {
+      driveToRoundOne("LAG4T");
+      const [h, a] = hatTiles();
+      firePointerEvent(h, "pointerdown", { pointerType: "mouse" });
+      firePointerEvent(a, "pointermove", { pointerType: "mouse" });
+      // No touch fallback: the interrupted gesture clears without a word.
+      firePointerEvent(a, "pointercancel", { pointerType: "mouse" });
+      expect(app!.conn().sentTypes()).toEqual(["create-room", "start-round"]);
+      expect(app!.root.querySelector("#trace")!.textContent).toBe(
+        "Wische über die Felder, um ein Wort zu bilden."
+      );
+    });
+
+    it("touchcancel ends the gesture without submitting", () => {
+      driveToRoundOne("LAG4T");
+      const [h, a] = hatTiles();
+      fireTouchEvent(h, "touchstart", { to: h });
+      fireTouchEvent(h, "touchmove", { to: a });
+      fireTouchEvent(h, "touchcancel", { to: a });
+      expect(app!.conn().sentTypes()).toEqual(["create-room", "start-round"]);
+      expect(app!.root.querySelector("#trace")!.textContent).toBe(
+        "Wische über die Felder, um ein Wort zu bilden."
+      );
+    });
+
+    it("a touch-only stream traces and submits (regression replay)", () => {
+      driveToRoundOne("LAG4T");
+      const [h, a, t] = hatTiles();
+      // No pointer events at all: the browser delivers only touch.
+      fireTouchEvent(h, "touchstart", { to: h });
+      fireTouchEvent(h, "touchmove", { to: a });
+      expect(app!.root.querySelector("#trace")!.textContent).toBe("HA");
+      fireTouchEvent(h, "touchmove", { to: t });
+      fireTouchEvent(h, "touchend", { to: t });
+      expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HAT", reqId: 3 });
+    });
+
+    it("a single tap submits the tile's one-letter word", () => {
+      driveToRoundOne("LAG4T");
+      const [h] = hatTiles();
+      firePointerEvent(h, "pointerdown", { pointerType: "touch" });
+      fireTouchEvent(h, "touchstart", { to: h });
+      firePointerEvent(h, "pointerup", { pointerType: "touch" });
+      fireTouchEvent(h, "touchend", { to: h });
+      // One tap, one release across both streams, one letter.
+      expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "H", reqId: 3 });
+    });
   });
 
   it("clears the found-word chips when the next round starts", () => {

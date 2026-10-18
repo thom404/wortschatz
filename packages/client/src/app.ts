@@ -54,8 +54,22 @@ export type ConnFactory = (opts: {
 
 type Unsubscribe = () => void;
 
-/** The live drag state: a selected tile path. `null` between drags. */
-type DragHandle = { kind: "pointer" | "touch"; id: number } | null;
+/**
+ * The live drag state: one gesture plus whichever event streams report it.
+ * A gesture begun by either stream accepts movement from both — Android
+ * Firefox begins with `pointerdown` but keeps sending `touchmove` — and
+ * whichever stream releases first ends it, so the browser reporting the
+ * same finger twice still submits exactly once. `null` between drags.
+ */
+interface DragGesture {
+  /** The pointer stream's id, once a pointer event has joined the gesture. */
+  pointerId: number | null;
+  /** A `pointercancel` has already dropped the pointer stream. */
+  pointerCancelled: boolean;
+  /** The touch stream's identifier, once a touch event has joined. */
+  touchId: number | null;
+}
+type DragHandle = DragGesture | null;
 
 interface App {
   root: HTMLElement;
@@ -631,63 +645,105 @@ function roomNotFoundOutcome(app: App): OutcomeScreen {
 /* ------------------------------------------------------------------ */
 
 /**
- * The pointer drag surface replacing the typed input (#19): pressing a
+ * The drag word-input surface replacing the typed input (#19): pressing a
  * tile begins the trace; moving through 8-way adjacent tiles extends it;
  * moving onto the immediately previous tile deselects it (backtracking);
  * releasing submits the traced string. The trace paints directly onto the
  * rendered DOM (no full re-render mid-drag) and clears on release — the
  * verdict arrives as a server message either way.
  *
- * Pointer events carry touch; touch events are bound too for platforms
- * without PointerEvent, and no-op when a pointer drag is already live
- * (browsers fire both for the same gesture). Scroll/zoom under the finger
- * is prevented on the wire: `touch-action: none` on the board, plus
+ * One gesture, both streams (this supersedes the #19 "pointer events carry
+ * touch; touch handlers no-op once a pointer drag is live" decision): a
+ * gesture begun by a pointer event accepts continuation from touch events
+ * and vice versa, because Android Firefox commits to a pointer drag while
+ * delivering movement only as `touchmove`. Movement seen through both
+ * streams hits the same tile, and a second real release finds no live
+ * gesture, so each gesture submits exactly once. A `pointercancel` for a
+ * touch pointer does not end a gesture the touch stream still carries; a
+ * mouse/pen cancel, or a `touchcancel`, does end it. Scroll/zoom under the
+ * finger stays prevented: `touch-action: none` on the board, plus
  * `preventDefault` while a touch drag moves.
  */
 function wireDrag(app: App): () => void {
   const root = app.root;
 
   const onPointerDown = (ev: PointerEvent) => {
-    beginTrace(app, { kind: "pointer", id: ev.pointerId }, ev.clientX, ev.clientY, ev.target);
+    const gesture = app.dragging;
+    if (!gesture) {
+      const drag = beginTrace(app, ev.clientX, ev.clientY, ev.target);
+      if (!drag) return;
+      drag.pointerId = ev.pointerId;
+      return;
+    }
+    // The same gesture reported through its pointer stream after touch
+    // already began it: join the pointer for movement and release dedupe
+    // rather than starting a second gesture.
+    if (!gesture.pointerCancelled && gesture.pointerId === null) {
+      gesture.pointerId = ev.pointerId;
+    }
   };
   const onPointerMove = (ev: PointerEvent) => {
-    continueTrace(
-      app,
-      ev.clientX,
-      ev.clientY,
-      ev.target,
-      app.dragging?.kind === "pointer" && app.dragging.id === ev.pointerId
-    );
+    const gesture = app.dragging;
+    if (!gesture || gesture.pointerCancelled || gesture.pointerId !== ev.pointerId) return;
+    continueTrace(app, ev.clientX, ev.clientY, ev.target);
   };
   const onPointerUp = (ev: PointerEvent) => {
-    if (app.dragging?.kind === "pointer" && app.dragging.id === ev.pointerId) releaseTrace(app, true);
+    const gesture = app.dragging;
+    if (!gesture || gesture.pointerCancelled || gesture.pointerId !== ev.pointerId) return;
+    releaseTrace(app, true);
   };
-  const onPointerCancel = () => {
+  const onPointerCancel = (ev: PointerEvent) => {
+    const gesture = app.dragging;
+    if (!gesture || gesture.pointerId !== ev.pointerId) return;
+    // A touch pointer's cancel is not the gesture's end while the touch
+    // stream keeps delivering the same finger: defer to `touchend` /
+    // `touchcancel`. A mouse or pen cancel has no touch fallback and ends
+    // the gesture without submitting.
+    if (ev.pointerType === "touch" && gesture.touchId !== null) {
+      gesture.pointerCancelled = true;
+      return;
+    }
     releaseTrace(app, false);
   };
 
   const onTouchStart = (ev: TouchEvent) => {
     const t = ev.changedTouches[0];
     if (!t) return;
-    if (beginTrace(app, { kind: "touch", id: t.identifier }, t.clientX, t.clientY, t.target))
+    const gesture = app.dragging;
+    if (!gesture) {
+      const drag = beginTrace(app, t.clientX, t.clientY, t.target);
+      if (!drag) return;
+      drag.touchId = t.identifier;
       ev.preventDefault();
+      return;
+    }
+    // The pointer-first stream: join the touch stream to the live gesture
+    // so its moves continue the trace (Android Firefox).
+    if (gesture.touchId === null) {
+      gesture.touchId = t.identifier;
+      ev.preventDefault();
+    }
   };
   const onTouchMove = (ev: TouchEvent) => {
     const t = ev.changedTouches[0];
     if (!t) return;
-    if (
-      continueTrace(
-        app,
-        t.clientX,
-        t.clientY,
-        t.target,
-        app.dragging?.kind === "touch" && app.dragging.id === t.identifier
-      )
-    )
-      ev.preventDefault();
+    const gesture = app.dragging;
+    if (!gesture || gesture.touchId !== t.identifier) return;
+    if (continueTrace(app, t.clientX, t.clientY, t.target)) ev.preventDefault();
   };
-  const onTouchEnd = () => {
-    if (app.dragging?.kind === "touch") releaseTrace(app, true);
+  const onTouchEnd = (ev: TouchEvent) => {
+    const gesture = app.dragging;
+    if (!gesture || gesture.touchId === null) return;
+    const t = ev.changedTouches[0];
+    if (t && t.identifier !== gesture.touchId) return;
+    releaseTrace(app, true);
+  };
+  const onTouchCancel = (ev: TouchEvent) => {
+    const gesture = app.dragging;
+    if (!gesture || gesture.touchId === null) return;
+    const t = ev.changedTouches[0];
+    if (t && t.identifier !== gesture.touchId) return;
+    releaseTrace(app, false);
   };
 
   root.addEventListener("pointerdown", onPointerDown);
@@ -697,7 +753,7 @@ function wireDrag(app: App): () => void {
   document.addEventListener("touchstart", onTouchStart, { passive: false });
   document.addEventListener("touchmove", onTouchMove, { passive: false });
   document.addEventListener("touchend", onTouchEnd);
-  document.addEventListener("touchcancel", onPointerCancel);
+  document.addEventListener("touchcancel", onTouchCancel);
   return () => {
     root.removeEventListener("pointerdown", onPointerDown);
     document.removeEventListener("pointermove", onPointerMove);
@@ -706,33 +762,32 @@ function wireDrag(app: App): () => void {
     document.removeEventListener("touchstart", onTouchStart);
     document.removeEventListener("touchmove", onTouchMove);
     document.removeEventListener("touchend", onTouchEnd);
-    document.removeEventListener("touchcancel", onPointerCancel);
+    document.removeEventListener("touchcancel", onTouchCancel);
   };
 }
 
-/** Starts a trace if the press lands on a rendered game tile during play.
- *  Returns whether the trace began (and thus whether the gesture was
- *  claimed — touch handlers preventDefault only then). */
-function beginTrace(
-  app: App,
-  drag: NonNullable<DragHandle>,
-  x: number,
-  y: number,
-  target: EventTarget | null
-): boolean {
-  if (app.dragging) return false;
-  if (app.store.phase !== "playing" || app.store.self.role === "spectator") return false;
+/** Starts a gesture if the press lands on a rendered game tile during play.
+ *  Returns the new gesture (and thus whether the event stream was claimed —
+ *  touch handlers preventDefault only then), or `null` when a gesture is
+ *  already live or the board is not the player's to drag. */
+function beginTrace(app: App, x: number, y: number, target: EventTarget | null): DragGesture | null {
+  if (app.dragging) return null;
+  if (app.store.phase !== "playing" || app.store.self.role === "spectator") return null;
   const idx = hitTileIndex(app, x, y, target);
-  if (idx < 0) return false;
+  if (idx < 0) return null;
+  const gesture: DragGesture = {
+    pointerId: null,
+    pointerCancelled: false,
+    touchId: null,
+  };
   app.trace = [idx];
-  app.dragging = drag;
+  app.dragging = gesture;
   paintTrace(app);
-  return true;
+  return gesture;
 }
 
 /** Extends/unwinds the live trace for the tile under the pointer. */
-function continueTrace(app: App, x: number, y: number, target: EventTarget | null, mine: boolean): boolean {
-  if (!mine) return false;
+function continueTrace(app: App, x: number, y: number, target: EventTarget | null): boolean {
   const idx = hitTileIndex(app, x, y, target);
   if (idx < 0) return false;
   const trace = app.trace;
