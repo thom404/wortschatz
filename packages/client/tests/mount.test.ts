@@ -1028,9 +1028,10 @@ describe("mountable app", () => {
     it("fires one pointer move at an explicit point, not just a tile centre", () => {
       driveToRoundOne("LAG4T");
       const board = tiles();
-      // A sample a few px inside A's top-left corner, away from its centre.
+      // A sample clearly inside A's top-left corner, away from its centre
+      // (past the board-gap margin that #103 requires for a clear hit).
       const box = board[1]!.getBoundingClientRect();
-      const at = { x: box.left + 5, y: box.top + 5 };
+      const at = { x: box.left + 8, y: box.top + 8 };
       const seen: { x: number; y: number }[] = [];
       document.addEventListener("pointermove", (ev) => seen.push({ x: ev.clientX, y: ev.clientY }), {
         once: true,
@@ -1047,7 +1048,7 @@ describe("mountable app", () => {
       driveToRoundOne("LAG4T");
       const board = tiles();
       const box = board[1]!.getBoundingClientRect();
-      const at = { x: box.left + 5, y: box.top + 5 };
+      const at = { x: box.left + 8, y: box.top + 8 };
       const seen: { x: number; y: number }[] = [];
       document.addEventListener(
         "touchmove",
@@ -1095,6 +1096,86 @@ describe("mountable app", () => {
       firePointerEvent(board[0]!, "pointerdown", { pointerType: "mouse" });
       firePointerEvent(board[0]!, "pointermove", { pointerType: "mouse", at: gap });
       expect(app!.root.querySelector("#trace")!.textContent).toBe("H");
+    });
+  });
+
+  describe("only a clearly-inside sample moves the trace (#103)", () => {
+    /** The shared BOARD: tile 0=H, 1=A, 5=I, 10=M. */
+    function tiles(): HTMLElement[] {
+      return tileEls(app!.root);
+    }
+
+    /** The live trace the player sees, i.e. the word a release would submit. */
+    function liveTrace(): string {
+      return app!.root.querySelector("#trace")!.textContent!;
+    }
+
+    it("ignores a touchmove clipping tile A's corner, then bridges to M", () => {
+      driveToRoundOne("LAG4T");
+      const board = tiles();
+      const [h, a, m] = [board[0]!, board[1]!, board[10]!];
+
+      fireTouchEvent(h, "touchstart", { to: h });
+      expect(liveTrace()).toBe("H");
+
+      // 1px inside A's near corner: the finger only clips the tile, so the
+      // sample is ignored and the trace stays "H".
+      const box = a.getBoundingClientRect();
+      fireTouchEvent(h, "touchmove", { at: { x: box.left + 1, y: box.top + 1 } });
+      expect(liveTrace()).toBe("H");
+
+      // Continuing to M's centre bridges the ground in between: H → I → M.
+      fireTouchEvent(h, "touchmove", { to: m });
+      expect(liveTrace()).toBe("HIM");
+      fireTouchEvent(h, "touchend", { to: m });
+      expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HIM", reqId: 3 });
+    });
+
+    it("does not unwind the previous tile when a touchmove clips its corner", () => {
+      driveToRoundOne("LAG4T");
+      const board = tiles();
+      const h = board[0]!;
+      const i = board[5]!;
+
+      fireTouchEvent(h, "touchstart", { to: h });
+      fireTouchEvent(h, "touchmove", { to: i });
+      expect(liveTrace()).toBe("HI");
+
+      // 1px inside H's near corner (bottom-right, toward I): an ambiguous
+      // sample must not be read as backtracking onto the previous tile.
+      const box = h.getBoundingClientRect();
+      fireTouchEvent(h, "touchmove", { at: { x: box.right - 1, y: box.bottom - 1 } });
+      expect(liveTrace()).toBe("HI");
+      fireTouchEvent(h, "touchend", { to: i });
+      expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HI", reqId: 3 });
+    });
+
+    it("still unwinds the previous tile when the finger reaches its centre", () => {
+      driveToRoundOne("LAG4T");
+      const board = tiles();
+      const h = board[0]!;
+      const i = board[5]!;
+
+      fireTouchEvent(h, "touchstart", { to: h });
+      fireTouchEvent(h, "touchmove", { to: i });
+      expect(liveTrace()).toBe("HI");
+
+      // The previous tile's centre is a clear hit: a deliberate backtrack.
+      fireTouchEvent(h, "touchmove", { to: h });
+      expect(liveTrace()).toBe("H");
+      fireTouchEvent(h, "touchend", { to: h });
+      expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "H", reqId: 3 });
+    });
+
+    it("moves the trace not at all for a sample placed in the gap", () => {
+      driveToRoundOne("LAG4T");
+      const board = tiles();
+      const h = board[0]!;
+
+      fireTouchEvent(h, "touchstart", { to: h });
+      // x=86 falls between tile 1 (ends at 84) and tile 2 (starts at 88).
+      fireTouchEvent(h, "touchmove", { at: { x: 86, y: 20 } });
+      expect(liveTrace()).toBe("H");
     });
   });
 
