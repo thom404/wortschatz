@@ -1,0 +1,46 @@
+# Reviewed word-list exclusions (ADR-0001 amendment, #107).
+#
+# One NFC-normalized lowercase entry per line, matching the list's canonical
+# form. Blank lines and lines starting with "#" are ignored. Every entry must
+# be present in the vendored raw list; the build fails otherwise.
+#
+# Policy: exclude non-German-language forms, proper nouns/toponyms and
+# abbreviations. Keep German loanwords that Duden accepts (e.g. Café, Cliché,
+# Coupé). Dated/regional/archaic forms and rare inflections are not removed
+# by this list. See docs/word-list-curation.md.
+
+# Proper nouns, toponyms and surnames (upstream blacklist).
+bingen
+birkner
+eichner
+emden
+iller
+lindner
+schanghai
+schmitz
+schulte
+strunz
+völler
+
+# Brands and product names.
+google
+unix
+
+# Abbreviations (upstream blacklist).
+cmos
+dax
+ebits
+iban
+pkw
+
+# Non-German-language forms (not Duden-accepted German loanwords).
+bébé
+bébés
+burúshaski
+nouméa
+pokémon
+pokémons
+šeqel
+taíno
+tupinambá
+wayapopihíwi

@@ -15,12 +15,22 @@ courtesy, and we verify the pinned SHA-256 during the Docker build so the licens
 artifact is the one we intended.
 
 The upstream `blacklist` file is a maintenance aid for the list authors (words excluded
-from future candidates); it is **not** applied at runtime and is not vendored.
+from candidates). It is **not** applied at runtime. A copy is vendored for the offline
+word-list audit only:
+
+- **File:** `packages/server/data/enz-blacklist`
+- **Pinned commit:** `1071d87d9535b57b80ec076c699f2578a28ee9dc`
+- **SHA-256:** `7feaaed9b39473f01de967caf2da7e3f5cf34a2dad49fb6a5d5b6840d51acf68`
+- **Size:** 91,697 bytes, 10,567 entries, UTF-8, LF
+
+The reviewed **Exclusion list** (`packages/server/word-exclusions.txt`) is ours, not
+upstream data; see [`docs/word-list-curation.md`](../word-list-curation.md).
 
 ## Updating
 
 To bump the list: choose a new upstream commit, update the pinned SHA-256 here and in
-the build assertion, re-vendor `words` + `COPYING`, and rebuild the DAWG. The upstream
-list is a plain one-word-per-line file, so there is nothing else to regenerate.
+the build assertion, re-vendor `words` + `COPYING`, re-run the word-list audit, and
+rebuild the DAWG. The upstream list is a plain one-word-per-line file, so there is
+nothing else to regenerate; the build fails if a reviewed exclusion no longer exists.
 
 See [ADR-0001](../adr/0001-word-list-source-and-packaging.md) for the full decision.

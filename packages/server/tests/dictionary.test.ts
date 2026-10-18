@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDictionary } from "../src/dictionary/index.js";
+import { createDictionary, normalizeExclusions, rawLinesToWords } from "../src/dictionary/index.js";
 
 const LINES = [
   "Test", // capitalised safely; membership is case-insensitive
@@ -50,6 +50,53 @@ describe("createDictionary", () => {
     // membership or rejection.
     expect(dict.isValid("Wort")).toBe(true);
     expect(dict.isValid("straße")).toBe(true);
+  });
+});
+
+/* ---------------- curation ---------------- */
+
+describe("reviewed exclusions", () => {
+  const CURATED_LINES = ["Bébé", "Bébés", "Café", "Cliché", "Coupé", "Straße", "Äpfel", "Haus"];
+  // Comments, case variants and duplicates are tolerated; the seam folds
+  // them to the list's NFC lowercase canonical form.
+  const EXCLUSIONS = ["# French baby form", "BÉBÉ", "bébé", "", "Bébés"];
+  const dict = createDictionary(CURATED_LINES, EXCLUSIONS);
+
+  it("rejects curated-away foreign forms like any other invalid word", () => {
+    expect(dict.isValid("Bébé")).toBe(false);
+    expect(dict.isValid("BÉBÉ")).toBe(false);
+    expect(dict.isValid("bébés")).toBe(false);
+  });
+
+  it("keeps Duden-accepted loanwords, umlauts and ß working", () => {
+    expect(dict.isValid("Café")).toBe(true);
+    expect(dict.isValid("Cliché")).toBe(true);
+    expect(dict.isValid("Coupé")).toBe(true);
+    expect(dict.isValid("straße")).toBe(true);
+    expect(dict.isValid("Äpfel")).toBe(true);
+  });
+
+  it("still drops sub-3 entries and leaves unrelated words alone", () => {
+    expect(dict.isValid("de")).toBe(false);
+    expect(dict.isValid("Haus")).toBe(true);
+  });
+
+  it("normalizes and dedupes exclusions", () => {
+    expect(normalizeExclusions(EXCLUSIONS)).toEqual(["bébé", "bébés"]);
+  });
+
+  it("fails loudly when an exclusion is stale or mistyped", () => {
+    expect(() => rawLinesToWords(["Haus"], ["bébé"])).toThrow(/not present/);
+    expect(() => rawLinesToWords(["Haus"], ["fehlt"])).toThrow(/not present/);
+    expect(() => rawLinesToWords(["Haus"], ["de"])).toThrow(/shorter than 3/);
+  });
+
+  it("does not enumerate curated-away words on the board", () => {
+    const board = ["b", "é", "b", "é", "c", "a", "f", "é", "h", "a", "u", "s", "z", "z", "z", "z"];
+    const enumerated = dict.findWords(board);
+    expect(enumerated).toContain("café");
+    expect(enumerated).not.toContain("bébé");
+    expect(enumerated).not.toContain("bébés");
   });
 });
 
