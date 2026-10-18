@@ -32,6 +32,15 @@ The absolute join URL for a room: `location.origin` + `/r/` + the uppercased
 code, so a phone camera can join. Both render from one value, so they never
 disagree. See [ADR-0008](docs/adr/0008-lobby-qr-invite.md).
 
+## Exclusion list
+
+The reviewed set of normalized entries subtracted from the vendored word list
+at ingestion: non-German-language forms, proper nouns/toponyms and
+abbreviations, but not German loanwords Duden accepts. It is committed beside
+the server package, applied by the single raw-lines-to-words seam shared by the
+DAWG build and the dev fallback, and validated so every entry must exist in the
+raw list. See [ADR-0001](docs/adr/0001-word-list-source-and-packaging.md).
+
 ## Gesture
 
 One continuous board drag from press to release, independent of the event

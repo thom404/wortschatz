@@ -12,6 +12,12 @@
  * canonical form; real `ä/ö/ü/ß` with no `ae/oe/ue/ss` aliasing; strict list
  * membership; entries shorter than three letters are dropped at load;
  * colliding entries are deduped.
+ *
+ * Curation (ADR-0001 amendment, #107): the reviewed exclusion list is
+ * subtracted here — the single ingestion seam shared by `createDictionary`,
+ * the dev fallback loader and the DAWG build. Exclusion entries are
+ * normalized, deduped and must exist in the raw list, so stale curation
+ * fails loudly instead of silently doing nothing.
  */
 import { PROTOCOL, neighbors, tileStrings, type Tile } from "@wortschatz/shared";
 import { buildDawg, walk, type DawgNode } from "./dawg.js";
@@ -20,19 +26,49 @@ export function normalizeWord(word: string): string {
   return word.normalize("NFC").toLowerCase();
 }
 
-/** Raw word-list lines → normalized, deduped, ≥3-letters entries. */
-export function rawLinesToWords(lines: string[]): string[] {
+/**
+ * Exclusion-list lines → normalized, deduped entries. Blank lines and lines
+ * starting with `#` are comments. Entries shorter than three letters can
+ * never be present in the loaded list, so they are rejected up front.
+ */
+export function normalizeExclusions(lines: string[]): string[] {
+  const seen = new Set<string>();
+  for (const line of lines) {
+    const text = line.trim();
+    if (text.length === 0 || text.startsWith("#")) continue;
+    const word = normalizeWord(text);
+    if (word.length < 3) {
+      throw new Error(`word exclusion shorter than 3 letters: ${JSON.stringify(text)}`);
+    }
+    seen.add(word);
+  }
+  return [...seen].sort();
+}
+
+/**
+ * Raw word-list lines → normalized, deduped, ≥3-letters entries with the
+ * reviewed exclusions subtracted. Each exclusion must be present in the raw
+ * list; a stale or mistyped entry is an error, not a no-op.
+ */
+export function rawLinesToWords(lines: string[], exclusionLines: string[] = []): string[] {
   const seen = new Set<string>();
   for (const line of lines) {
     const word = normalizeWord(line);
     if (word.length < 3) continue;
     seen.add(word);
   }
+  const exclusions = normalizeExclusions(exclusionLines);
+  for (const word of exclusions) {
+    if (!seen.has(word)) {
+      throw new Error(`word exclusion not present in the word list: "${word}"`);
+    }
+  }
+  for (const word of exclusions) seen.delete(word);
   return [...seen];
 }
 
-export function createDictionary(lines: string[]): Dictionary {
-  const root = buildDawg(rawLinesToWords(lines));
+export function createDictionary(lines: string[], exclusionLines: string[] = []): Dictionary {
+  const root = buildDawg(rawLinesToWords(lines, exclusionLines));
   return new Dictionary(root);
 }
 

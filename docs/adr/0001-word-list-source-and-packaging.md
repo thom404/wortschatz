@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-14
+- Amended: 2026-10-18 (#107) — reviewed exclusion list
 - Ticket: #10 (Word-list source choice & packaging)
 - Research: [`docs/research/german-word-list.md`](../research/german-word-list.md) (issue #2)
 
@@ -60,6 +61,34 @@ Excluded as not redistributable: Duden, DWDS, dict.cc, LEO/PONS/Wahrig, and the
 10. **Verification.** Golden valid/invalid word checks (incl. umlauts/`ß`), a fixture-board
     enumeration snapshot, and build assertions (checksum; zero entries < 3).
 
+## Amendment (#107, 2026-10-18): reviewed exclusion list
+
+The original decision accepted a few Scrabble-list false positives. A player tracing a
+foreign form or a toponym and seeing it in the reveal loses trust in the dictionary, so
+the list now gets a **reviewed curation step** — without changing the source.
+
+11. **Exclusion list.** Commit a small, human-adjudicated `packages/server/word-exclusions.txt`
+    of NFC-normalized lowercase entries (comments allowed). Keep the raw `words` file and
+    its pinned SHA-256 untouched. This is a curated **subtraction** from the vendored list,
+    not a replacement or a derived/expanded list: there is still one upstream source, and
+    the ADR's licence and reproducibility story is unchanged.
+12. **Single ingestion seam.** The raw-lines-to-words step subtracts the exclusion list.
+    The DAWG build and the dev fallback loader both call that seam, so their accepted sets
+    cannot diverge. `Dictionary.isValid`/`findWords`, the wire protocol and the UI stay
+    unchanged; a curated word is rejected like any other invalid word.
+13. **Build assertions.** Exclusions are normalized and deduped when read; every entry must
+    be present in the raw list, otherwise the build/load fails. The checksum and the
+    sub-3-entry assertions remain.
+14. **Audit tooling.** `npm run audit-words` is deterministic, offline and on-demand. It
+    groups candidates by reason (upstream blacklist, non-German codepoints, abbreviation
+    patterns, input anomalies) but never excludes anything automatically. The upstream CC0
+    `blacklist` is vendored and checksum-pinned for the audit. Full-list runs stay out of
+    the default test run.
+15. **Curation policy.** Exclude non-German-language forms, proper nouns/toponyms and
+    abbreviations; keep German loanwords Duden accepts. Dated/regional/archaic forms and
+    rare inflections are out of scope. A human adjudicates every addition. See
+    [`docs/word-list-curation.md`](../word-list-curation.md).
+
 ## Consequences
 
 - **Clean licence.** CC0 imposes no attribution or ShareAlike; we ship `COPYING` as a
@@ -70,12 +99,14 @@ Excluded as not redistributable: Duden, DWDS, dict.cc, LEO/PONS/Wahrig, and the
   the cost of a build step.
 - **Curation trade-off.** enz is a curated game list, not a lexicographic authority, so a
   few false positives/negatives are accepted. Compound words that are not lexicalised in
-  the list are rejected.
+  the list are rejected. The reviewed exclusion list removes known-invalid entries without
+  over-pruning Duden-accepted vocabulary; the remaining subjective tail is curated
+  incrementally through the audit.
 - **Constrained coverage.** Standard German only; Austrian/Swiss-only spellings and the
   Swiss `ß→ss` merge are out of scope.
-- **Build-time coupling.** The image build now owns checksum + trim + DAWG generation;
-  the raw list is the single source of truth and the artifact is never committed, so it
-  cannot drift.
+- **Build-time coupling.** The image build now owns checksum + trim + reviewed
+  exclusion subtraction + DAWG generation; the raw list is the single source of
+  truth and the artifact is never committed, so it cannot drift.
 
 ## Suppressed alternatives
 
