@@ -15,7 +15,9 @@ import {
   fireTouchEvent,
   seat,
   tick,
+  tileAtPoint,
   tileEls,
+  tilePoint,
   type Mounted,
   type PlayerInfo,
 } from "./harness.js";
@@ -1014,6 +1016,85 @@ describe("mountable app", () => {
       fireTouchEvent(h, "touchend", { to: h });
       // One tap, one release across both streams, one letter.
       expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "H", reqId: 3 });
+    });
+  });
+
+  describe("explicit drag samples and synthetic tile rects (#102)", () => {
+    /** The shared BOARD: tile 0=H, 1=A, 5=I, 10=M, 15=Z. */
+    function tiles(): HTMLElement[] {
+      return tileEls(app!.root);
+    }
+
+    it("fires one pointer move at an explicit point, not just a tile centre", () => {
+      driveToRoundOne("LAG4T");
+      const board = tiles();
+      // A sample a few px inside A's top-left corner, away from its centre.
+      const box = board[1]!.getBoundingClientRect();
+      const at = { x: box.left + 5, y: box.top + 5 };
+      const seen: { x: number; y: number }[] = [];
+      document.addEventListener("pointermove", (ev) => seen.push({ x: ev.clientX, y: ev.clientY }), {
+        once: true,
+      });
+
+      firePointerEvent(board[0]!, "pointerdown", { pointerType: "mouse" });
+      firePointerEvent(board[0]!, "pointermove", { pointerType: "mouse", at });
+
+      expect(seen).toEqual([at]);
+      expect(app!.root.querySelector("#trace")!.textContent).toBe("HA");
+    });
+
+    it("fires one touch move at an explicit point, not just a tile centre", () => {
+      driveToRoundOne("LAG4T");
+      const board = tiles();
+      const box = board[1]!.getBoundingClientRect();
+      const at = { x: box.left + 5, y: box.top + 5 };
+      const seen: { x: number; y: number }[] = [];
+      document.addEventListener(
+        "touchmove",
+        (ev) => seen.push({ x: ev.changedTouches[0]!.clientX, y: ev.changedTouches[0]!.clientY }),
+        { once: true }
+      );
+
+      fireTouchEvent(board[0]!, "touchstart", { to: board[0]! });
+      fireTouchEvent(board[0]!, "touchmove", { at });
+
+      expect(seen).toEqual([at]);
+      expect(app!.root.querySelector("#trace")!.textContent).toBe("HA");
+    });
+
+    it("answers board tile rects from the same synthetic grid as the hit-test", () => {
+      driveToRoundOne("LAG4T");
+      const board = tiles();
+
+      // 40px cells with 4px gaps, row-major: tile 0 at the origin, tile 5
+      // one cell right and one down.
+      const first = board[0]!.getBoundingClientRect();
+      expect([first.left, first.top, first.right, first.bottom]).toEqual([0, 0, 40, 40]);
+      const middle = board[5]!.getBoundingClientRect();
+      expect([middle.left, middle.top, middle.right, middle.bottom]).toEqual([44, 44, 84, 84]);
+
+      // The point→tile hit-test agrees with the rects, at centres and edges.
+      for (const idx of [0, 5, 10, 15]) {
+        const box = board[idx]!.getBoundingClientRect();
+        expect(tileAtPoint(box.left + 1, box.top + 1)).toBe(board[idx]);
+        const centre = tilePoint(idx);
+        expect(tileAtPoint(centre.x, centre.y)).toBe(board[idx]);
+      }
+      expect(document.elementFromPoint(middle.left + 1, middle.top + 1)).toBe(board[5]);
+    });
+
+    it("resolves a sample in the gap between two tiles to no tile", () => {
+      driveToRoundOne("LAG4T");
+      const board = tiles();
+      // x=86 sits between tile 1 (ends at 84) and tile 2 (starts at 88).
+      const gap = { x: 86, y: 20 };
+      expect(tileAtPoint(gap.x, gap.y)).toBeNull();
+      expect(document.elementFromPoint(gap.x, gap.y)?.closest(".tile") ?? null).toBeNull();
+
+      // Through the pointer stream the gap moves the trace not at all: H stays.
+      firePointerEvent(board[0]!, "pointerdown", { pointerType: "mouse" });
+      firePointerEvent(board[0]!, "pointermove", { pointerType: "mouse", at: gap });
+      expect(app!.root.querySelector("#trace")!.textContent).toBe("H");
     });
   });
 
