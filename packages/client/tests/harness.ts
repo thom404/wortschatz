@@ -28,6 +28,11 @@ import { mount, type ConnFactory, type RoomConn } from "../src/app.js";
  *   no layout engine). Touch events retarget like real browsers do: after
  *   touchstart, touchmove/touchend keep firing on the start tile, carrying
  *   the finger's current coordinates.
+ * - `firePointerEvent` / `fireTouchEvent` place one sample on either stream
+ *   at a tile's centre or, with `at`, at an explicit point (a tile edge, a
+ *   corner, or the gap between two tiles). Board tiles answer
+ *   `getBoundingClientRect()` from that same synthetic geometry, so a rect
+ *   and the point→tile hit-test always agree.
  *
  * Assertions live only on rendered DOM and boundary messages; the app's
  * store stays an internal detail.
@@ -331,48 +336,90 @@ export function intermissionSnapshot(opts: {
 }
 
 /* ------------------------------------------------------------------ */
-/* Pointer synthesis                                                   */
+/* Synthetic board geometry                                            */
 /* ------------------------------------------------------------------ */
 
 /** Synthetic tile-cell layout of the test DOM (no layout engine exists):
- *  40px square cells in a 4-column grid with 4px gaps, row-major. The app
- *  resolves drags by coordinates (like a real browser), so the harness
- *  stubs `document.elementFromPoint` with this geometry's inverse —
- *  exactly the hit-testing the browser answers and happy-dom cannot. */
+ *  40px square cells in a 4-column grid with 4px gaps, row-major. It is the
+ *  one geometry both the point→tile hit-test and every board tile's
+ *  `getBoundingClientRect()` answer from, so a sample and the tile it hits
+ *  can never disagree with the rects. */
 const CELL = 40;
 const GAP = 4;
 const COLUMNS = 4;
 
-/** Center coordinates of one board tile index in the synthetic grid. */
-export function tilePoint(idx: number): { x: number; y: number } {
-  const col = idx % COLUMNS;
-  const row = Math.floor(idx / COLUMNS);
+/** A point in the synthetic board's coordinate space. */
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/** Top-left corner of one board tile index in the synthetic grid. */
+function cellOrigin(idx: number): Point {
   return {
-    x: col * (CELL + GAP) + CELL / 2,
-    y: row * (CELL + GAP) + CELL / 2,
+    x: (idx % COLUMNS) * (CELL + GAP),
+    y: Math.floor(idx / COLUMNS) * (CELL + GAP),
   };
 }
 
-/* Layout stub: `document.elementFromPoint` answered once per process —
- * happy-dom's DOM answers null (no layout engine); a real browser answers
- * with the darkest element under the point. The stub maps synthetic cell
- * coordinates back to the currently rendered board's tile. */
+/** Center coordinates of one board tile index in the synthetic grid. */
+export function tilePoint(idx: number): Point {
+  const origin = cellOrigin(idx);
+  return { x: origin.x + CELL / 2, y: origin.y + CELL / 2 };
+}
+
+/** The board tile index under a synthetic point, or -1 when the point sits
+ *  in the gap between cells or outside the 4×4 grid. */
+function tileIndexAtPoint(x: number, y: number): number {
+  const col = Math.floor(x / (CELL + GAP));
+  const row = Math.floor(y / (CELL + GAP));
+  if (col < 0 || col >= COLUMNS || row < 0 || row >= COLUMNS) return -1;
+  if (x - col * (CELL + GAP) >= CELL || y - row * (CELL + GAP) >= CELL) return -1;
+  return row * COLUMNS + col;
+}
+
+/** The rendered board tile under a synthetic point, or `null` when the
+ *  point falls in the gap between two tiles (or outside the grid). */
+export function tileAtPoint(x: number, y: number): HTMLElement | null {
+  const board = document.querySelector<HTMLElement>("#board");
+  if (!board) return null;
+  const idx = tileIndexAtPoint(x, y);
+  if (idx < 0) return null;
+  return tileEls(board)[idx] ?? null;
+}
+
+/* Layout stub: `document.elementFromPoint` and every board tile's
+ * `getBoundingClientRect` answered from the geometry above — the test DOM has
+ * no layout engine (happy-dom answers null for every point and zero for every
+ * rect). A real browser answers with the darkest element under the point and
+ * the box layout gave it; board tiles resolve their rects from the same
+ * geometry the point→tile hit-test answers with. */
 
 const realFromPoint = document.elementFromPoint.bind(document);
 
 document.elementFromPoint = (x: number, y: number): Element | null => {
   const board = document.querySelector("#board");
-  if (board) {
-    const col = Math.floor(x / (CELL + GAP));
-    const row = Math.floor(y / (CELL + GAP));
-    if (col >= 0 && col < COLUMNS && row >= 0 && row < COLUMNS) {
-      const tiles = tileEls(board as HTMLElement);
-      return tiles[row * COLUMNS + col] ?? realFromPoint(x, y);
-    }
-    return board;
-  }
+  if (board) return tileAtPoint(x, y) ?? board;
   return realFromPoint(x, y);
 };
+
+const realGetBoundingClientRect = Element.prototype.getBoundingClientRect;
+
+Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
+  const idx = boardTileIndex(this);
+  if (idx < 0) return realGetBoundingClientRect.call(this);
+  const origin = cellOrigin(idx);
+  return new DOMRect(origin.x, origin.y, CELL, CELL);
+};
+
+/** A rendered board tile's index, or -1 for any other element (including
+ *  elements outside a rendered board). */
+function boardTileIndex(el: Element): number {
+  if (!el.classList.contains("tile") || !el.closest("#board")) return -1;
+  const parent = el.parentElement;
+  if (!parent) return -1;
+  return Array.prototype.indexOf.call(parent.children, el);
+}
 
 /** The board's rendered tiles, in row-major order. */
 export function tileEls(root: HTMLElement): HTMLElement[] {
@@ -542,19 +589,26 @@ export function synthesizeTouchDrag(path: readonly Element[], onStep?: () => voi
  * pointer and touch streams of one gesture (e.g. a `pointerdown` continued
  * only by `touchmove`) and fire a `pointercancel`. Defaults to a touch
  * pointer, the stream a phone's drag begins with.
+ *
+ * `at` places the sample at an explicit point instead of the tile's centre
+ * (a tile edge, a corner, or the gap between two tiles); the event then
+ * targets the element under that point, as a real browser retargets a
+ * pointer.
  */
 export function firePointerEvent(
   tile: Element,
   type: PointerEventType,
-  opts: { pointerId?: number; pointerType?: "mouse" | "touch" } = {}
+  opts: { pointerId?: number; pointerType?: "mouse" | "touch"; at?: Point } = {}
 ): void {
   const pointerType = opts.pointerType ?? "touch";
   const pointerId = opts.pointerId ?? (pointerType === "mouse" ? 1 : 7);
   const released = type === "pointerup" || type === "pointercancel";
-  dispatchPointer(tile, type, {
+  const point = opts.at ?? tilePoint(tileIndexOf(tile));
+  const target = opts.at ? (document.elementFromPoint(point.x, point.y) ?? tile) : tile;
+  dispatchPointer(target, type, {
     pointerId,
     pointerType,
-    ...tilePoint(tileIndexOf(tile)),
+    ...point,
     buttons: released ? 0 : 1,
   });
 }
@@ -562,16 +616,17 @@ export function firePointerEvent(
 /**
  * One touch event. Like a real browser it retargets every event to
  * `target` (the touchstart element) while carrying `to`'s coordinates —
- * `to` defaults to `target`. Fires a single event, so a test can replay a
+ * `to` defaults to `target`. `at` places the sample at an explicit point
+ * instead of `to`'s centre. Fires a single event, so a test can replay a
  * touch-only stream, mix it with pointer events, or fire a `touchcancel`.
  */
 export function fireTouchEvent(
   target: Element,
   type: TouchEventType,
-  opts: { identifier?: number; to?: Element } = {}
+  opts: { identifier?: number; to?: Element; at?: Point } = {}
 ): TouchEvent {
   const identifier = opts.identifier ?? 42;
-  const point = tilePoint(tileIndexOf(opts.to ?? target));
+  const point = opts.at ?? tilePoint(tileIndexOf(opts.to ?? target));
   const current = type === "touchend" || type === "touchcancel" ? [] : touches(target, point, identifier);
   return dispatchTouch(target, type, point, current, identifier);
 }
