@@ -10,7 +10,7 @@ import type {
   ServerErrorMsg,
   ServerMessage,
 } from "@wortschatz/shared";
-import { neighbors, PROTOCOL, tileSpellingLength, tileStrings } from "@wortschatz/shared";
+import { PROTOCOL, tileSpellingLength, tileStrings } from "@wortschatz/shared";
 import "./style.css";
 
 /**
@@ -786,7 +786,17 @@ function beginTrace(app: App, x: number, y: number, target: EventTarget | null):
   return gesture;
 }
 
-/** Extends/unwinds the live trace for the tile under the pointer. */
+/**
+ * Extends/unwinds the live trace for the tile under the pointer. Callers
+ * check the movement sample belongs to the live gesture before calling.
+ *
+ * A movement sample normally lands on one 8-way neighbour. A fast swipe can
+ * deliver two consecutive samples of one gesture more than one tile apart;
+ * then the tiles between them are appended as an 8-way **stair-step walk**
+ * from the last selected tile toward the new sample, so no crossed tile is
+ * lost. The path stays valid: a step onto an already-selected tile is
+ * rejected, and a sample landing on the immediately previous tile unwinds it.
+ */
 function continueTrace(app: App, x: number, y: number, target: EventTarget | null): boolean {
   const idx = hitTileIndex(app, x, y, target);
   if (idx < 0) return false;
@@ -795,15 +805,36 @@ function continueTrace(app: App, x: number, y: number, target: EventTarget | nul
   if (last === undefined) return false;
   const prev = trace[trace.length - 2];
   if (idx === last) return false; // still on the current tile
-  if (idx === prev)
+  if (idx === prev) {
     trace.pop(); // backtracking unwinds the previous tile
-  else if (trace.includes(idx))
-    return false; // crossings stay out
-  else if (!neighbors(last).includes(idx))
-    return false; // adjacent steps only
-  else trace.push(idx);
+  } else {
+    const steps = bridgeSteps(last, idx);
+    if (steps.length === 0) return false;
+    if (steps.some((step) => trace.includes(step))) return false; // no tile twice
+    trace.push(...steps);
+  }
   paintTrace(app);
   return true;
+}
+
+/**
+ * The run of 8-way adjacent tiles from `from` to `to` that closes a gap
+ * between sparse samples: it excludes `from`, ends at `to`, and takes one
+ * row and/or column toward the target each step (diagonal-first stair-step).
+ * Empty when `from === to`.
+ */
+function bridgeSteps(from: number, to: number): number[] {
+  const steps: number[] = [];
+  let row = Math.floor(from / 4);
+  let col = from % 4;
+  const toRow = Math.floor(to / 4);
+  const toCol = to % 4;
+  while (row !== toRow || col !== toCol) {
+    row += Math.sign(toRow - row);
+    col += Math.sign(toCol - col);
+    steps.push(row * 4 + col);
+  }
+  return steps;
 }
 
 /** Ends the trace: painting restores the idle hint and, on a real release

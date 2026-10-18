@@ -780,17 +780,62 @@ describe("mountable app", () => {
     expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HT", reqId: 3 });
   });
 
-  it("ignores non-adjacent jumps mid-drag", () => {
+  it("a fast swipe that skips a tile still selects the skipped tile", () => {
     driveToRoundOne("LAG4T");
     const tiles = tileEls(app!.root);
-    // T (row 1, col 0) → U (row 0, col 2): rows and columns both differ
-    // by 2 — not 8-way adjacent, so the jump is ignored.
+    // H (row 0, col 0) → U (row 0, col 2): the browser delivered no sample
+    // for the A between them, so the gap is bridged and A is selected too.
     const traceSeen: string[] = [];
-    synthesizePointerDrag([tiles[4]!, tiles[2]!], "mouse", () => {
+    synthesizePointerDrag([tiles[0]!, tiles[2]!], "mouse", () => {
       traceSeen.push(app!.root.querySelector("#trace")!.textContent!);
     });
-    expect(traceSeen).toEqual(["T", "T", "Wische über die Felder, um ein Wort zu bilden."]);
-    expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "T", reqId: 3 });
+    expect(traceSeen).toEqual(["H", "HAU", "Wische über die Felder, um ein Wort zu bilden."]);
+    expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HAU", reqId: 3 });
+  });
+
+  it("a touch fast swipe bridges the same gap", () => {
+    driveToRoundOne("LAG4T");
+    const tiles = tileEls(app!.root);
+    // Same sparse sample delivered through the touch stream, as a phone does.
+    const traceSeen: string[] = [];
+    synthesizeTouchDrag([tiles[0]!, tiles[2]!], () => {
+      traceSeen.push(app!.root.querySelector("#trace")!.textContent!);
+    });
+    expect(traceSeen).toEqual(["H", "HAU", "Wische über die Felder, um ein Wort zu bilden."]);
+    expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HAU", reqId: 3 });
+  });
+
+  it("walks an 8-way stair-step path to a sample two or more tiles away", () => {
+    driveToRoundOne("LAG4T");
+    const tiles = tileEls(app!.root);
+    // H (0,0) → M (2,2): diagonal to I (1,1), then diagonal to M (2,2).
+    const diagonal: string[] = [];
+    synthesizePointerDrag([tiles[0]!, tiles[10]!], "mouse", () => {
+      diagonal.push(app!.root.querySelector("#trace")!.textContent!);
+    });
+    expect(diagonal).toEqual(["H", "HIM", "Wische über die Felder, um ein Wort zu bilden."]);
+    expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HIM", reqId: 3 });
+
+    // H (0,0) → A (3,1): diagonal until the row matches, then straight down.
+    const stepped: string[] = [];
+    synthesizePointerDrag([tiles[0]!, tiles[13]!], "mouse", () => {
+      stepped.push(app!.root.querySelector("#trace")!.textContent!);
+    });
+    expect(stepped).toEqual(["H", "HIUA", "Wische über die Felder, um ein Wort zu bilden."]);
+    expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HIUA", reqId: 4 });
+  });
+
+  it("rejects a bridged sample that would reuse a tile", () => {
+    driveToRoundOne("LAG4T");
+    const tiles = tileEls(app!.root);
+    // H → A → U, then a jump back to H: the bridge would cross A and H,
+    // both already selected, so the trace stays the valid path "HAU".
+    const traceSeen: string[] = [];
+    synthesizePointerDrag([tiles[0]!, tiles[1]!, tiles[2]!, tiles[0]!], "mouse", () => {
+      traceSeen.push(app!.root.querySelector("#trace")!.textContent!);
+    });
+    expect(traceSeen).toEqual(["H", "HA", "HAU", "HAU", "Wische über die Felder, um ein Wort zu bilden."]);
+    expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HAU", reqId: 3 });
   });
 
   it("a resubmitted word surfaces the word-duplicate error and adds nothing", () => {
