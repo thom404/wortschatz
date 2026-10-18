@@ -392,11 +392,11 @@ function hasTouchEvents(): boolean {
   return typeof window.TouchEvent === "function";
 }
 
-type PointerType = "pointerdown" | "pointermove" | "pointerup";
+export type PointerEventType = "pointerdown" | "pointermove" | "pointerup" | "pointercancel";
 
 function dispatchPointer(
   target: Element,
-  type: PointerType,
+  type: PointerEventType,
   init: { pointerId: number; pointerType: "mouse" | "touch"; x: number; y: number; buttons: number }
 ): void {
   if (hasPointerEvents()) {
@@ -430,9 +430,9 @@ function dispatchPointer(
 
 /** Synthetic single-finger touch state targeting `startTile` (the browser
  *  retargets every touch event to the touchstart element). */
-function touches(startTile: Element, point: { x: number; y: number }) {
+function touches(startTile: Element, point: { x: number; y: number }, identifier = 42) {
   const touch = {
-    identifier: 42,
+    identifier,
     target: startTile,
     clientX: point.x,
     clientY: point.y,
@@ -440,11 +440,14 @@ function touches(startTile: Element, point: { x: number; y: number }) {
   return [touch] as unknown as Touch[];
 }
 
+export type TouchEventType = "touchstart" | "touchmove" | "touchend" | "touchcancel";
+
 function dispatchTouch(
   target: Element,
-  type: "touchstart" | "touchmove" | "touchend",
+  type: TouchEventType,
   point: { x: number; y: number },
-  currentTouches: Touch[]
+  currentTouches: Touch[],
+  identifier = 42
 ): TouchEvent {
   if (hasTouchEvents()) {
     const ev = new TouchEvent(type, {
@@ -452,7 +455,7 @@ function dispatchTouch(
       cancelable: true,
       touches: currentTouches,
       targetTouches: currentTouches,
-      changedTouches: touches(target, point),
+      changedTouches: touches(target, point, identifier),
     });
     target.dispatchEvent(ev);
     return ev;
@@ -460,7 +463,7 @@ function dispatchTouch(
   const ev = new Event(type, { bubbles: true, cancelable: true });
   Object.defineProperties(ev, {
     touches: { value: currentTouches },
-    changedTouches: { value: touches(target, point) },
+    changedTouches: { value: touches(target, point, identifier) },
   });
   target.dispatchEvent(ev);
   return ev as unknown as TouchEvent;
@@ -519,16 +522,56 @@ export function synthesizePointerDrag(
 export function synthesizeTouchDrag(path: readonly Element[], onStep?: () => void): void {
   if (path.length === 0) throw new Error("drag needs at least one tile");
   const startTile = path[0]!;
-  const startPoint = tilePoint(tileIndexOf(startTile));
-  dispatchTouch(startTile, "touchstart", startPoint, touches(startTile, startPoint));
+  fireTouchEvent(startTile, "touchstart", { to: startTile });
   onStep?.();
-  const points = path.map((t) => ({ ...tilePoint(tileIndexOf(t)) }));
-  for (let i = 1; i < path.length; i++) {
-    const point = points[i]!;
-    dispatchTouch(startTile, "touchmove", point, touches(startTile, point));
+  for (const tile of path.slice(1)) {
+    fireTouchEvent(startTile, "touchmove", { to: tile });
     onStep?.();
   }
-  const lastPoint = points[path.length - 1]!;
-  dispatchTouch(startTile, "touchend", lastPoint, []);
+  fireTouchEvent(startTile, "touchend", { to: path[path.length - 1]! });
   onStep?.();
+}
+
+/* ------------------------------------------------------------------ */
+/* Independent event streams                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * One pointer event on `tile`, at that tile's synthetic coordinates. Unlike
+ * `synthesizePointerDrag` this fires a single event, so a test can mix the
+ * pointer and touch streams of one gesture (e.g. a `pointerdown` continued
+ * only by `touchmove`) and fire a `pointercancel`. Defaults to a touch
+ * pointer, the stream a phone's drag begins with.
+ */
+export function firePointerEvent(
+  tile: Element,
+  type: PointerEventType,
+  opts: { pointerId?: number; pointerType?: "mouse" | "touch" } = {}
+): void {
+  const pointerType = opts.pointerType ?? "touch";
+  const pointerId = opts.pointerId ?? (pointerType === "mouse" ? 1 : 7);
+  const released = type === "pointerup" || type === "pointercancel";
+  dispatchPointer(tile, type, {
+    pointerId,
+    pointerType,
+    ...tilePoint(tileIndexOf(tile)),
+    buttons: released ? 0 : 1,
+  });
+}
+
+/**
+ * One touch event. Like a real browser it retargets every event to
+ * `target` (the touchstart element) while carrying `to`'s coordinates —
+ * `to` defaults to `target`. Fires a single event, so a test can replay a
+ * touch-only stream, mix it with pointer events, or fire a `touchcancel`.
+ */
+export function fireTouchEvent(
+  target: Element,
+  type: TouchEventType,
+  opts: { identifier?: number; to?: Element } = {}
+): TouchEvent {
+  const identifier = opts.identifier ?? 42;
+  const point = tilePoint(tileIndexOf(opts.to ?? target));
+  const current = type === "touchend" || type === "touchcancel" ? [] : touches(target, point, identifier);
+  return dispatchTouch(target, type, point, current, identifier);
 }
