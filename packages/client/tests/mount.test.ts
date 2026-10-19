@@ -468,6 +468,36 @@ describe("mountable app", () => {
       }
     });
 
+    it("a reconnecting client shows the intermission's remaining time on the first render", () => {
+      vi.useFakeTimers();
+      try {
+        // The reconnect snapshot carries the authoritative intermission
+        // deadline; the first render must already show its remaining time
+        // instead of waiting for the next tick to fill 0:00.
+        const deadline = Date.now() + 12_000;
+        window.history.pushState({}, "", "/r/SPAT7");
+        typeInto("#jn-code", "SPAT7");
+        typeInto("#jn-nick", "Ben");
+        click("#jn-btn");
+        app!.conn().feed(
+          intermissionSnapshot({
+            code: "SPAT7",
+            selfSeatId: 2,
+            nickname: "Ben",
+            hostSeatId: 1,
+            board: BOARD,
+            reveal: REVEAL,
+            deadline,
+          })
+        );
+
+        expect(app!.root.querySelector("h1")!.textContent).toBe("Pause");
+        expect(app!.root.querySelector("#countdown")!.textContent).toBe("0:12");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("a snapshot during the intermission renders the same reveal the round-end delta carried", () => {
       driveToRoundWith("LAG4T", [
         seat({ seatId: 1, nickname: "Lena" }),

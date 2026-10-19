@@ -1,5 +1,4 @@
 import { loadSession, clearSession, type ConnStatus } from "./api.js";
-import { applyDelta, remainingOf, fmt, LOW_TIME_MS } from "./deltas.js";
 import { GameStore, type DeltaKind } from "./store.js";
 import { qrSvg } from "./qr.js";
 import { applySkin, loadSkin, skinSwitcherHtml, wireSkinSwitcher } from "./skins.js";
@@ -247,7 +246,7 @@ function onMessage(app: App, msg: ServerMessage): void {
   if (isGreetingRejection(app, msg) && msg.code !== "room-not-found") {
     return rejectGreeting(app, msg);
   }
-  applyDelta(app.store, msg);
+  app.store.apply(msg);
   // The outcome frames (#21) each render their own dedicated screen.
   // The connection's orderly close is reported first (RoomConnection
   // fires `closed` before the frame arrives), so the dispatch avoids
@@ -365,6 +364,35 @@ function render(app: App, kind: DeltaKind = "structural"): void {
       return;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Clock and formatting — the timer's own helpers                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Local countdown interpolation, per spec: clients never own the clock. The
+ * server re-anchors every second with a `tick`; between ticks the renderer
+ * interpolates against the last-known absolute deadline. A locally expired
+ * countdown clamps at 0 and waits for the server's next message — phases
+ * change only upon server messages, never self-transitioned.
+ */
+function remainingOf(store: GameStore): number {
+  if (store.phase !== "playing" && store.phase !== "intermission") return 0;
+  if (!store.deadline) return 0;
+  return Math.max(0, store.deadline - Date.now());
+}
+
+/** Countdown digits, rounded up to the next whole second. */
+function fmt(ms: number): string {
+  const total = Math.ceil(ms / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/** At ≤ 20 s remaining, the countdown takes the low-time look (ADR-0002):
+ *  one shared class for digits and ring, coloured through `--ping`. */
+const LOW_TIME_MS = 20_000;
 
 /** The ring timer (ADR-0002): conic-gradient progress ring over a solid
  *  inner disc; digits and round score sit centered on the disc. The ring's

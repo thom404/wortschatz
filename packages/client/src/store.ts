@@ -1,20 +1,40 @@
-import type { PlayerInfo, ScoreEntry, SnapshotMsg, ErrorCode, RevealPayload } from "@wortschatz/shared";
+import type {
+  PlayerInfo,
+  ScoreEntry,
+  ServerMessage,
+  SnapshotMsg,
+  ErrorCode,
+  RevealPayload,
+} from "@wortschatz/shared";
 
 /**
  * Client state. Built ONLY from server messages (snapshot + deltas); never
  * reconstructs state by replaying deltas — a snapshot always supersedes.
+ * `apply` is the single reducer: every server message reaches client state
+ * through it, and it returns the render consequence.
  */
 export type Outcome = "none" | "kicked" | "room-ended";
 
 /**
- * The render consequence of one store change (see `deltas.ts`). A play-time
- * delta updates live, already-rendered game state **in place** — the
- * countdown, the scoreboard and the private found-word chips — so the ring
- * timer keeps its identity; a structural change rebuilds the whole screen.
- * Tick, score-update and word-accepted are play-time deltas.
+ * The render consequence of one store change. A play-time delta updates
+ * live, already-rendered game state **in place** — the countdown, the
+ * scoreboard and the private found-word chips — so the ring timer keeps its
+ * identity; a structural change rebuilds the whole screen. Tick,
+ * score-update and word-accepted are play-time deltas.
  * See [GLOSSARY](../GLOSSARY.md): Play-time delta.
  */
 export type DeltaKind = "play-time" | "structural";
+
+/**
+ * Classifies one server message for rendering (ADR-0009): a play-time delta
+ * changes only live, already-rendered game state and must update in place;
+ * every other message is a structural change that rebuilds the screen.
+ */
+export function deltaKind(msg: ServerMessage): DeltaKind {
+  return msg.type === "tick" || msg.type === "score-update" || msg.type === "word-accepted"
+    ? "play-time"
+    : "structural";
+}
 
 /** The scoreboard's and the standings' shared ranking fabric: order by an
  *  ascending-score key descending, ties staying in join order (the roster
@@ -84,6 +104,69 @@ export class GameStore {
     for (const fn of this.listeners) fn(kind);
   }
 
+  /** The single reducer: applies one server message to client state,
+   *  notifies subscribers with its render consequence and returns that
+   *  classification. A snapshot always supersedes earlier deltas. */
+  apply(msg: ServerMessage): DeltaKind {
+    switch (msg.type) {
+      case "snapshot":
+        this.applySnapshot(msg);
+        break;
+      case "tick":
+        this.phase = msg.phase;
+        this.deadline = msg.deadline;
+        break;
+      case "round-start":
+        this.phase = "playing";
+        this.roundNumber = msg.round.roundNumber;
+        this.round = msg.round;
+        this.deadline = msg.round.deadline;
+        this.roundWords = new Map();
+        this.roundScores.clear();
+        break;
+      case "round-end":
+        this.phase = "intermission";
+        this.roundNumber = msg.roundNumber;
+        this.finishedRound = {
+          roundNumber: msg.roundNumber,
+          reveal: msg.reveal,
+        };
+        break;
+      case "score-update":
+        this.applyScores(msg.roundNumber, msg.scores);
+        break;
+      case "player-joined":
+        this.upsertPlayer(msg.player);
+        break;
+      case "player-left":
+        this.removePlayer(msg.seatId);
+        break;
+      case "player-disconnected":
+        this.setConnected(msg.seatId, false);
+        break;
+      case "host-changed":
+        this.hostSeatId = msg.hostSeatId;
+        break;
+      case "word-accepted":
+        this.acceptedForMe(msg.word, msg.points);
+        break;
+      case "error":
+        this.lastError = msg;
+        break;
+      case "kicked":
+        this.outcome = "kicked";
+        break;
+      case "room-ended":
+        this.outcome = "room-ended";
+        break;
+      default:
+        break;
+    }
+    const kind = deltaKind(msg);
+    this.notify(kind);
+    return kind;
+  }
+
   applySnapshot(snap: SnapshotMsg): void {
     this.code = snap.room.code;
     this.phase = snap.room.phase;
@@ -105,11 +188,14 @@ export class GameStore {
       this.deadline = snap.round.deadline;
     }
     if (snap.finishedRound) {
-      // Intermission re-joiners still see the finished round's board.
+      // Intermission re-joiners still see the finished round's board and
+      // the authoritative intermission deadline, so their first render
+      // shows the correct remaining time instead of 0:00.
+      this.deadline = snap.finishedRound.deadline;
       this.round = {
         roundNumber: snap.finishedRound.roundNumber,
         board: snap.finishedRound.board,
-        deadline: 0,
+        deadline: snap.finishedRound.deadline,
       };
     }
     this.lastError = null;

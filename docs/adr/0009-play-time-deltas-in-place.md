@@ -30,8 +30,8 @@ The client render path distinguishes two kinds of server delta:
    whole screen.
 
 The store's notification carries the kind (`DeltaKind`: `play-time` /
-`structural`); `deltas.ts` classifies each message and `app.ts` renders
-accordingly. The shared low-time look (one `low` class through the `--ping`
+`structural`); the store reducer classifies each message (ADR-0010) and
+`app.ts` renders accordingly. The shared low-time look (one `low` class through the `--ping`
 token) is unchanged.
 
 ## Consequences
