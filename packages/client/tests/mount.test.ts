@@ -526,6 +526,81 @@ describe("mountable app", () => {
     });
   });
 
+  describe("live regions (#122)", () => {
+    it("a play-time delta refreshes the intermission's declared regions — countdown and session standings — in place", () => {
+      driveToRoundWith("LAG4T", [
+        seat({ seatId: 1, nickname: "Lena" }),
+        seat({ seatId: 2, nickname: "Ben" }),
+        seat({ seatId: 3, nickname: "Cem" }),
+      ]);
+      app!.conn().feed(roundEnded(1, REVEAL));
+
+      const timer = app!.root.querySelector("#timer")!;
+      const players = app!.root.querySelector("#players")!;
+      // The intermission declares no private found-word chips.
+      expect(app!.root.querySelector("#found")).toBeNull();
+
+      // A Tick refreshes the countdown in place.
+      app!.conn().feed(tick("intermission", 12_000));
+      expect(app!.root.querySelector("#timer")).toBe(timer);
+      expect(app!.root.querySelector("#countdown")!.textContent).toBe("0:12");
+
+      // A later score-update re-ranks the session standings in place — by
+      // cumulative score, the intermission's designated mode — without
+      // replacing the list element.
+      app!.conn().feed({
+        type: "score-update",
+        roundNumber: 1,
+        scores: [
+          { seatId: 2, nickname: "Ben", roundScore: 7, cumulativeScore: 60 },
+          { seatId: 1, nickname: "Lena", roundScore: 5, cumulativeScore: 25 },
+          { seatId: 3, nickname: "Cem", roundScore: 2, cumulativeScore: 40 },
+        ],
+      });
+      expect(app!.root.querySelector("#players")).toBe(players);
+      const chips = [...app!.root.querySelectorAll<HTMLElement>("#players .chip.player")];
+      expect(chips.map((c) => c.querySelector(".nick")!.textContent)).toEqual(["Ben", "Cem", "Lena"]);
+      expect(chips.map((c) => c.querySelector(".place")!.textContent)).toEqual(["1", "2", "3"]);
+      expect(chips[0]!.textContent).toContain("Runde 7 P");
+      expect(chips[0]!.textContent).toContain("Gesamt 60 P");
+    });
+
+    it("a spectator's game screen skips the declared found region it does not render", () => {
+      window.history.pushState({}, "", "/r/ABC12");
+      const deep = mountHarness();
+      try {
+        deep.root.querySelector<HTMLInputElement>("#jn-nick")!.value = "Ben";
+        deep.root.querySelector<HTMLButtonElement>("#jn-btn")!.click();
+        deep.conn().feed(
+          playingSnapshot({
+            code: "ABC12",
+            selfSeatId: 2,
+            nickname: "Ben",
+            role: "spectator",
+            board: BOARD,
+            players: [
+              seat({ seatId: 1, nickname: "Lena" }),
+              seat({ seatId: 2, nickname: "Ben", role: "spectator" }),
+            ],
+          })
+        );
+        const timer = deep.root.querySelector("#timer");
+        const players = deep.root.querySelector("#players");
+        expect(deep.root.querySelector("#found")).toBeNull();
+
+        // The tick still refreshes the two regions this screen renders in
+        // place; the absent found region is skipped without error.
+        deep.conn().feed(tick("playing", 90_000));
+        expect(deep.root.querySelector("#timer")).toBe(timer);
+        expect(deep.root.querySelector("#players")).toBe(players);
+        expect(deep.root.querySelector("#countdown")!.textContent).toBe("1:30");
+      } finally {
+        deep.unmount();
+        window.history.pushState({}, "", "/");
+      }
+    });
+  });
+
   it("a connection close with no server frame shows the connection-lost outcome screen", () => {
     driveToRoundOne("LAG4T");
     // An orderly close (production: server restart races, dispose before

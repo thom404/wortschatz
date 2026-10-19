@@ -80,6 +80,9 @@ interface App {
   /** The live board drag, or `null` between drags. The pure gesture module
    *  owns its rules; the app only holds the state and paints it. */
   gesture: GestureState | null;
+  /** The live regions the current screen declares beside its template
+   *  (ADR-0009). The play-time updater walks exactly these. */
+  liveRegions: readonly LiveRegion[];
 }
 
 /** The user-facing app name: the browser title and the home heading. */
@@ -120,6 +123,7 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
     },
     stopDrag: () => {},
     gesture: null,
+    liveRegions: [],
   };
   window.addEventListener("popstate", app.onPopState);
   app.stopDrag = wireDrag(app);
@@ -147,6 +151,7 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
 
 function home(app: App): void {
   document.title = APP_NAME;
+  app.liveRegions = [];
   const deepCode = deepLinkCode();
   const stored = deepCode ? loadSession(deepCode) : null;
   app.root.innerHTML = `
@@ -429,23 +434,48 @@ function updateTimer(app: App): void {
   if (score) score.textContent = `${app.store.selfRoundScore} P`;
 }
 
-/** The in-place refresh of every live, play-time region (ADR-0009): the ring
- *  timer, the scoreboard/standings and the private found-word chips. Each
- *  helper targets its own rendered element and no-ops when the current screen
- *  has none, so the `#timer` identity is never touched. */
-function updateLive(app: App): void {
-  updateTimer(app);
-  updateScoreboard(app);
-  updateFound(app);
-}
-
 /** The scoreboard's mode in the current phase: the ranked round scoreboard
  *  while playing, the cumulative session standings during the intermission,
- *  the join-ordered roster otherwise. */
+ *  the join-ordered roster otherwise. This is the single place the mode is
+ *  decided, so a screen's first paint and its in-place update cannot disagree. */
 function scoreboardMode(phase: GameStore["phase"]): "seats" | "ranked" | "session" {
   if (phase === "playing") return "ranked";
   if (phase === "intermission") return "session";
   return "seats";
+}
+
+/** The current scoreboard chips, in the mode its phase prescribes — read by
+ *  both the screen templates and the in-place updater. */
+function scoreboardHtml(store: GameStore): string {
+  return playerChipsHtml(store, scoreboardMode(store.phase));
+}
+
+/**
+ * One live, play-time-updatable region of a screen (ADR-0009): the element
+ * that anchors it and the in-place rewrite that refreshes it from the store.
+ * A screen declares these beside its template; the play-time updater walks
+ * the current screen's declarations and skips any whose element the screen
+ * does not render, so the `#timer` identity survives.
+ */
+interface LiveRegion {
+  /** Selector of the element that anchors the region. */
+  selector: string;
+  /** Rewrites the region's element(s) in place from current store state. */
+  update(app: App): void;
+}
+
+const TIMER_REGION: LiveRegion = { selector: "#timer", update: updateTimer };
+const SCOREBOARD_REGION: LiveRegion = { selector: "#players", update: updateScoreboard };
+const FOUND_REGION: LiveRegion = { selector: "#found", update: updateFound };
+
+/** The in-place refresh of every live region the current screen declares
+ *  (ADR-0009), in declaration order. A region whose element is absent from
+ *  the screen (a spectator's found-word chips, a screen without a timer) is
+ *  skipped, so the `#timer` identity is never touched. */
+function updateLive(app: App): void {
+  for (const region of app.liveRegions) {
+    if (app.root.querySelector(region.selector)) region.update(app);
+  }
 }
 
 /** Rewrites the live player chips in place — chip children change, the
@@ -453,7 +483,7 @@ function scoreboardMode(phase: GameStore["phase"]): "seats" | "ranked" | "sessio
 function updateScoreboard(app: App): void {
   const el = app.root.querySelector<HTMLElement>("#players");
   if (!el) return;
-  el.innerHTML = playerChipsHtml(app.store, scoreboardMode(app.store.phase));
+  el.innerHTML = scoreboardHtml(app.store);
 }
 
 /** Rewrites the private found-word chips in place; absent for spectators. */
@@ -462,6 +492,11 @@ function updateFound(app: App): void {
   if (!el) return;
   el.innerHTML = foundHtml(app.store);
 }
+
+/** The lobby's live region: the join-ordered seat roster. A play-time delta
+ *  never reaches the lobby, but the declaration keeps its refresh path
+ *  uniform with the other screens. */
+const LOBBY_LIVE_REGIONS: readonly LiveRegion[] = [SCOREBOARD_REGION];
 
 function renderLobby(app: App): void {
   document.title = `${APP_NAME} — Raum ${app.store.code}`;
@@ -481,7 +516,7 @@ function renderLobby(app: App): void {
       ${statusHtml(app)}
       <section class="panel">
         <h2>Spieler</h2>
-        <ul id="players" class="chips">${playerChipsHtml(app.store)}</ul>
+        <ul id="players" class="chips">${scoreboardHtml(app.store)}</ul>
         <p class="dim">${app.store.players.filter((p) => p.connected).length} von 8 verbunden</p>
         ${
           app.store.isHost
@@ -491,6 +526,7 @@ function renderLobby(app: App): void {
       </section>
       <button id="leave-btn">Zurück zur Startseite</button>
     </div>`;
+  app.liveRegions = LOBBY_LIVE_REGIONS;
   const start = app.root.querySelector<HTMLButtonElement>("#start-btn");
   if (start) {
     start.onclick = () => {
@@ -503,6 +539,10 @@ function renderLobby(app: App): void {
     if (hint) hint.textContent = app.store.errorText;
   }
 }
+
+/** The game screen's live regions: the ring timer, the ranked scoreboard and
+ *  the private found-word chips (absent for a spectator, and skipped then). */
+const GAME_LIVE_REGIONS: readonly LiveRegion[] = [TIMER_REGION, SCOREBOARD_REGION, FOUND_REGION];
 
 function renderGame(app: App): void {
   document.title = `${APP_NAME} — Runde ${app.store.roundNumber}`;
@@ -540,16 +580,21 @@ function renderGame(app: App): void {
         }
         <section class="panel area-score">
           <h2>Punkte</h2>
-          <ul id="players" class="chips">${playerChipsHtml(app.store, "ranked")}</ul>
+          <ul id="players" class="chips">${scoreboardHtml(app.store)}</ul>
         </section>
       </div>
       <button id="leave-btn">Raum verlassen</button>
     </div>`;
+  app.liveRegions = GAME_LIVE_REGIONS;
   app.root.querySelector<HTMLButtonElement>("#leave-btn")!.onclick = () => leaveRoom(app);
   // Re-render can happen mid-drag (server deltas don't pause the game);
   // rehydrate the trace paint onto the fresh DOM.
   paintTrace(app);
 }
+
+/** The intermission's live regions: the countdown and the session standings.
+ *  The private found-word chips are not part of this screen. */
+const INTERMISSION_LIVE_REGIONS: readonly LiveRegion[] = [TIMER_REGION, SCOREBOARD_REGION];
 
 function renderIntermission(app: App): void {
   document.title = `${APP_NAME} — Pause`;
@@ -576,7 +621,7 @@ function renderIntermission(app: App): void {
         </section>
         <section class="panel area-score">
           <h2>Punkte</h2>
-          <ul id="players" class="chips">${playerChipsHtml(app.store, "session")}</ul>
+          <ul id="players" class="chips">${scoreboardHtml(app.store)}</ul>
           <p class="dim">Es zählt das Gesamtergebnis der Sitzung.</p>
         </section>
       </div>
@@ -587,6 +632,7 @@ function renderIntermission(app: App): void {
       }
       <button id="leave-btn">Raum verlassen</button>
     </div>`;
+  app.liveRegions = INTERMISSION_LIVE_REGIONS;
   const skip = app.root.querySelector<HTMLButtonElement>("#skip-btn");
   if (skip) skip.onclick = () => app.conn!.request({ type: "skip" });
   app.root.querySelector<HTMLButtonElement>("#leave-btn")!.onclick = () => leaveRoom(app);
@@ -613,6 +659,7 @@ function renderOutcome(app: App, outcome: OutcomeScreen): void {
   app.inRoom = false;
   teardown(app);
   document.title = APP_NAME;
+  app.liveRegions = [];
   app.root.innerHTML = `
     <div class="sheet">
       <h1>${outcome.titleHtml}</h1>
