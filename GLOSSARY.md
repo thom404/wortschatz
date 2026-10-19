@@ -62,6 +62,15 @@ close the room, and transfer host.
 The short (~20 s, host-skippable) pause between rounds that shows the round result
 before play auto-advances to the next round.
 
+## Live region
+
+A part of a rendered screen that a **Play-time delta** refreshes **in place**
+instead of rebuilding the screen: the countdown, the scoreboard/standings and
+the private found-word chips. Each screen declares its own live regions beside
+its template, and the in-place updater walks those declarations. See
+[ADR-0009](docs/adr/0009-play-time-deltas-in-place.md) and
+[ADR-0013](docs/adr/0013-live-regions-beside-templates.md).
+
 ## Lobby
 
 The pre-round phase of a room, before the host starts round one. Players join, take a
