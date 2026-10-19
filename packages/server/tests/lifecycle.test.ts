@@ -81,6 +81,33 @@ describe("seat lifecycle", () => {
     expect(departures(seppEvents)).toEqual(["host-changed", "player-left"]);
   });
 
+  test("a host dropping its socket announces host-changed exactly once and reserves the seat", async () => {
+    const { host, snap } = await createRoom(scene, "Hansi");
+    const code = snap.room.code;
+    const { player: gretl, snap: gretlSnap } = await joinPlayer(scene, code, "Gretl");
+    const { player: sepp } = await joinPlayer(scene, code, "Sepp");
+
+    const gretlEvents = record(gretl);
+    const seppEvents = record(sepp);
+
+    // The transport drops rather than a voluntary leave: the host's seat is
+    // reserved, so there is no player-left — only the single host hand-off.
+    host.close();
+
+    await gretl.expect((m) => m.type === "player-disconnected" && m.seatId === snap.self.seatId, 4000);
+    const changed = await gretl.expect((m) => m.type === "host-changed", 4000);
+    expect(changed.hostSeatId).toBe(gretlSnap.self.seatId); // longest-connected successor
+    await sepp.expect((m) => m.type === "player-disconnected" && m.seatId === snap.self.seatId, 4000);
+    await sepp.expect((m) => m.type === "host-changed", 4000);
+    // Give any duplicate a chance to arrive before counting.
+    await new Promise((r) => setTimeout(r, 100));
+
+    expect(gretlEvents.filter((t) => t === "host-changed")).toHaveLength(1);
+    expect(seppEvents.filter((t) => t === "host-changed")).toHaveLength(1);
+    expect(gretlEvents).not.toContain("player-left");
+    expect(seppEvents).not.toContain("player-left");
+  });
+
   test("leave, kick and auto-release announce a departure in the same order", async () => {
     // Voluntary leave: the departing host's successor is announced first.
     {
