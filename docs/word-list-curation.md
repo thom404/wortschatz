@@ -23,9 +23,33 @@ Keep:
   scope for this curation pass.
 
 A human (maintainer/native speaker) adjudicates every entry. The audit only
-proposes candidates; it never auto-excludes by heuristic. The first reviewed
-batch ships with the mechanism; the remaining subjective tail (borderline
-cases) is a named follow-up ticket rather than a blocker here.
+proposes candidates; it never auto-excludes by heuristic.
+
+## Reviewed batches
+
+- **First batch (#107).** The mechanism plus the clear-cut entries: obvious
+  proper nouns/toponyms/surnames, brands, abbreviations and foreign forms.
+- **Second batch (#114).** The borderline tail. Each of the four audit groups
+  was adjudicated against the policy: every flagged candidate was either
+  excluded (the lines under the `Second reviewed batch (#114)` heading in
+  `packages/server/word-exclusions.txt`) or deliberately retained. The diff is
+  the review artefact, and `word-list-curation.test.ts` pins the decisions
+  end-to-end against the real list.
+
+A flag is not a verdict, and the second batch records that explicitly:
+
+- The upstream blacklist also contains valid German imperatives and inflected
+  forms (`Grins`, `Hänsel`, `Kant`, `Brecht`, `Aalst`, `Beate`, `Jauch`), so
+  blacklist membership alone never justifies removal.
+- The abbreviation-pattern group is dominated by ordinary short nouns
+  (`Akt`, `Bär`, `Uhr`, `Zug`), not abbreviations.
+- The inner-uppercase group also contains German common nouns
+  (`Latex`, `Intercity`, `MacGuffin`).
+- Non-German codepoints are a review flag, not a rule: Duden loanwords such as
+  `Café`, `Cliché`, `Coupé`, `Rosé`, `Soufflé`, `Matinée`, `Varieté`,
+  `Soirée`, `Gulyás`, `Csárdás`, `Négritude`, `Omertà`, `Pietà`, `Podestà`
+  and `Shōgun` stay accepted. Only forms that are languages, peoples, places or
+  plain English tokens were removed.
 
 ## Asset
 

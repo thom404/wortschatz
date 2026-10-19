@@ -44,3 +44,72 @@ pokémons
 taíno
 tupinambá
 wayapopihíwi
+
+# Second reviewed batch (#114): the remaining flagged candidates that the
+# policy clearly excludes. Flagged entries that are valid German words —
+# including the imperative/inflected forms the upstream blacklist also names,
+# such as "grins" (grinsen), "hänsel" (hänseln) and "kant" (kanten) — and
+# Duden-accepted loanwords stay accepted on purpose. Nothing here was removed
+# by a heuristic; each line is an individual decision. See
+# docs/word-list-curation.md.
+
+# Proper nouns, toponyms and surnames.
+kurt
+roger
+rom
+sam
+tex
+tim
+till
+
+# Abbreviations.
+ads
+aküspra
+epo
+groko
+ids
+oled
+oleds
+
+# Brands, products and proper-noun derivatives.
+bittorrent
+bittorrents
+compactflash
+javascript
+javascripts
+mccarthyismus
+mcdonaldisierung
+webhooks
+wifi
+wifis
+wikiweb
+wikiwebs
+youtuber
+youtubern
+youtubers
+
+# Non-German-language forms: English tokens, languages, peoples and places
+# that are not Duden-accepted German loanwords.
+baoulé
+bokmål
+bokmåls
+brač
+caló
+cariñena
+cariñenas
+dimotikí
+française
+françaisen
+hávamál
+hávamáls
+landsmål
+landsmåls
+lingála
+quiché
+riksmål
+riksmåls
+tupí
+volxmusik
+võro
+ximénez
+yue
