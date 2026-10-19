@@ -782,6 +782,7 @@ export class Rooms {
         roundNumber: room.roundNumber,
         board: room.board,
         reveal: room.reveal,
+        deadline: room.deadline,
       };
     }
     this.sendTo(ws, snap);

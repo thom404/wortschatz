@@ -314,6 +314,8 @@ export function intermissionSnapshot(opts: {
   board: readonly string[];
   reveal: RevealPayload;
   players?: PlayerInfo[];
+  /** Absolute intermission deadline; defaults to a fresh full intermission. */
+  deadline?: number;
 }): SnapshotMsg {
   const hostSeatId = opts.hostSeatId ?? 1;
   const roundNumber = opts.roundNumber ?? 1;
@@ -331,6 +333,7 @@ export function intermissionSnapshot(opts: {
       roundNumber,
       board: [...opts.board],
       reveal: opts.reveal,
+      deadline: opts.deadline ?? Date.now() + 20_000,
     },
   };
 }

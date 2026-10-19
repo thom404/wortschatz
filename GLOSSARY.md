@@ -132,11 +132,12 @@ adding one cannot break layout. See [ADR-0002](docs/adr/0002-game-screen-layout-
 
 ## Snapshot
 
-The complete authoritative room-and-player state (`room`, `self`, `players`, and the
-live `round` when playing) that the server sends on join, on every reconnect, on
-`resync`, and — without being asked — to every seat promoted from spectator to
-player at round start. The client never reconstructs state from deltas; everything
-else is a delta.
+The complete authoritative room-and-player state (`room`, `self`, `players`, the
+live `round` when playing, or the finished round and the live intermission
+deadline when in intermission) that the server sends on join, on every
+reconnect, on `resync`, and — without being asked — to every seat promoted from
+spectator to player at round start. The client never reconstructs state from
+deltas; everything else is a delta.
 
 ## Spectator
 

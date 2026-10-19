@@ -240,6 +240,8 @@ export interface FinishedRoundInfo {
   roundNumber: number;
   board: Board;
   reveal: RevealPayload;
+  /** Absolute epoch-ms deadline of the intermission. */
+  deadline: number;
 }
 
 export interface ScoreEntry {
