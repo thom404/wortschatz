@@ -419,7 +419,6 @@ export class Rooms {
     this.cfg.log.info({ event: "kick", room: room.code, seat: targetSeatId });
     const sockets = [...target.sockets];
     this.releaseSeat(room, target);
-    this.broadcast(room, { type: "player-left", seatId: target.seatId, nickname: target.nickname });
     for (const sock of sockets) {
       this.sendTo(sock, { type: "kicked" });
       this.conns.get(sock)?.conn.close(1000, "kicked");
@@ -453,15 +452,7 @@ export class Rooms {
   private handleLeave(room: Room, seat: Seat): void {
     this.cfg.log.info({ event: "leave", room: room.code, seat: seat.seatId });
     const sockets = [...seat.sockets];
-    const seatId = seat.seatId;
-    const nickname = seat.nickname;
-    const wasHost = room.hostSeatId === seatId;
     this.releaseSeat(room, seat);
-    for (const s of room.seats.values()) {
-      for (const sock of s.sockets) {
-        this.sendTo(sock, { type: "player-left", seatId, nickname });
-      }
-    }
     for (const sock of sockets) {
       const st = this.conns.get(sock);
       if (st) {
@@ -469,9 +460,6 @@ export class Rooms {
         st.seatId = null;
       }
       this.conns.get(sock)?.conn.close(1000, "leave");
-    }
-    if (wasHost && room.hostSeatId !== -1) {
-      this.broadcast(room, { type: "host-changed", hostSeatId: room.hostSeatId });
     }
   }
   /* ------------------------------------------------------------------ */
@@ -640,10 +628,16 @@ export class Rooms {
           missedRounds,
         });
         this.releaseSeat(room, seat);
-        this.broadcast(room, { type: "player-left", seatId: seat.seatId, nickname: seat.nickname });
       }
     }
   }
+  /**
+   * The one emission point for a seat leaving the roster. It removes the seat
+   * and announces the departure in a fixed order — the successor host first
+   * (`host-changed`, when the departing seat was host), then the roster removal
+   * (`player-left`) — so leave, kick and auto-release cannot disagree and each
+   * change is announced exactly once.
+   */
   private releaseSeat(room: Room, seat: Seat): void {
     const wasHost = room.hostSeatId === seat.seatId;
     room.seats.delete(seat.seatId);
@@ -651,6 +645,7 @@ export class Rooms {
     if (wasHost) {
       this.transferHost(room);
     }
+    this.broadcast(room, { type: "player-left", seatId: seat.seatId, nickname: seat.nickname });
     this.maybeScheduleEmptyGrace(room);
   }
   /** Host duties move to the longest-connected remaining connected player. */

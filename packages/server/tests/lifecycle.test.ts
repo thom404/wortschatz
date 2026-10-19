@@ -15,6 +15,21 @@ function seatSnap(m: Record<string, unknown> & { type: string }): SnapshotMsg {
   return m as unknown as SnapshotMsg;
 }
 
+/** Record the `type` of every frame a client receives, for counting and
+ *  ordering assertions the draining `expect` helper cannot express. */
+function record(client: TestClient): string[] {
+  const events: string[] = [];
+  client.ws.on("message", (data) => {
+    events.push((JSON.parse(data.toString()) as { type: string }).type);
+  });
+  return events;
+}
+
+/** The departure announcements a remaining client sees, in arrival order. */
+function departures(events: string[]): string[] {
+  return events.filter((t) => t === "host-changed" || t === "player-left");
+}
+
 describe("seat lifecycle", () => {
   test("voluntary leave releases the seat instantly: player-left for others, socket closes 1000", async () => {
     const { host, snap } = await createRoom(scene, "Hansi");
@@ -40,6 +55,73 @@ describe("seat lifecycle", () => {
     host.close();
     const changed = await p2.player.expect((m) => m.type === "host-changed", 4000);
     expect(changed.hostSeatId).toBe(1); // Gretl joined before Sepp
+  });
+
+  test("a host leaving announces host-changed exactly once to every connected client", async () => {
+    const { host, snap } = await createRoom(scene, "Hansi");
+    const code = snap.room.code;
+    const { player: gretl, snap: gretlSnap } = await joinPlayer(scene, code, "Gretl");
+    const { player: sepp } = await joinPlayer(scene, code, "Sepp");
+
+    const gretlEvents = record(gretl);
+    const seppEvents = record(sepp);
+
+    host.send({ type: "leave" });
+
+    // Successor host first, roster removal after — once for each client.
+    const changed = await gretl.expect((m) => m.type === "host-changed", 4000);
+    expect(changed.hostSeatId).toBe(gretlSnap.self.seatId); // longest-connected successor
+    await gretl.expect((m) => m.type === "player-left" && m.seatId === 0, 4000);
+    await sepp.expect((m) => m.type === "host-changed", 4000);
+    await sepp.expect((m) => m.type === "player-left" && m.seatId === 0, 4000);
+    // Give any duplicate a chance to arrive before counting.
+    await new Promise((r) => setTimeout(r, 100));
+
+    expect(departures(gretlEvents)).toEqual(["host-changed", "player-left"]);
+    expect(departures(seppEvents)).toEqual(["host-changed", "player-left"]);
+  });
+
+  test("leave, kick and auto-release announce a departure in the same order", async () => {
+    // Voluntary leave: the departing host's successor is announced first.
+    {
+      const { host, snap } = await createRoom(scene, "Hansi");
+      const { player: gretl } = await joinPlayer(scene, snap.room.code, "Gretl");
+      const events = record(gretl);
+      host.send({ type: "leave" });
+      await gretl.expect((m) => m.type === "player-left" && m.seatId === 0, 4000);
+      await new Promise((r) => setTimeout(r, 100));
+      expect(departures(events)).toEqual(["host-changed", "player-left"]);
+    }
+
+    // Explicit kick: a non-host departure is roster removal alone.
+    {
+      const { host, snap } = await createRoom(scene, "Hansi");
+      const { player: gretl } = await joinPlayer(scene, snap.room.code, "Gretl");
+      const { player: sepp, snap: seppSnap } = await joinPlayer(scene, snap.room.code, "Sepp");
+      const events = record(gretl);
+      host.send({ type: "kick", seatId: seppSnap.self.seatId, reqId: 5 });
+      await gretl.expect((m) => m.type === "player-left" && m.seatId === seppSnap.self.seatId, 4000);
+      await new Promise((r) => setTimeout(r, 100));
+      expect(departures(events)).toEqual(["player-left"]);
+      void sepp;
+    }
+
+    // Auto-release of a long-absent seat: the same roster-removal announcement.
+    const scene2 = await makeScene({ roundMs: 300, intermissionMs: 200, tickIntervalMs: 100 });
+    try {
+      const { host, snap } = await createRoom(scene2, "Hansi");
+      const { player: gretl } = await joinPlayer(scene2, snap.room.code, "Gretl");
+      const events = record(host);
+      host.send({ type: "start-round", reqId: 1 });
+      await host.expect((m) => m.type === "round-start");
+      gretl.close();
+      await host.expect((m) => m.type === "player-disconnected" && m.seatId === 1, 4000);
+      await host.expect((m) => m.type === "player-left" && m.seatId === 1, 6000);
+      await new Promise((r) => setTimeout(r, 100));
+      expect(departures(events)).toEqual(["player-left"]);
+    } finally {
+      await scene2.stop();
+    }
   });
 
   test("explicit transfer-host moves duties immediately", async () => {
