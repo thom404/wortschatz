@@ -1,6 +1,6 @@
 /**
- * Room and seat domain types. Server-internal: never inspected by tests,
- * which see only the wire seam.
+ * Room and seat domain types. Server-internal: the wire tests never inspect
+ * them; only the phase/roster unit tests construct a room directly.
  */
 import type { RoomPhase, RevealPayload } from "@wortschatz/shared";
 import { PROTOCOL } from "@wortschatz/shared";
@@ -42,6 +42,26 @@ export interface Room {
   wordsBySeat: Map<number, string[]>;
   lastActivity: number;
   closing: boolean;
+}
+
+/** A fresh room in the lobby phase, with no seats yet. */
+export function makeRoom(code: string): Room {
+  return {
+    code,
+    phase: "lobby",
+    hostSeatId: -1,
+    roundNumber: 0,
+    board: [],
+    seed: 0n,
+    words: [],
+    deadline: 0,
+    seats: new Map(),
+    nextSeatId: 0,
+    reveal: null,
+    wordsBySeat: new Map(),
+    lastActivity: 0,
+    closing: false,
+  };
 }
 
 export function makeRoomCode(length: number = PROTOCOL.ROOM_CODE_LENGTH): string {
