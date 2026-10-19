@@ -1,4 +1,10 @@
-import type { ClientMessage, ServerMessage, SnapshotMsg } from "@wortschatz/shared";
+import type {
+  ClientMessage,
+  GreetingMsg,
+  RoomEndReason,
+  ServerMessage,
+  SnapshotMsg,
+} from "@wortschatz/shared";
 
 /**
  * One room-bound WebSocket per page life. Handles:
@@ -10,8 +16,17 @@ import type { ClientMessage, ServerMessage, SnapshotMsg } from "@wortschatz/shar
  */
 export type ServerListener = (msg: ServerMessage) => void;
 
-export type GreetFn = (self: RoomConnection) => ClientMessage | null;
-export type ConnStatus = "connecting" | "open" | "retrying" | "closed";
+/** Builds the one greeting a connection sends once its transport is up:
+ *  create-room, or join with a stored session token. */
+export type GreetFn = () => GreetingMsg | null;
+
+export type ConnStatus = "connecting" | "open" | "retrying";
+
+/** The single way a room connection ends. The connection derives it from
+ *  the server's end frame or from an orderly transport close, so the app
+ *  handles one outcome rather than a status followed by a frame. */
+export type CloseOutcome =
+  { kind: "kicked" } | { kind: "room-ended"; reason: RoomEndReason } | { kind: "connection-lost" };
 
 export interface StoredSession {
   token: string;
@@ -57,17 +72,20 @@ export class RoomConnection {
   private readonly greet: GreetFn;
   private readonly listener: ServerListener;
   private readonly onStatus: (status: ConnStatus) => void;
+  private readonly onClose: (outcome: CloseOutcome) => void;
 
   constructor(
     code: string,
     greet: GreetFn,
     listener: ServerListener,
-    onStatus: (status: ConnStatus) => void = () => {}
+    onStatus: (status: ConnStatus) => void = () => {},
+    onClose: (outcome: CloseOutcome) => void = () => {}
   ) {
     this.code = code;
     this.greet = greet;
     this.listener = listener;
     this.onStatus = onStatus;
+    this.onClose = onClose;
   }
 
   /** Opens the socket and greets. Retries with capped exponential backoff. */
@@ -93,11 +111,12 @@ export class RoomConnection {
     this.ws.onclose = (ev) => {
       this.ws = null;
       if (this.disposed) return;
-      if (ev.code === 1000 || ev.code === 1001) {
-        // Orderly: server told us to go (kicked/room-ended already handled).
+      if (ev.code !== 1000 && ev.code !== 1001) {
+        this.scheduleRetry();
         return;
       }
-      this.scheduleRetry();
+      // Orderly close with no end frame ahead: one connection-lost outcome.
+      this.finish({ kind: "connection-lost" });
     };
     this.ws.onerror = () => {
       /* close event follows */
@@ -105,7 +124,7 @@ export class RoomConnection {
   }
 
   private greetSocket(): void {
-    const msg = this.greet(this);
+    const msg = this.greet();
     if (!msg) return;
     const reqId = this.nextReqId++;
     const ws = this.ws;
@@ -138,16 +157,25 @@ export class RoomConnection {
       if (sess.token) saveSession(msg.room.code, sess);
       this.onStatus("open");
     }
-    if (msg.type === "kicked" || msg.type === "room-ended") {
-      this.disposed = true;
-      try {
-        this.ws?.close(1000, "server-outcome");
-      } catch {
-        /* gone */
-      }
-      this.onStatus("closed");
-    }
     this.listener(msg);
+    if (msg.type === "kicked") {
+      this.finish({ kind: "kicked" });
+    } else if (msg.type === "room-ended") {
+      this.finish({ kind: "room-ended", reason: msg.reason });
+    }
+  }
+
+  /** Emits exactly one close outcome, after the end frame has reached the
+   *  listener so the app's state already names the room. */
+  private finish(outcome: CloseOutcome): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    try {
+      this.ws?.close(1000, "server-outcome");
+    } catch {
+      /* gone */
+    }
+    this.onClose(outcome);
   }
 
   /** Typed send with reqId echo correlation. */

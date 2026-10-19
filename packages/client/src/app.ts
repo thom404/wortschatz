@@ -1,4 +1,4 @@
-import { loadSession, clearSession, type ConnStatus } from "./api.js";
+import { loadSession, clearSession, type CloseOutcome, type ConnStatus, type GreetFn } from "./api.js";
 import { GameStore, type DeltaKind } from "./store.js";
 import {
   applyGestureSample,
@@ -13,7 +13,7 @@ import { applySkin, loadSkin, skinSwitcherHtml, wireSkinSwitcher } from "./skins
 import type {
   ClientMessage,
   PlayerInfo,
-  RoomsEndedMsg,
+  RoomEndReason,
   ServerErrorMsg,
   ServerMessage,
 } from "@wortschatz/shared";
@@ -45,18 +45,15 @@ export interface RoomConn {
   stop(): void;
 }
 
-/** Builds the greeting message the connection sends once its transport is
- *  up (create-room, or join with a stored session token). */
-export type GreetFn = () => ClientMessage | null;
-
 /** How a room connection comes to be. The factory receives the room code,
- *  the greeting builder and the app's two callbacks; it returns an
- *  unstarted connection the app then `start()`s. */
+ *  the greeting builder, the status callback and the one close-outcome
+ *  callback; it returns an unstarted connection the app then `start()`s. */
 export type ConnFactory = (opts: {
   code: string;
   greet: GreetFn;
   listener: (msg: ServerMessage) => void;
   onStatus: (status: ConnStatus) => void;
+  onClose: (outcome: CloseOutcome) => void;
 }) => RoomConn;
 
 type Unsubscribe = () => void;
@@ -220,6 +217,7 @@ function startRoom(app: App, code: string, greet: GreetFn): void {
     greet,
     listener: (msg) => onMessage(app, msg),
     onStatus: (status) => onStatus(app, status),
+    onClose: (outcome) => onClose(app, outcome),
   });
   if (app.unsub) app.unsub();
   app.unsub = app.store.subscribe((kind) => render(app, kind));
@@ -243,23 +241,19 @@ function onMessage(app: App, msg: ServerMessage): void {
     return rejectGreeting(app, msg);
   }
   app.store.apply(msg);
-  // The outcome frames (#21) each render their own dedicated screen.
-  // The connection's orderly close is reported first (RoomConnection
-  // fires `closed` before the frame arrives), so the dispatch avoids
-  // the `inRoom`-gated render() — the boundary's word is the trigger.
-  // `room-not-found` fires the generic outcome wherever it lands: the
-  // server only emits it when the room is gone (bad join, a room the
-  // seat outlived) — never as a transient mid-game verdict.
-  if (msg.type === "kicked") return renderOutcome(app, kickedOutcome(app));
-  if (msg.type === "room-ended") return renderOutcome(app, roomEndedOutcome(app, msg));
+  // Room end and kick are close outcomes, reported once by the connection
+  // after this frame reached the store (see `onClose`). `room-not-found`
+  // stays a frame-driven outcome: the server only emits it when the room
+  // is gone (bad join, a room the seat outlived) — never as a transient
+  // mid-game verdict.
   if (msg.type === "error" && msg.code === "room-not-found")
     return renderOutcome(app, roomNotFoundOutcome(app));
 }
 
 /** A greeting rejection: an `error` frame that arrives while the join is
  *  still unconfirmed — no snapshot has named the room yet. This is the
- *  status a rejected greeting must be told apart by, distinct from an
- *  in-room error (a room is known) and an unexpected close (a status). */
+ *  state a rejected greeting must be told apart by, distinct from an
+ *  in-room error (a room is known) and a close outcome. */
 function isGreetingRejection(app: App, msg: ServerMessage): msg is ServerErrorMsg {
   return app.inRoom && !app.store.code && msg.type === "error";
 }
@@ -294,15 +288,19 @@ function syncRoomUrl(app: App): void {
 
 function onStatus(app: App, status: ConnStatus): void {
   app.connStatus = status;
-  if (status === "closed" && app.store.outcome === "none") {
-    // An unexpected transport close arrives with no server frame ahead;
-    // the boundary's own screen carries the generic German note (#21).
-    return renderOutcome(app, {
-      titleHtml: "Verbindung beendet.",
-      noteHtml: OUTCOME_NOTE,
-    });
-  }
   render(app);
+}
+
+/** The connection's one close outcome (#123): kicked, room ended (with its
+ *  reason) or an orderly close that carried no end frame. Each renders its
+ *  dedicated screen; there is no separate status to race with the frame. */
+function onClose(app: App, outcome: CloseOutcome): void {
+  if (outcome.kind === "kicked") return renderOutcome(app, kickedOutcome(app));
+  if (outcome.kind === "room-ended") return renderOutcome(app, roomEndedOutcome(app, outcome.reason));
+  renderOutcome(app, {
+    titleHtml: "Verbindung beendet.",
+    noteHtml: OUTCOME_NOTE,
+  });
 }
 
 function leaveRoom(app: App): void {
@@ -684,9 +682,9 @@ function kickedOutcome(app: App): OutcomeScreen {
   };
 }
 
-function roomEndedOutcome(app: App, msg: RoomsEndedMsg): OutcomeScreen {
+function roomEndedOutcome(app: App, reason: RoomEndReason): OutcomeScreen {
   const code = roomCodeHtml(app.store.code);
-  if (msg.reason === "expired")
+  if (reason === "expired")
     return {
       titleHtml: `Raum ${code} ist abgelaufen.`,
       noteHtml: OUTCOME_NOTE,

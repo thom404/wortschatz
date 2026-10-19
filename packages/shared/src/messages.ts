@@ -32,6 +32,9 @@ export interface JoinMsg {
   reqId?: number | undefined;
 }
 
+/** The first client message on a connection: create a room or join one. */
+export type GreetingMsg = CreateRoomMsg | JoinMsg;
+
 export interface SubmitWordMsg {
   type: "submit-word";
   word: string;
@@ -76,8 +79,7 @@ export interface ResyncMsg {
 }
 
 export type ClientMessage =
-  | CreateRoomMsg
-  | JoinMsg
+  | GreetingMsg
   | SubmitWordMsg
   | StartRoundMsg
   | SkipMsg

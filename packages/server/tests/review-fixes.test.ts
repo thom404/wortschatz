@@ -22,12 +22,33 @@ describe("review fixes", () => {
     expect((await host.expect((m) => m.type === "error" && m.reqId === 1)).code).toBe("need-players");
   });
 
-  test("validation errors echo reqId verbatim", async () => {
+  test("field validation uses one error reply shape and echoes reqId verbatim", async () => {
     const c = await scene.makeClient();
-    c.send({ type: "join", reqId: 42 }); // missing code + nickname
-    expect((await c.expect((m) => m.type === "error" && m.reqId === 42)).code).toBe("invalid-message");
-    c.send({ nonsense: true, reqId: 43 });
-    expect((await c.expect((m) => m.type === "error" && m.reqId === 43)).code).toBe("invalid-message");
+    const cases: { frame: Record<string, unknown>; message: RegExp }[] = [
+      { frame: { type: "join", reqId: 42 }, message: /code required/ }, // missing code + nickname
+      { frame: { type: "kick", seatId: 1.5, reqId: 43 }, message: /integer seatId required/ },
+      { frame: { type: "transfer-host", seatId: "2", reqId: 44 }, message: /integer seatId required/ },
+      { frame: { type: "submit-word", word: 7, reqId: 45 }, message: /word required/ },
+      { frame: { nonsense: true, reqId: 46 }, message: /missing type/ },
+      { frame: { type: "bogus", reqId: 47 }, message: /unknown type: bogus/ },
+    ];
+    for (const { frame, message } of cases) {
+      const reqId = frame["reqId"] as number;
+      c.send(frame);
+      const err = await c.expect((m) => m.type === "error" && m.reqId === reqId);
+      expect(err).toEqual({
+        type: "error",
+        reqId,
+        code: "invalid-message",
+        message: expect.stringMatching(message),
+      });
+    }
+
+    // Field failures leave the socket greetable, and a valid frame keeps
+    // its existing wire shape.
+    c.send({ type: "create-room", nickname: "Ok", reqId: 48 });
+    const snap = (await c.expect((m) => m.type === "snapshot" && m.reqId === 48)) as unknown as SnapshotMsg;
+    expect(snap.self.nickname).toBe("Ok");
   });
 
   test("flood teardown flows into the normal disconnect path", async () => {

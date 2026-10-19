@@ -1,5 +1,5 @@
 import type { WebSocket } from "ws";
-import type { ClientMessage, ServerMessage } from "@wortschatz/shared";
+import type { ClientMessage, ErrorCode, ServerErrorMsg, ServerMessage } from "@wortschatz/shared";
 import { RateLimiter } from "./hardening.js";
 import type { ServerConfigResolved } from "./config.js";
 
@@ -79,11 +79,11 @@ export class Connection {
         ? data
         : Buffer.from(data as ArrayBuffer);
     if (buf.byteLength > this.deps.cfg.maxPayloadBytes) {
-      this.send({ type: "error", code: "invalid-message", message: "payload too large" });
+      this.send(errorReply("invalid-message", "payload too large"));
       return;
     }
     if (isBinary) {
-      this.send({ type: "error", code: "invalid-message", message: "binary frames rejected" });
+      this.send(errorReply("invalid-message", "binary frames rejected"));
       return;
     }
 
@@ -91,7 +91,7 @@ export class Connection {
     try {
       parsed = JSON.parse(buf.toString("utf8"));
     } catch {
-      this.send({ type: "error", code: "invalid-message", message: "unparseable JSON" });
+      this.send(errorReply("invalid-message", "unparseable JSON"));
       return;
     }
 
@@ -99,7 +99,7 @@ export class Connection {
     if (!msg) return;
 
     if (action === "warn") {
-      this.send({ type: "error", code: "rate-limited", message: "too many messages" });
+      this.send(errorReply("rate-limited", "too many messages"));
     }
 
     if (!this.greeted) {
@@ -112,114 +112,31 @@ export class Connection {
 
   /** Shape validation beyond JSON-parse; null ⇒ an error was already sent. */
   private validate(parsed: unknown): ClientMessage | null {
-    const rec = (typeof parsed === "object" && parsed !== null ? parsed : {}) as Record<string, unknown>;
+    const isRecord = typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);
+    const rec = (isRecord ? parsed : {}) as Record<string, unknown>;
     const reqId = readReqId(rec);
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      this.send({
-        type: "error",
-        ...(reqId !== undefined ? { reqId } : {}),
-        code: "invalid-message",
-        message: "not an object",
-      });
-      return null;
-    }
-    const type = rec["type"];
-    if (typeof type !== "string") {
-      this.send({
-        type: "error",
-        ...(reqId !== undefined ? { reqId } : {}),
-        code: "invalid-message",
-        message: "missing type",
-      });
-      return null;
-    }
+    if (!isRecord) return this.reject(reqId, "not an object");
 
-    switch (type) {
-      case "create-room": {
-        const nickname = readString(rec, "nickname");
-        if (nickname === null) {
-          this.send({
-            type: "error",
-            ...(reqId !== undefined ? { reqId } : {}),
-            code: "invalid-message",
-            message: "nickname required",
-          });
-          return null;
-        }
-        return { type, nickname, ...(reqId !== undefined ? { reqId } : {}) };
-      }
-      case "join": {
-        const code = readString(rec, "code");
-        const nickname = readString(rec, "nickname");
-        if (code === null || code === "") {
-          this.send({
-            type: "error",
-            ...(reqId !== undefined ? { reqId } : {}),
-            code: "invalid-message",
-            message: "code required",
-          });
-          return null;
-        }
-        if (nickname === null || nickname === "") {
-          this.send({
-            type: "error",
-            ...(reqId !== undefined ? { reqId } : {}),
-            code: "invalid-message",
-            message: "nickname required",
-          });
-          return null;
-        }
-        const token = readOptionalString(rec, "token");
-        return {
-          type,
-          code,
-          nickname,
-          ...(token !== undefined ? { token } : {}),
-          ...(reqId !== undefined ? { reqId } : {}),
-        };
-      }
-      case "submit-word": {
-        const word = readString(rec, "word");
-        if (word === null) {
-          this.send({
-            type: "error",
-            ...(reqId !== undefined ? { reqId } : {}),
-            code: "invalid-message",
-            message: "word required",
-          });
-          return null;
-        }
-        return { type, word, ...(reqId !== undefined ? { reqId } : {}) };
-      }
-      case "start-round":
-      case "skip":
-      case "leave":
-      case "close-room":
-      case "resync":
-        return { type, ...(reqId !== undefined ? { reqId } : {}) };
-      case "kick":
-      case "transfer-host": {
-        const seatId = rec["seatId"];
-        if (typeof seatId !== "number" || !Number.isInteger(seatId)) {
-          this.send({
-            type: "error",
-            ...(reqId !== undefined ? { reqId } : {}),
-            code: "invalid-message",
-            message: "integer seatId required",
-          });
-          return null;
-        }
-        return { type, seatId, ...(reqId !== undefined ? { reqId } : {}) };
-      }
-      default:
-        this.send({
-          type: "error",
-          ...(reqId !== undefined ? { reqId } : {}),
-          code: "invalid-message",
-          message: `unknown type: ${String(type)}`,
-        });
-        return null;
+    const type = rec["type"];
+    if (typeof type !== "string") return this.reject(reqId, "missing type");
+
+    const spec = MESSAGE_SPECS.get(type);
+    if (!spec) return this.reject(reqId, `unknown type: ${String(type)}`);
+
+    const msg: Record<string, unknown> = { type };
+    for (const field of spec.fields) {
+      const result = readField(rec, field);
+      if (result.error !== undefined) return this.reject(reqId, result.error);
+      if (result.value !== undefined) msg[field.key] = result.value;
     }
+    if (reqId !== undefined) msg.reqId = reqId;
+    return msg as unknown as ClientMessage;
+  }
+
+  /** Every rejection goes through the one reply shape. */
+  private reject(reqId: number | undefined, message: string): null {
+    this.send(errorReply("invalid-message", message, reqId));
+    return null;
   }
 
   private send(msg: ServerMessage): void {
@@ -231,14 +148,78 @@ export class Connection {
   }
 }
 
-function readString(rec: Record<string, unknown>, key: string): string | null {
-  const v = rec[key];
-  return typeof v === "string" ? v : null;
+/* ------------------------------------------------------------------ */
+/* Validation field specifications                                     */
+/* ------------------------------------------------------------------ */
+
+type FieldKind = "string" | "integer";
+
+interface FieldSpec {
+  key: string;
+  kind: FieldKind;
+  /** Optional fields omit a missing or wrong-typed value instead of rejecting. */
+  optional?: boolean;
+  /** A required string must also be non-empty. */
+  nonEmpty?: boolean;
+  /** Detail on the one error reply when a required field fails. */
+  message: string;
 }
-function readOptionalString(rec: Record<string, unknown>, key: string): string | undefined {
-  const v = rec[key];
-  return typeof v === "string" ? v : undefined;
+
+interface MessageSpec {
+  fields: readonly FieldSpec[];
 }
+
+/** The wire shape of every client message, one row per type. */
+const MESSAGE_SPECS: ReadonlyMap<string, MessageSpec> = new Map<string, MessageSpec>([
+  ["create-room", { fields: [{ key: "nickname", kind: "string", message: "nickname required" }] }],
+  [
+    "join",
+    {
+      fields: [
+        { key: "code", kind: "string", nonEmpty: true, message: "code required" },
+        { key: "nickname", kind: "string", nonEmpty: true, message: "nickname required" },
+        { key: "token", kind: "string", optional: true, message: "token must be a string" },
+      ],
+    },
+  ],
+  ["submit-word", { fields: [{ key: "word", kind: "string", message: "word required" }] }],
+  ["start-round", { fields: [] }],
+  ["skip", { fields: [] }],
+  ["leave", { fields: [] }],
+  ["close-room", { fields: [] }],
+  ["resync", { fields: [] }],
+  ["kick", { fields: [{ key: "seatId", kind: "integer", message: "integer seatId required" }] }],
+  ["transfer-host", { fields: [{ key: "seatId", kind: "integer", message: "integer seatId required" }] }],
+]);
+
+interface FieldRead {
+  value?: string | number;
+  error?: string;
+}
+
+function readField(rec: Record<string, unknown>, spec: FieldSpec): FieldRead {
+  const raw = rec[spec.key];
+  if (spec.kind === "string") {
+    if (typeof raw !== "string") return spec.optional ? {} : { error: spec.message };
+    if (!spec.optional && spec.nonEmpty && raw === "") return { error: spec.message };
+    return { value: raw };
+  }
+  if (typeof raw !== "number" || !Number.isInteger(raw)) {
+    return spec.optional ? {} : { error: spec.message };
+  }
+  return { value: raw };
+}
+
+/** The one error-reply builder: `type`, echoed `reqId`, code and detail. */
+export function errorReply(code: ErrorCode, message: string, reqId?: number): ServerErrorMsg {
+  return {
+    type: "error",
+    ...(reqId !== undefined ? { reqId } : {}),
+    code,
+    message,
+  };
+}
+
 export function readReqId(rec: Record<string, unknown>): number | undefined {
   const v = rec["reqId"];
   if (typeof v !== "number" || !Number.isFinite(v)) return undefined;

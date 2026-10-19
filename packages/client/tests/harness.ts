@@ -11,7 +11,7 @@ import type {
 } from "@wortschatz/shared";
 
 export type { PlayerInfo };
-import { saveSession, type ConnStatus } from "../src/api.js";
+import { saveSession, type CloseOutcome, type ConnStatus, type GreetFn } from "../src/api.js";
 import { mount, type ConnFactory, type RoomConn } from "../src/app.js";
 
 /**
@@ -54,26 +54,31 @@ export class ScriptedConnection implements RoomConn {
   readonly outbox: ClientMessage[] = [];
   /** Status history the app was told about, in order. */
   readonly statuses: ConnStatus[] = [];
+  /** Close outcomes the app was told about, in order. Exactly one per end. */
+  readonly closeOutcomes: CloseOutcome[] = [];
   /** Set once the boundary must go silent: after `stop()` or a
    *  server-initiated end frame (`kicked` / `room-ended`). */
   stopped = false;
 
-  private readonly greet: () => ClientMessage | null;
+  private readonly greet: GreetFn;
   private readonly listener: ServerListener;
   private readonly onStatus: (status: ConnStatus) => void;
+  private readonly onClose: (outcome: CloseOutcome) => void;
   private nextReqId = 1;
   private open = false;
 
   constructor(opts: {
     code: string;
-    greet: () => ClientMessage | null;
+    greet: GreetFn;
     listener: ServerListener;
     onStatus: (status: ConnStatus) => void;
+    onClose: (outcome: CloseOutcome) => void;
   }) {
     this.code = opts.code;
     this.greet = opts.greet;
     this.listener = opts.listener;
     this.onStatus = opts.onStatus;
+    this.onClose = opts.onClose;
   }
 
   /* —— the app-side surface (the calls the production client makes) —— */
@@ -97,14 +102,10 @@ export class ScriptedConnection implements RoomConn {
     this.open = false;
   }
 
-  /** A close-status arrives with no server frame ahead — the state an
-   *  orderly close (kicked/room-ended disposal in production) reports
-   *  before its frame, or a close that never gets one. Marks the
-   *  boundary closed and tells the app. */
+  /** An orderly transport close with no server frame ahead. Mirrors
+   *  `RoomConnection`: one connection-lost close outcome reaches the app. */
   abruptClose(): void {
-    this.open = false;
-    this.statuses.push("closed");
-    this.onStatus("closed");
+    this.close({ kind: "connection-lost" });
   }
 
   send(msg: Omit<ClientMessage, "reqId"> & { reqId?: number }): void {
@@ -126,8 +127,7 @@ export class ScriptedConnection implements RoomConn {
   /** Delivers one server message to the mounted app. Mirrors
    *  `RoomConnection.onMessage`: a snapshot persists the session token
    *  under the snapshot's room code and flips the status to `open`;
-   *  server-initiated ends mark the boundary closed first, then deliver
-   *  the frame. */
+   *  server-initiated ends deliver the frame, then emit one close outcome. */
   feed(msg: ServerMessage): void {
     if (msg.type === "snapshot") {
       const token = msg.self.token ?? "";
@@ -137,13 +137,20 @@ export class ScriptedConnection implements RoomConn {
       this.statuses.push("open");
       this.onStatus("open");
     }
-    if (msg.type === "kicked" || msg.type === "room-ended") {
-      this.stopped = true;
-      this.open = false;
-      this.statuses.push("closed");
-      this.onStatus("closed");
-    }
     this.listener(msg);
+    if (msg.type === "kicked") {
+      this.close({ kind: "kicked" });
+    } else if (msg.type === "room-ended") {
+      this.close({ kind: "room-ended", reason: msg.reason });
+    }
+  }
+
+  private close(outcome: CloseOutcome): void {
+    if (this.stopped) return;
+    this.stopped = true;
+    this.open = false;
+    this.closeOutcomes.push(outcome);
+    this.onClose(outcome);
   }
 
   /** Frames sent so far, as a stable copy for assertions. */
