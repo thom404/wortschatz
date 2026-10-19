@@ -603,11 +603,12 @@ describe("mountable app", () => {
 
   it("a connection close with no server frame shows the connection-lost outcome screen", () => {
     driveToRoundOne("LAG4T");
-    // An orderly close (production: server restart races, dispose before
-    // the frame) or the pre-frame state of a kicked/room-ended disposal.
+    // An orderly transport close that carried no end frame is one close
+    // outcome — not a separate closed status racing a later frame.
     app!.conn().abruptClose();
     expect(app!.root.querySelector("h1")!.textContent).toBe("Verbindung beendet.");
-    expect(app!.conn().statuses).toEqual(["connecting", "open", "closed"]);
+    expect(app!.conn().statuses).toEqual(["connecting", "open"]);
+    expect(app!.conn().closeOutcomes).toEqual([{ kind: "connection-lost" }]);
     // The real action returns to the home screen.
     app!.root.querySelector<HTMLButtonElement>("#home-btn")!.click();
     expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
@@ -696,8 +697,10 @@ describe("mountable app", () => {
     it("being kicked shows the dedicated outcome screen with a real action back home", () => {
       driveToRoundOne("LAG4T");
       app!.conn().feed({ type: "kicked" });
-      // The boundary closes before the outcome frame is delivered
-      // (RoomConnection-faithful order) — the kicked screen still wins.
+      // The connection reports one close outcome after the frame reached
+      // the app, so the kicked screen wins without depending on callback
+      // order.
+      expect(app!.conn().closeOutcomes).toEqual([{ kind: "kicked" }]);
       expect(app!.root.querySelector("h1")!.textContent).toBe("Du wurdest aus dem Raum LAG4T entfernt.");
       // No "Wie geht es weiter?" heading: the note speaks for itself.
       expect(app!.root.textContent).not.toContain("Wie geht es weiter?");
@@ -713,6 +716,7 @@ describe("mountable app", () => {
     it("a host-closed room shows the dedicated ended screen", () => {
       driveToRoundOne("LAG4T");
       app!.conn().feed({ type: "room-ended", reason: "host-closed" });
+      expect(app!.conn().closeOutcomes).toEqual([{ kind: "room-ended", reason: "host-closed" }]);
       expect(app!.root.querySelector("h1")!.textContent).toBe("Raum LAG4T wurde beendet.");
       app!.root.querySelector<HTMLButtonElement>("#home-btn")!.click();
       expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
@@ -721,6 +725,7 @@ describe("mountable app", () => {
     it("an expired room ends with its own dedicated screen", () => {
       driveToRoundOne("LAG4T");
       app!.conn().feed({ type: "room-ended", reason: "expired" });
+      expect(app!.conn().closeOutcomes).toEqual([{ kind: "room-ended", reason: "expired" }]);
       expect(app!.root.querySelector("h1")!.textContent).toBe("Raum LAG4T ist abgelaufen.");
       // Same real action as every outcome screen: back to the home screen.
       app!.root.querySelector<HTMLButtonElement>("#home-btn")!.click();

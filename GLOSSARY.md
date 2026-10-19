@@ -12,6 +12,16 @@ once). It is used by board generation (to check a board is good enough) and by t
 end-of-round reveal. Also surfaced as `Dictionary.findWords(board)`. See
 [ADR-0001](docs/adr/0001-word-list-source-and-packaging.md).
 
+## Close outcome
+
+The single client-seam event that ends a room connection: `kicked`, `room-ended`
+(with its reason) or `connection-lost`. The connection derives it from the
+server's end frame or from an orderly transport close that carried no frame and
+emits it once, after the frame reached the store. It replaces the earlier
+`closed` status followed by a separate frame, so the screen shown cannot depend
+on callback order. See
+[ADR-0014](docs/adr/0014-connection-seam-and-field-validation.md).
+
 ## Cumulative score
 
 A player's running total across a session — the sum of their per-round scores. The
@@ -49,6 +59,13 @@ both describe the same finger. A gesture builds exactly one trace, and a real
 release (`pointerup` / `touchend`) or `touchcancel` ends it; a touch
 `pointercancel` does not end it while its touch stream continues. Exactly one
 `submit-word` crosses the wire per gesture.
+
+## Greeting
+
+The first client→server message on a connection: `create-room` or `join`
+(`GreetingMsg`), sent once with the connection's first `reqId`. The room code
+travels inside a join greeting's first frame, never in the WebSocket URL. See
+[ADR-0014](docs/adr/0014-connection-seam-and-field-validation.md).
 
 ## Host
 

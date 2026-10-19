@@ -7,7 +7,7 @@ import { mount, type ConnFactory } from "./app.js";
  * factory — here the real WebSocket-bound `RoomConnection`, unchanged.
  */
 
-const connect: ConnFactory = ({ code, greet, listener, onStatus }) =>
-  new RoomConnection(code, () => greet(), listener, onStatus);
+const connect: ConnFactory = ({ code, greet, listener, onStatus, onClose }) =>
+  new RoomConnection(code, greet, listener, onStatus, onClose);
 
 mount(document.getElementById("app")!, connect);
