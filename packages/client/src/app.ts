@@ -1,5 +1,13 @@
 import { loadSession, clearSession, type ConnStatus } from "./api.js";
 import { GameStore, type DeltaKind } from "./store.js";
+import {
+  applyGestureSample,
+  type GesturePhase,
+  type GestureSample,
+  type GestureState,
+  type GestureStream,
+  type PointerKind,
+} from "./gesture.js";
 import { qrSvg } from "./qr.js";
 import { applySkin, loadSkin, skinSwitcherHtml, wireSkinSwitcher } from "./skins.js";
 import type {
@@ -53,23 +61,6 @@ export type ConnFactory = (opts: {
 
 type Unsubscribe = () => void;
 
-/**
- * The live drag state: one gesture plus whichever event streams report it.
- * A gesture begun by either stream accepts movement from both — Android
- * Firefox begins with `pointerdown` but keeps sending `touchmove` — and
- * whichever stream releases first ends it, so the browser reporting the
- * same finger twice still submits exactly once. `null` between drags.
- */
-interface DragGesture {
-  /** The pointer stream's id, once a pointer event has joined the gesture. */
-  pointerId: number | null;
-  /** A `pointercancel` has already dropped the pointer stream. */
-  pointerCancelled: boolean;
-  /** The touch stream's identifier, once a touch event has joined. */
-  touchId: number | null;
-}
-type DragHandle = DragGesture | null;
-
 interface App {
   root: HTMLElement;
   connect: ConnFactory;
@@ -86,8 +77,9 @@ interface App {
   roomCode: string;
   onPopState: () => void;
   stopDrag: () => void;
-  trace: number[];
-  dragging: DragHandle;
+  /** The live board drag, or `null` between drags. The pure gesture module
+   *  owns its rules; the app only holds the state and paints it. */
+  gesture: GestureState | null;
 }
 
 /** The user-facing app name: the browser title and the home heading. */
@@ -127,8 +119,7 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
       if (!app.inRoom) home(app);
     },
     stopDrag: () => {},
-    trace: [],
-    dragging: null,
+    gesture: null,
   };
   window.addEventListener("popstate", app.onPopState);
   app.stopDrag = wireDrag(app);
@@ -673,12 +664,17 @@ function roomNotFoundOutcome(app: App): OutcomeScreen {
 /* ------------------------------------------------------------------ */
 
 /**
- * The drag word-input surface replacing the typed input (#19): pressing a
- * tile begins the trace; moving through 8-way adjacent tiles extends it;
- * moving onto the immediately previous tile deselects it (backtracking);
- * releasing submits the traced string. The trace paints directly onto the
- * rendered DOM (no full re-render mid-drag) and clears on release — the
- * verdict arrives as a server message either way.
+ * The drag word-input surface (#19): pressing a tile begins the trace;
+ * moving through 8-way adjacent tiles extends it; moving onto the
+ * immediately previous tile deselects it (backtracking); releasing submits
+ * the traced string. The trace paints directly onto the rendered DOM (no
+ * full re-render mid-drag) and clears on release — the verdict arrives as a
+ * server message either way.
+ *
+ * The rules live in the pure `gesture` module (#120); this wiring keeps only
+ * event binding, the point→tile hit-test and painting. It turns each event
+ * into a normalized `GestureSample`, feeds it to the reducer and paints or
+ * submits what the reducer decides.
  *
  * One gesture, both streams (this supersedes the #19 "pointer events carry
  * touch; touch handlers no-op once a pointer drag is live" decision): a
@@ -690,88 +686,88 @@ function roomNotFoundOutcome(app: App): OutcomeScreen {
  * touch pointer does not end a gesture the touch stream still carries; a
  * mouse/pen cancel, or a `touchcancel`, does end it. Scroll/zoom under the
  * finger stays prevented: `touch-action: none` on the board, plus
- * `preventDefault` while a touch drag moves.
+ * `preventDefault` while a touch sample is claimed.
  */
 function wireDrag(app: App): () => void {
   const root = app.root;
 
+  /**
+   * One browser event as a normalized sample: the wiring resolves the point
+   * to a tile and decides whether the finger is clearly inside it, so the
+   * rules stay geometry-free.
+   */
+  const sampleFor = (
+    phase: GesturePhase,
+    stream: GestureStream,
+    id: number,
+    x: number,
+    y: number,
+    target: EventTarget | null,
+    pointerType?: PointerKind
+  ): GestureSample => {
+    const tile = hitTileIndex(app, x, y, target);
+    return {
+      phase,
+      stream,
+      id,
+      point: { x, y },
+      tile,
+      clear: tile >= 0 && clearHit(app, tile, x, y),
+      ...(pointerType ? { pointerType } : {}),
+    };
+  };
+
+  /** Feeds one sample to the rules and paints/submits what they decide.
+   *  Returns whether the sample was claimed, so a touch handler can stop
+   *  the page from scrolling or zooming under the finger. */
+  const feed = (sample: GestureSample): boolean => {
+    const outcome = applyGestureSample(app.gesture, sample);
+    app.gesture = outcome.state;
+    if (outcome.submit) submitTrace(app, outcome.submit);
+    else if (outcome.traceChanged) paintTrace(app);
+    return outcome.claimed;
+  };
+
+  /** A press only opens a gesture on the player's own, live board; a press
+   *  during a live gesture only joins its stream. */
+  const mayBegin = () => app.store.phase === "playing" && app.store.self.role !== "spectator";
+
   const onPointerDown = (ev: PointerEvent) => {
-    const gesture = app.dragging;
-    if (!gesture) {
-      const drag = beginTrace(app, ev.clientX, ev.clientY, ev.target);
-      if (!drag) return;
-      drag.pointerId = ev.pointerId;
-      return;
-    }
-    // The same gesture reported through its pointer stream after touch
-    // already began it: join the pointer for movement and release dedupe
-    // rather than starting a second gesture.
-    if (!gesture.pointerCancelled && gesture.pointerId === null) {
-      gesture.pointerId = ev.pointerId;
-    }
+    if (!app.gesture && !mayBegin()) return;
+    feed(sampleFor("down", "pointer", ev.pointerId, ev.clientX, ev.clientY, ev.target, pointerKind(ev)));
   };
   const onPointerMove = (ev: PointerEvent) => {
-    const gesture = app.dragging;
-    if (!gesture || gesture.pointerCancelled || gesture.pointerId !== ev.pointerId) return;
-    continueTrace(app, ev.clientX, ev.clientY, ev.target);
+    feed(sampleFor("move", "pointer", ev.pointerId, ev.clientX, ev.clientY, ev.target, pointerKind(ev)));
   };
   const onPointerUp = (ev: PointerEvent) => {
-    const gesture = app.dragging;
-    if (!gesture || gesture.pointerCancelled || gesture.pointerId !== ev.pointerId) return;
-    releaseTrace(app, true);
+    feed(sampleFor("up", "pointer", ev.pointerId, ev.clientX, ev.clientY, ev.target, pointerKind(ev)));
   };
   const onPointerCancel = (ev: PointerEvent) => {
-    const gesture = app.dragging;
-    if (!gesture || gesture.pointerId !== ev.pointerId) return;
-    // A touch pointer's cancel is not the gesture's end while the touch
-    // stream keeps delivering the same finger: defer to `touchend` /
-    // `touchcancel`. A mouse or pen cancel has no touch fallback and ends
-    // the gesture without submitting.
-    if (ev.pointerType === "touch" && gesture.touchId !== null) {
-      gesture.pointerCancelled = true;
-      return;
-    }
-    releaseTrace(app, false);
+    feed(sampleFor("cancel", "pointer", ev.pointerId, ev.clientX, ev.clientY, ev.target, pointerKind(ev)));
   };
 
   const onTouchStart = (ev: TouchEvent) => {
     const t = ev.changedTouches[0];
     if (!t) return;
-    const gesture = app.dragging;
-    if (!gesture) {
-      const drag = beginTrace(app, t.clientX, t.clientY, t.target);
-      if (!drag) return;
-      drag.touchId = t.identifier;
-      ev.preventDefault();
-      return;
-    }
-    // The pointer-first stream: join the touch stream to the live gesture
-    // so its moves continue the trace (Android Firefox).
-    if (gesture.touchId === null) {
-      gesture.touchId = t.identifier;
-      ev.preventDefault();
-    }
+    if (!app.gesture && !mayBegin()) return;
+    if (feed(sampleFor("down", "touch", t.identifier, t.clientX, t.clientY, t.target))) ev.preventDefault();
   };
   const onTouchMove = (ev: TouchEvent) => {
     const t = ev.changedTouches[0];
     if (!t) return;
-    const gesture = app.dragging;
-    if (!gesture || gesture.touchId !== t.identifier) return;
-    if (continueTrace(app, t.clientX, t.clientY, t.target)) ev.preventDefault();
+    if (feed(sampleFor("move", "touch", t.identifier, t.clientX, t.clientY, t.target))) ev.preventDefault();
   };
   const onTouchEnd = (ev: TouchEvent) => {
-    const gesture = app.dragging;
-    if (!gesture || gesture.touchId === null) return;
     const t = ev.changedTouches[0];
-    if (t && t.identifier !== gesture.touchId) return;
-    releaseTrace(app, true);
+    const id = t ? t.identifier : app.gesture?.touchId;
+    if (id === null || id === undefined) return;
+    feed(sampleFor("up", "touch", id, t?.clientX ?? 0, t?.clientY ?? 0, t?.target ?? null));
   };
   const onTouchCancel = (ev: TouchEvent) => {
-    const gesture = app.dragging;
-    if (!gesture || gesture.touchId === null) return;
     const t = ev.changedTouches[0];
-    if (t && t.identifier !== gesture.touchId) return;
-    releaseTrace(app, false);
+    const id = t ? t.identifier : app.gesture?.touchId;
+    if (id === null || id === undefined) return;
+    feed(sampleFor("cancel", "touch", id, t?.clientX ?? 0, t?.clientY ?? 0, t?.target ?? null));
   };
 
   root.addEventListener("pointerdown", onPointerDown);
@@ -794,24 +790,9 @@ function wireDrag(app: App): () => void {
   };
 }
 
-/** Starts a gesture if the press lands on a rendered game tile during play.
- *  Returns the new gesture (and thus whether the event stream was claimed —
- *  touch handlers preventDefault only then), or `null` when a gesture is
- *  already live or the board is not the player's to drag. */
-function beginTrace(app: App, x: number, y: number, target: EventTarget | null): DragGesture | null {
-  if (app.dragging) return null;
-  if (app.store.phase !== "playing" || app.store.self.role === "spectator") return null;
-  const idx = hitTileIndex(app, x, y, target);
-  if (idx < 0) return null;
-  const gesture: DragGesture = {
-    pointerId: null,
-    pointerCancelled: false,
-    touchId: null,
-  };
-  app.trace = [idx];
-  app.dragging = gesture;
-  paintTrace(app);
-  return gesture;
+/** A pointer event's `pointerType` (`lib.dom` types it as a plain string). */
+function pointerKind(ev: PointerEvent): PointerKind {
+  return ev.pointerType === "touch" || ev.pointerType === "pen" ? ev.pointerType : "mouse";
 }
 
 /**
@@ -825,94 +806,34 @@ function beginTrace(app: App, x: number, y: number, target: EventTarget | null):
 const CLEAR_HIT_MARGIN = 6;
 
 /**
- * The tile a movement sample clearly hits, or -1 when the sample is
- * ambiguous. `hitTileIndex` resolves a sample to exactly one tile — the
- * browser's sub-pixel rounding decides which — and this filters out every
- * resolution the finger is not well inside: within the board gap of any
- * edge. Ignoring those samples lets a stair-step bridge to the next clear
- * sample cover the ground, so no crossed tile is lost while a corner clip
- * neither adds nor unwinds a tile. The opening press stays lenient and uses
- * `hitTileIndex` directly.
+ * Whether a sample resolved to `tile` is clearly inside it: farther than the
+ * board-gap margin from every edge. `hitTileIndex` resolves a sample to
+ * exactly one tile — the browser's sub-pixel rounding decides which — and
+ * this filters out every resolution the finger is not well inside. Ignoring
+ * those samples lets a stair-step bridge to the next clear sample cover the
+ * ground, so no crossed tile is lost while a corner clip neither adds nor
+ * unwinds a tile. The opening press stays lenient and uses `hitTileIndex`
+ * directly.
  */
-function clearHitTileIndex(app: App, x: number, y: number, target: EventTarget | null): number {
-  const idx = hitTileIndex(app, x, y, target);
-  if (idx < 0) return -1;
-  const el = app.root.querySelector("#board")?.children[idx];
-  if (!el) return -1;
+function clearHit(app: App, tile: number, x: number, y: number): boolean {
+  const el = app.root.querySelector("#board")?.children[tile];
+  if (!el) return false;
   const box = el.getBoundingClientRect();
-  if (
+  return !(
     x - box.left < CLEAR_HIT_MARGIN ||
     box.right - x < CLEAR_HIT_MARGIN ||
     y - box.top < CLEAR_HIT_MARGIN ||
     box.bottom - y < CLEAR_HIT_MARGIN
-  ) {
-    return -1;
-  }
-  return idx;
-}
-
-/**
- * Extends/unwinds the live trace for the tile under the pointer. Callers
- * check the movement sample belongs to the live gesture before calling.
- *
- * Only a sample the finger is clearly inside a tile (see
- * `clearHitTileIndex`) may move the trace; an ambiguous sample — in the gap,
- * or clipping an edge or corner — is ignored. A movement sample normally
- * lands on one 8-way neighbour. A fast swipe can deliver two consecutive
- * samples of one gesture more than one tile apart; then the tiles between
- * them are appended as an 8-way **stair-step walk** from the last selected
- * tile toward the new sample, so no crossed tile is lost. The path stays
- * valid: a step onto an already-selected tile is rejected, and a sample
- * landing on the immediately previous tile unwinds it.
- */
-function continueTrace(app: App, x: number, y: number, target: EventTarget | null): boolean {
-  const idx = clearHitTileIndex(app, x, y, target);
-  if (idx < 0) return false;
-  const trace = app.trace;
-  const last = trace[trace.length - 1];
-  if (last === undefined) return false;
-  const prev = trace[trace.length - 2];
-  if (idx === last) return false; // still on the current tile
-  if (idx === prev) {
-    trace.pop(); // backtracking unwinds the previous tile
-  } else {
-    const steps = bridgeSteps(last, idx);
-    if (steps.length === 0) return false;
-    if (steps.some((step) => trace.includes(step))) return false; // no tile twice
-    trace.push(...steps);
-  }
-  paintTrace(app);
-  return true;
-}
-
-/**
- * The run of 8-way adjacent tiles from `from` to `to` that closes a gap
- * between sparse samples: it excludes `from`, ends at `to`, and takes one
- * row and/or column toward the target each step (diagonal-first stair-step).
- * Empty when `from === to`.
- */
-function bridgeSteps(from: number, to: number): number[] {
-  const steps: number[] = [];
-  let row = Math.floor(from / 4);
-  let col = from % 4;
-  const toRow = Math.floor(to / 4);
-  const toCol = to % 4;
-  while (row !== toRow || col !== toCol) {
-    row += Math.sign(toRow - row);
-    col += Math.sign(toCol - col);
-    steps.push(row * 4 + col);
-  }
-  return steps;
+  );
 }
 
 /** Ends the trace: painting restores the idle hint and, on a real release
- *  during play, the traced string crosses the boundary as `submit-word`. */
-function releaseTrace(app: App, submit: boolean): void {
-  const word = traceWord(app);
-  app.trace = [];
-  app.dragging = null;
+ *  during play, the traced string crosses the boundary as `submit-word`. The
+ *  gesture state is already cleared, so the paint goes idle. */
+function submitTrace(app: App, trace: number[]): void {
   paintTrace(app);
-  if (submit && word && app.store.phase === "playing") {
+  const word = traceWord(app, trace);
+  if (word && app.store.phase === "playing") {
     app.conn?.request({ type: "submit-word", word });
   }
 }
@@ -920,9 +841,9 @@ function releaseTrace(app: App, submit: boolean): void {
 /** The string a release would submit: each traced tile's letters, in
  *  order. Either/or tiles contribute their first variant (swipes don't
  *  choose variants — later tickets own special-tile input). */
-function traceWord(app: App): string {
+function traceWord(app: App, trace: readonly number[]): string {
   const board = app.store.round?.board ?? [];
-  return app.trace.map((i) => tileStrings(board[i] ?? "")[0] ?? "").join("");
+  return trace.map((i) => tileStrings(board[i] ?? "")[0] ?? "").join("");
 }
 
 /** Point → tile resolution, the same for mouse and finger. Real browsers
@@ -944,19 +865,20 @@ function hitTileIndex(app: App, x: number, y: number, target: EventTarget | null
 /** Paints the trace onto the live DOM: `.sel` on selected tiles, the
  *  would-be word (or the idle hint) in the trace line. */
 function paintTrace(app: App): void {
+  const trace = app.gesture?.trace ?? [];
   const board = app.root.querySelector("#board");
   if (board) {
     for (const el of board.children) el.classList.remove("sel");
-    for (const idx of app.trace) {
+    for (const idx of trace) {
       const el = board.children[idx];
       if (el) el.classList.add("sel");
     }
   }
   const el = app.root.querySelector<HTMLElement>("#trace");
   if (!el) return;
-  if (app.trace.length > 0) {
+  if (trace.length > 0) {
     el.classList.remove("hint");
-    el.textContent = traceWord(app);
+    el.textContent = traceWord(app, trace);
   } else {
     el.classList.add("hint");
     el.textContent = TRACE_HINT;
