@@ -366,12 +366,13 @@ function render(app: App, kind: DeltaKind = "structural"): void {
 /**
  * Local countdown interpolation, per spec: clients never own the clock. The
  * server re-anchors every second with a `tick`; between ticks the renderer
- * interpolates against the last-known absolute deadline. A locally expired
- * countdown clamps at 0 and waits for the server's next message — phases
- * change only upon server messages, never self-transitioned.
+ * interpolates against the last-known absolute deadline. Only the playing
+ * round has a clock — the pause always answers 0. A locally expired countdown
+ * clamps at 0 and waits for the server's next message: phases change only
+ * upon server messages, never self-transitioned.
  */
 function remainingOf(store: GameStore): number {
-  if (store.phase !== "playing" && store.phase !== "intermission") return 0;
+  if (store.phase !== "playing") return 0;
   if (!store.deadline) return 0;
   return Math.max(0, store.deadline - Date.now());
 }
@@ -417,8 +418,9 @@ function totalPhaseMs(): number {
   return PROTOCOL.ROUND_MS;
 }
 
+/** Refreshes the running ring timer in place. The pause renders no timer
+ *  element, so this no-ops there; only the playing round has one. */
 function updateTimer(app: App): void {
-  if (app.store.phase !== "playing" && app.store.phase !== "intermission") return;
   const el = app.root.querySelector<HTMLElement>("#countdown");
   if (!el) return;
   const remaining = remainingOf(app.store);
@@ -591,9 +593,9 @@ function renderGame(app: App): void {
   paintTrace(app);
 }
 
-/** The intermission's live regions: the countdown and the session standings.
- *  The private found-word chips are not part of this screen. */
-const INTERMISSION_LIVE_REGIONS: readonly LiveRegion[] = [TIMER_REGION, SCOREBOARD_REGION];
+/** The intermission's live region: the session standings. The pause has no
+ *  countdown, and the private found-word chips are not part of this screen. */
+const INTERMISSION_LIVE_REGIONS: readonly LiveRegion[] = [SCOREBOARD_REGION];
 
 function renderIntermission(app: App): void {
   document.title = `${APP_NAME} — Pause`;
@@ -607,7 +609,6 @@ function renderIntermission(app: App): void {
       ${statusHtml(app)}
       <div id="dashboard" class="dashboard intermission">
         <h1 class="area-title">Pause</h1>
-        ${timerHtml(app)}
         <section class="panel area-board">
           <h2>Runde ${finishedRoundNumber}</h2>
           <div id="board" class="board" style="--tile-span:${tileSpan}">${board
@@ -627,7 +628,7 @@ function renderIntermission(app: App): void {
       ${
         app.store.isHost
           ? `<button id="skip-btn">Nächste Runde starten</button>`
-          : `<p class="dim next-round-hint">Die nächste Runde startet gleich …</p>`
+          : `<p class="dim next-round-hint">Der Gastgeber startet die nächste Runde.</p>`
       }
       <button id="leave-btn">Raum verlassen</button>
     </div>`;

@@ -126,6 +126,7 @@ export class GameStore {
       case "round-end":
         this.phase = "intermission";
         this.roundNumber = msg.roundNumber;
+        this.deadline = 0;
         this.finishedRound = {
           roundNumber: msg.roundNumber,
           reveal: msg.reveal,
@@ -187,14 +188,13 @@ export class GameStore {
       this.deadline = snap.round.deadline;
     }
     if (snap.finishedRound) {
-      // Intermission re-joiners still see the finished round's board and
-      // the authoritative intermission deadline, so their first render
-      // shows the correct remaining time instead of 0:00.
-      this.deadline = snap.finishedRound.deadline;
+      // Intermission re-joiners still see the finished round's board. The
+      // pause has no clock, so no deadline is carried.
+      this.deadline = 0;
       this.round = {
         roundNumber: snap.finishedRound.roundNumber,
         board: snap.finishedRound.board,
-        deadline: snap.finishedRound.deadline,
+        deadline: 0,
       };
     }
     this.lastError = null;
