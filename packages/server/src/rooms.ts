@@ -451,6 +451,7 @@ export class Rooms {
         roundNumber: room.roundNumber,
         board: room.board,
         reveal: room.reveal,
+        ...(room.wikiLinks ? { links: room.wikiLinks } : {}),
         deadline: room.deadline,
       };
     }

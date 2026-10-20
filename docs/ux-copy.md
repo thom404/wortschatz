@@ -30,14 +30,15 @@ the vocabulary in [`GLOSSARY.md`](../GLOSSARY.md).
 
 ## Preferred and avoided terms
 
-| Prefer         | Avoid                          | Why                                                        |
-| -------------- | ------------------------------ | ---------------------------------------------------------- |
-| `Name`         | `Spitzname`                    | People say _Name_.                                         |
-| `Pause`        | `Zwischenspiel`                | The word people actually use for the break.                |
-| `Spielfeld`    | `Spielbrett`                   | Natural German for the board.                              |
-| `Deine Wörter` | `Deine Funde`                  | Plain label for the words a player found.                  |
-| `Wische`       | `Ziehe`                        | The interaction reads as a swipe on a touch device.        |
-| `Skin`         | `Erscheinungsbild`, `Farbwelt` | The one deliberate anglicism; the common word for a theme. |
+| Prefer         | Avoid                          | Why                                                                                                 |
+| -------------- | ------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `Name`         | `Spitzname`                    | People say _Name_.                                                                                  |
+| `Pause`        | `Zwischenspiel`                | The word people actually use for the break.                                                         |
+| `Spielfeld`    | `Spielbrett`                   | Natural German for the board.                                                                       |
+| `Deine Wörter` | `Deine Funde`                  | Plain label for the words a player found.                                                           |
+| `Wische`       | `Ziehe`                        | The interaction reads as a swipe on a touch device.                                                 |
+| `Skin`         | `Erscheinungsbild`, `Farbwelt` | The one deliberate anglicism; the common word for a theme.                                          |
+| `nachschlagen` | `suchen`, `lookup`             | The verb for consulting a dictionary; the link's accessible label is `Bei Wiktionary nachschlagen`. |
 
 `Skin` is the single sanctioned anglicism in the whole UI.
 

@@ -29,6 +29,11 @@ export type SeedSource = () => bigint;
 /** Scoring seam (ticket #6 owns the formula). */
 export type ScoreFn = (word: string, seatId: number) => number;
 
+/** Outbound dictionary seam: maps exact word forms to absolute German
+ *  Wiktionary URLs; words without an entry are absent. Failures resolve to
+ *  an empty map. Never called from the reveal's synchronous path. */
+export type WikiLookup = (words: string[]) => Promise<Map<string, string>>;
+
 /** Round-end reveal seam (#6/#17): computes the concrete payload from the
  *  round's enumerated findable words and the per-seat found words. */
 export type RevealFn = (ctx: {
@@ -57,6 +62,8 @@ export interface ServerConfig {
   generateBoard: BoardGenerator;
   scoreWord: ScoreFn;
   reveal: RevealFn;
+  /** Exact-form dictionary lookup; omit to disable links (tests/local). */
+  lookupWikiLinks?: WikiLookup;
 
   /** Seed draw for board generation; defaults to `crypto` randomness. */
   seedSource?: SeedSource;
@@ -105,6 +112,7 @@ export type ServerConfigResolved = Required<
   generateBoard: BoardGenerator;
   scoreWord: ScoreFn;
   reveal: RevealFn;
+  lookupWikiLinks: WikiLookup;
   seedSource: SeedSource;
   log: Logger;
 };
@@ -125,6 +133,7 @@ export function resolveConfig(overrides: ServerConfig): ServerConfigResolved {
     generateBoard: overrides.generateBoard,
     scoreWord: overrides.scoreWord,
     reveal: overrides.reveal,
+    lookupWikiLinks: overrides.lookupWikiLinks ?? (async () => new Map()),
     seedSource: overrides.seedSource ?? ((): bigint => randomBytes(8).readBigUInt64BE(0)),
     roundMs: overrides.roundMs ?? PROTOCOL.ROUND_MS,
     tickIntervalMs: overrides.tickIntervalMs ?? PROTOCOL.TICK_INTERVAL_MS,

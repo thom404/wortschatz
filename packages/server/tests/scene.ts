@@ -42,6 +42,8 @@ export async function makeScene(overrides: Partial<ServerConfig> = {}): Promise<
     generateBoard: fixedGenerateBoard,
     scoreWord: germanScore,
     reveal: revealAll,
+    // Never the network: tests inject a deterministic lookup when they care.
+    lookupWikiLinks: async () => new Map(),
     log: { info() {}, warn() {}, error() {} },
     ...overrides,
   };
@@ -80,6 +82,7 @@ export const fullCfg = (over: Partial<ServerConfig> = {}): ServerConfig => ({
   generateBoard: placeholderBoard,
   scoreWord: germanScore,
   reveal: revealAll,
+  lookupWikiLinks: async () => new Map(),
   log: { info() {}, warn() {}, error() {} },
   ...over,
 });

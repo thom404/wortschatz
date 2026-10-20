@@ -135,6 +135,15 @@ export interface ScoreUpdateMsg {
   scores: ScoreEntry[];
 }
 
+/** Wiktionary links for the finished round's reveal, keyed by exact word
+ *  form. Sent after `round-end` when the server-side lookup resolves; an
+ *  empty mapping is never sent. */
+export interface WikiLinksMsg {
+  type: "wiki-links";
+  roundNumber: number;
+  links: Record<string, string>;
+}
+
 export interface PlayerJoinedMsg {
   type: "player-joined";
   player: PlayerInfo;
@@ -184,6 +193,7 @@ export type ServerMessage =
   | RoundStartMsg
   | RoundEndMsg
   | ScoreUpdateMsg
+  | WikiLinksMsg
   | PlayerJoinedMsg
   | PlayerLeftMsg
   | PlayerDisconnectedMsg
@@ -235,6 +245,9 @@ export interface FinishedRoundInfo {
   roundNumber: number;
   board: Board;
   reveal: RevealPayload;
+  /** Exact-form German Wiktionary URLs by reveal word, once the lookup has
+   *  resolved; absent when no word has an entry (or it is still pending). */
+  links?: Record<string, string> | undefined;
   /** Zero: the host-paced pause has no deadline. */
   deadline: number;
 }
