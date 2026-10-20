@@ -60,3 +60,34 @@ dashboard, "Neon" arcade) were reviewed by reacting in the browser.
 - **Layout as a user setting**: rejected — viewport decides arrangement.
 - **Big-number timer instead of the ring**: rejected — the ring is one
   component in both arrangements and its inner disc solves contrast.
+
+## Amendment (#142, 2026-10-20): tile values in the index corner
+
+The board's top-left corner used to carry a 0–15 tile index. It now carries the
+tile's **value**, in the same footprint and with the same position tokens
+(renamed from index wording to point wording). This records the display rule;
+scoring, word input and the wire protocol are unchanged.
+
+7. **One shared table.** The German Scrabble letter table, its floor value, the
+   per-character lookup and the word-score sum live on the shared package's
+   scoring surface. The server's scoring module keeps the injectable
+   `ScoreFn` and re-exports the moved names, and the client derives every tile
+   value from the same table, so the corner number cannot drift from the
+   scoreboard.
+8. **Value rule.** `tileValues(tile)` is a pure function returning one value for
+   single, digram, prefix and suffix tiles, and one per variant for either/or
+   tiles in declared letter order. It composes the tile-spelling helpers with
+   the word-score function.
+9. **Pair, collapse and order.** Differing either/or variants render joined by
+   `/` with no spaces in letter order (`e/ä` → `1/6`, `o/u` → `2/1`); equal
+   variants collapse to one number (`i/e` → `1`). Every other tile shows one
+   number.
+10. **Selection and parity.** The selected-tile accent fill recolours the value
+    to `--accent-ink`. The game and intermission boards render through one tile
+    path, so the pause shows the same values; spectators see them too, and no
+    component style branches on a skin.
+11. **Accessible copy.** The tile's label is its displayed letters, a comma and
+    its German points phrase (`sch, 7 Punkte`, `e/ä, 1 oder 6 Punkte`); the
+    visible number is hidden from assistive technology, and the whole tile
+    carries the same points phrase as its hover title. Indices disappear from
+    the product.

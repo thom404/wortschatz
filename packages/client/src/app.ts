@@ -19,7 +19,7 @@ import type {
   ServerErrorMsg,
   ServerMessage,
 } from "@wortschatz/shared";
-import { PROTOCOL, tileSpellingLength, tileStrings } from "@wortschatz/shared";
+import { PROTOCOL, tileSpellingLength, tileStrings, tileValues } from "@wortschatz/shared";
 import "./style.css";
 
 /**
@@ -106,6 +106,46 @@ const TRACE_HINT = "Wische über die Felder, um ein Wort zu bilden.";
 function displayTile(t: string): string {
   if (t.includes("/")) return t;
   return t.replace(/^-|-$/g, "");
+}
+
+/** The German points phrase for a tile: singular at one point, an `oder`
+ *  pair when the spellings differ, plural otherwise (issue #142). Equal
+ *  either/or variants collapse exactly as the visible number does. */
+function pointsText(values: readonly number[]): string {
+  const first = values[0] ?? 0;
+  if (!values.every((v) => v === first)) return `${values.join(" oder ")} Punkte`;
+  return first === 1 ? "1 Punkt" : `${first} Punkte`;
+}
+
+/** The visible corner number: differing either/or variants join with `/` in
+ *  letter order; equal variants (and every other tile kind) collapse to one. */
+function pointsDisplay(values: readonly number[]): string {
+  const first = values[0] ?? 0;
+  return values.every((v) => v === first) ? String(first) : values.join("/");
+}
+
+/**
+ * One board tile: the displayed letters, the points in the old index corner
+ * (hidden from assistive technology, since the tile's label already carries
+ * them) and the whole tile as the hover target. Both the game and
+ * intermission boards render through this one path (ADR-0002).
+ */
+function tileHtml(t: string): string {
+  const letters = displayTile(t);
+  const values = tileValues(t);
+  const points = pointsText(values);
+  const label = `${letters}, ${points}`;
+  return `<div class="tile" title="${escapeHtml(points)}" aria-label="${escapeHtml(label)}">${escapeHtml(letters)}<span class="pts" aria-hidden="true">${escapeHtml(pointsDisplay(values))}</span></div>`;
+}
+
+/** The 4×4 board both screens share. Font sizing lives on the grid
+ *  container via the widest tile span knob (ADR-0002): per-tile `em`
+ *  resolves against the parent and breaks. */
+function boardHtml(board: readonly string[]): string {
+  const tileSpan = Math.max(1, ...board.map((t) => tileSpellingLength(t)));
+  return `<div id="board" class="board" style="--tile-span:${tileSpan}">${board
+    .map(tileHtml)
+    .join("")}</div>`;
 }
 
 /**
@@ -560,9 +600,6 @@ function renderGame(app: App): void {
   document.title = `${APP_NAME} — Runde ${app.store.roundNumber}`;
   const board = app.store.round?.board ?? [];
   const spectating = app.store.self.role === "spectator";
-  // Font sizing lives on the grid container via the widest tile span knob
-  // (ADR-0002): per-tile `em` resolves against the parent and breaks.
-  const tileSpan = Math.max(1, ...board.map((t) => tileSpellingLength(t)));
   app.root.innerHTML = `
     <div class="sheet">
       ${statusHtml(app)}
@@ -573,11 +610,7 @@ function renderGame(app: App): void {
         <section class="panel area-board">
           <h2>Spielfeld</h2>
           ${spectating ? "" : `<div id="trace" class="trace hint">${TRACE_HINT}</div>`}
-          <div id="board" class="board" style="--tile-span:${tileSpan}">${board
-            .map(
-              (t, i) => `<div class="tile">${escapeHtml(displayTile(t))}<span class="idx">${i}</span></div>`
-            )
-            .join("")}</div>
+          ${boardHtml(board)}
         </section>
         ${
           spectating
@@ -616,7 +649,6 @@ function renderIntermission(app: App): void {
   // The finished board stays on screen: for live players it survives from
   // the round, and the intermission snapshot re-anchors it for joiners.
   const board = app.store.round?.board ?? [];
-  const tileSpan = Math.max(1, ...board.map((t) => tileSpellingLength(t)));
   app.root.innerHTML = `
     <div class="sheet">
       ${statusHtml(app)}
@@ -624,9 +656,7 @@ function renderIntermission(app: App): void {
         <h1 class="area-title">Pause</h1>
         <section class="panel area-board">
           <h2>Runde ${finishedRoundNumber}</h2>
-          <div id="board" class="board" style="--tile-span:${tileSpan}">${board
-            .map((t) => `<div class="tile">${escapeHtml(displayTile(t))}</div>`)
-            .join("")}</div>
+          ${boardHtml(board)}
         </section>
         <section class="panel area-reveal">
           <h2>Gefundene Wörter</h2>
