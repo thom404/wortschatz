@@ -53,9 +53,7 @@ describe("GameStore.apply", () => {
     const store = new GameStore();
     store.apply(playingSnapshot());
 
-    expect(store.apply({ type: "tick", phase: "playing", remaining: 90_000, deadline: 20_000 })).toBe(
-      "play-time"
-    );
+    expect(store.apply({ type: "tick", remaining: 90_000, deadline: 20_000 })).toBe("play-time");
     expect(store.deadline).toBe(20_000);
 
     expect(
@@ -104,7 +102,7 @@ describe("GameStore.apply", () => {
     store.subscribe((kind) => seen.push(kind));
 
     store.apply(playingSnapshot());
-    store.apply({ type: "tick", phase: "playing", remaining: 90_000, deadline: 20_000 });
+    store.apply({ type: "tick", remaining: 90_000, deadline: 20_000 });
     store.apply({ type: "player-joined", player: seat(3, "Cem") });
 
     expect(seen).toEqual(["structural", "play-time", "structural"]);

@@ -46,11 +46,6 @@ export interface StartRoundMsg {
   reqId?: number | undefined;
 }
 
-export interface SkipMsg {
-  type: "skip";
-  reqId?: number | undefined;
-}
-
 export interface KickMsg {
   type: "kick";
   seatId: number;
@@ -82,7 +77,6 @@ export type ClientMessage =
   | GreetingMsg
   | SubmitWordMsg
   | StartRoundMsg
-  | SkipMsg
   | KickMsg
   | TransferHostMsg
   | LeaveMsg
@@ -108,17 +102,17 @@ export interface SnapshotMsg {
 
 /** Why a room ended — the one word of server truth the end screen
  *  renders (client outcome screens, #21). */
-export type RoomEndReason = "host-closed" | "expired" | "server-shutdown";
+export type RoomEndReason = "host-closed" | "expired" | "server-shutdown" | "no-players";
 
 export interface RoomsEndedMsg {
   type: "room-ended";
   reason: RoomEndReason;
 }
 
-/** 1 Hz re-anchor during `playing` and `intermission`. */
+/** 1 Hz re-anchor of the round clock; sent only while `playing`. The pause
+ *  has no clock, so a tick never means anything else. */
 export interface TickMsg {
   type: "tick";
-  phase: "playing" | "intermission";
   remaining: number;
   deadline: number;
 }

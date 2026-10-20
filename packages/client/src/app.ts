@@ -406,14 +406,15 @@ function timerHtml(app: App): string {
 function timerState(app: App): { fraction: number; low: boolean } {
   const remaining = remainingOf(app.store);
   return {
-    fraction: Math.min(1, Math.max(0, remaining / totalPhaseMs(app.store.phase))),
+    fraction: Math.min(1, Math.max(0, remaining / totalPhaseMs())),
     low: remaining <= LOW_TIME_MS,
   };
 }
 
-/** The wall length of the current countdown phase — the ring's 1.0 point. */
-function totalPhaseMs(phase: GameStore["phase"]): number {
-  return phase === "playing" ? PROTOCOL.ROUND_MS : PROTOCOL.INTERMISSION_MS;
+/** The wall length of the round clock — the ring's 1.0 point. The pause has
+ *  no clock, so `playing` is the only phase that ever renders a timer. */
+function totalPhaseMs(): number {
+  return PROTOCOL.ROUND_MS;
 }
 
 function updateTimer(app: App): void {
@@ -632,7 +633,7 @@ function renderIntermission(app: App): void {
     </div>`;
   app.liveRegions = INTERMISSION_LIVE_REGIONS;
   const skip = app.root.querySelector<HTMLButtonElement>("#skip-btn");
-  if (skip) skip.onclick = () => app.conn!.request({ type: "skip" });
+  if (skip) skip.onclick = () => app.conn!.request({ type: "start-round" });
   app.root.querySelector<HTMLButtonElement>("#leave-btn")!.onclick = () => leaveRoom(app);
 }
 

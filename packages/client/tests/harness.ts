@@ -304,9 +304,11 @@ export function roundEnded(roundNumber: number, reveal: RevealPayload): RoundEnd
   return { type: "round-end", roundNumber, reveal };
 }
 
-/** One 1 Hz re-anchor tick for either countdown phase. */
-export function tick(phase: "playing" | "intermission", remaining: number): TickMsg {
-  return { type: "tick", phase, remaining, deadline: Date.now() + remaining };
+/** One 1 Hz re-anchor tick of the round clock. The phase is fixed now — a
+ *  tick never carries the pause — so it stays in the signature only until
+ *  the intermission suite drops it. */
+export function tick(_phase: "playing" | "intermission", remaining: number): TickMsg {
+  return { type: "tick", remaining, deadline: Date.now() + remaining };
 }
 
 /** A snapshot taken mid-intermission — the late-joiner / reconnect channel:

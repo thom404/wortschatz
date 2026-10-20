@@ -113,7 +113,6 @@ export class GameStore {
         this.applySnapshot(msg);
         break;
       case "tick":
-        this.phase = msg.phase;
         this.deadline = msg.deadline;
         break;
       case "round-start":
@@ -306,6 +305,5 @@ export const GERMAN_ERRORS: Record<ErrorCode, string> = {
   "server-full": "Der Server ist ausgelastet.",
   "invalid-message": "Ungültige Nachricht.",
   "not-playing": "Du spielst in dieser Runde nicht.",
-  "need-players": "Für eine Runde braucht es mindestens 2 Spieler.",
   "invalid-phase": "Das geht gerade nicht.",
 };

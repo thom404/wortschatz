@@ -965,20 +965,6 @@ describe("mountable app", () => {
     expect(app!.root.querySelectorAll("#found li")).toHaveLength(1);
   });
 
-  it("the lobby renders the need-players error as a natural German request", () => {
-    typeInto("#mk-nick", "Lena");
-    click("#mk-btn");
-    app!.conn().feed(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
-
-    // The lone host clicks start; the server's typed verdict lands on the
-    // lobby's start hint, not as an internal constant.
-    click("#start-btn");
-    app!.conn().feed({ type: "error", code: "need-players" });
-    expect(app!.root.querySelector("#start-hint")!.textContent).toBe(
-      "Für eine Runde braucht es mindestens 2 Spieler."
-    );
-  });
-
   it("the taken-name error calls the conflict a Name, not a Spitzname", () => {
     driveToRoundOne("LAG4T");
     // Every catalog entry renders through the game screen's error paragraph
@@ -1327,7 +1313,6 @@ describe("mountable app", () => {
       // ring fraction shrinking with the interpolated remaining time.
       app!.conn().feed({
         type: "tick",
-        phase: "playing",
         remaining: 18_000,
         deadline: Date.now() + 18_000,
       });

@@ -16,7 +16,6 @@ export type ErrorCode =
   | "server-full"
   | "invalid-message"
   | "not-playing"
-  | "need-players"
   | "invalid-phase";
 
 export interface ErrorEnvelope {
