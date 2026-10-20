@@ -1,9 +1,29 @@
-import { describe, expect, it } from "vitest";
-import { TILE_BAG, isEitherOr, isPrefix, isSuffix, tileSpellingLength } from "@wortschatz/shared";
+import { beforeAll, describe, expect, it } from "vitest";
+import {
+  EITHER_OR_MENU,
+  PREFIX_MENU,
+  SUFFIX_MENU,
+  TILE_BAG,
+  isDigram,
+  neighbors,
+  tileKind,
+  type Board,
+} from "@wortschatz/shared";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { generateBoard, isFormable, passesGate } from "../src/boardgen/index.js";
+import {
+  COVERAGE_THRESHOLD,
+  MAX_SINGLE_COPIES,
+  coverageCounts,
+  generateBoard,
+  isFormable,
+  passesCoverage,
+  passesGate,
+  passesVariety,
+  type BoardResult,
+} from "../src/boardgen/index.js";
 import { createDictionary } from "../src/dictionary/index.js";
+import { defaultExclusionsPath, defaultWordsPath } from "../src/dictionary/loader.js";
 
 /** Fixture-dictionary twin for the pure boardgen seam. */
 const FIXTURE_WORDS = readFileSync(join(import.meta.dirname, "fixtures", "words.txt"), "utf8")
@@ -11,9 +31,26 @@ const FIXTURE_WORDS = readFileSync(join(import.meta.dirname, "fixtures", "words.
   .filter(Boolean);
 const fixtureDictionary = createDictionary(FIXTURE_WORDS);
 
+/** Full committed word list, as production uses it. */
+const FULL_WORDS = readFileSync(defaultWordsPath(), "utf8").split("\n");
+const FULL_EXCLUSIONS = readFileSync(defaultExclusionsPath(), "utf8").split("\n");
+const fullDictionary = createDictionary(FULL_WORDS, FULL_EXCLUSIONS);
+
+const DIGRAM_MENU = Object.keys(TILE_BAG).filter((t) => isDigram(t));
+const SPECIAL_MENU = new Set<string>([...DIGRAM_MENU, ...EITHER_OR_MENU, ...PREFIX_MENU, ...SUFFIX_MENU]);
+
+const isSingleTile = (t: string): boolean => tileKind(t) === "single";
+const isSpecialTile = (t: string): boolean => !isSingleTile(t);
+
+/** A board with every cell filled with `x`, then the given overrides. */
+function boardWith(overrides: Array<[number, string]>): Board {
+  const board = new Array<string>(16).fill("x");
+  for (const [cell, tile] of overrides) board[cell] = tile;
+  return board;
+}
+
 describe("generateBoard", () => {
   it("is deterministic per seed and differs across seeds", () => {
-    const dict = createDictionary([]);
     const a1 = generateBoard(1n, fixtureDictionary);
     const a2 = generateBoard(1n, fixtureDictionary);
     const b = generateBoard(2n, fixtureDictionary);
@@ -22,43 +59,63 @@ describe("generateBoard", () => {
     expect(a1.board).not.toEqual(b.board);
   });
 
-  it("returns a 16-cell board drawn from the tile bag", () => {
-    const dict = createDictionary([]);
+  it("returns 16 cells: 15 singles from the inventory and one special from a menu", () => {
     const { board } = generateBoard(7n, fixtureDictionary);
     expect(board).toHaveLength(16);
+    expect(board.filter(isSpecialTile)).toHaveLength(1);
     for (const t of board) {
-      expect(TILE_BAG[t]).toBeGreaterThan(0);
+      if (isSingleTile(t)) {
+        expect(TILE_BAG[t], t).toBeGreaterThan(0);
+      } else {
+        expect(SPECIAL_MENU.has(t), t).toBe(true);
+      }
     }
   });
 
-  it("keeps the decided special-tile composition", () => {
-    const dict = createDictionary([]);
-    for (let s = 0; s < 50; s++) {
-      const { board } = generateBoard(BigInt(s), fixtureDictionary);
-      const either = board.filter(isEitherOr);
-      const prefixes = board.filter(isPrefix);
-      const suffixes = board.filter(isSuffix);
-      expect(either.length).toBeLessThanOrEqual(1);
-      expect(prefixes.length).toBeLessThanOrEqual(2);
-      expect(suffixes.length).toBeLessThanOrEqual(2);
-    }
+  it("draws special types across all four menus with digrams most often", () => {
+    const kinds = PROPERTY_BOARDS.flatMap(({ board }) => board.filter(isSpecialTile).map((t) => tileKind(t)));
+    const counts = {
+      digram: kinds.filter((k) => k === "digram").length,
+      either: kinds.filter((k) => k === "either-or").length,
+      prefix: kinds.filter((k) => k === "prefix").length,
+      suffix: kinds.filter((k) => k === "suffix").length,
+    };
+    expect(counts.digram).toBeGreaterThan(0);
+    expect(counts.either).toBeGreaterThan(0);
+    expect(counts.prefix).toBeGreaterThan(0);
+    expect(counts.suffix).toBeGreaterThan(0);
+    expect(counts.digram).toBeGreaterThan(Math.max(counts.either, counts.prefix, counts.suffix));
   });
 
-  it("never places two multi-letter tiles adjacent", () => {
-    const dict = createDictionary([]);
-    for (let s = 0; s < 100; s++) {
-      const { board } = generateBoard(BigInt(s), fixtureDictionary);
-      const multiIdx = board.map((t, i) => (tileSpellingLength(t) > 1 ? i : -1)).filter((i) => i >= 0);
-      // King-graph feasibility on the 4×4: at most 4 multi tiles can exist.
-      expect(multiIdx.length).toBeLessThanOrEqual(4);
-      for (const i of multiIdx) {
-        for (const j of multiIdx) {
-          if (i === j) continue;
-          const [r1, c1] = [Math.floor(i / 4), i % 4];
-          const [r2, c2] = [Math.floor(j / 4), j % 4];
-          expect(Math.abs(r1 - r2) > 1 || Math.abs(c1 - c2) > 1).toBe(true);
+  it("keeps board variety across 200 seeds", () => {
+    for (const { board } of PROPERTY_BOARDS) {
+      expect(board).toHaveLength(16);
+      expect(board.filter(isSpecialTile)).toHaveLength(1);
+
+      const singles = new Map<string, number>();
+      for (const t of board.filter(isSingleTile)) {
+        singles.set(t, (singles.get(t) ?? 0) + 1);
+      }
+      for (const [tile, count] of singles) {
+        expect(count, tile).toBeLessThanOrEqual(MAX_SINGLE_COPIES);
+      }
+
+      for (let cell = 0; cell < board.length; cell++) {
+        for (const nb of neighbors(cell)) {
+          if (nb > cell) expect(board[nb], `cells ${cell}/${nb}`).not.toBe(board[cell]);
         }
       }
+      expect(passesVariety(board)).toBe(true);
+    }
+  });
+
+  it("gives every cell at least three usable words across 200 seeds", () => {
+    for (const { board, words } of PROPERTY_BOARDS) {
+      const counts = coverageCounts(board, words);
+      for (let cell = 0; cell < board.length; cell++) {
+        expect(counts[cell], `cell ${cell}`).toBeGreaterThanOrEqual(COVERAGE_THRESHOLD);
+      }
+      expect(passesCoverage(board, words)).toBe(true);
     }
   });
 
@@ -97,6 +154,121 @@ describe("generateBoard", () => {
     expect(r1.board).toEqual(r2.board);
     expect(r1.board).toHaveLength(16);
     expect(r1.words).toEqual([]);
+  });
+});
+
+const PROPERTY_SEEDS = Array.from({ length: 200 }, (_, i) => BigInt(1) + BigInt(i) * 7919n);
+let PROPERTY_BOARDS: BoardResult[] = [];
+beforeAll(() => {
+  PROPERTY_BOARDS = PROPERTY_SEEDS.map((seed) => generateBoard(seed, fullDictionary));
+});
+
+describe("passesVariety", () => {
+  const valid: Board = ["e", "t", "a", "e", "i", "o", "u", "n", "r", "s", "h", "e", "l", "g", "m", "st"];
+
+  it("accepts three copies of a single letter, one special and distinct neighbours", () => {
+    expect(passesVariety(valid)).toBe(true);
+  });
+
+  it("rejects a fourth copy of a single letter", () => {
+    const board = [...valid];
+    board[2] = "e";
+    expect(passesVariety(board)).toBe(false);
+  });
+
+  it("rejects a second special tile", () => {
+    const board = [...valid];
+    board[2] = "er";
+    expect(passesVariety(board)).toBe(false);
+  });
+
+  it("rejects identical tiles that touch 8-way", () => {
+    const board = [...valid];
+    board[2] = "t";
+    expect(passesVariety(board)).toBe(false);
+  });
+
+  it("ignores a special tile next to the single letter it contains", () => {
+    const board: Board = ["er", "e", "t", "a", "i", "o", "u", "n", "r", "s", "h", "l", "g", "m", "d", "b"];
+    expect(passesVariety(board)).toBe(true);
+  });
+});
+
+describe("coverageCounts", () => {
+  it("counts a cell reachable only through a digram", () => {
+    const board = boardWith([
+      [0, "st"],
+      [1, "e"],
+    ]);
+    const counts = coverageCounts(board, ["ste"]);
+    expect(counts[0]).toBe(1);
+    expect(counts[1]).toBe(1);
+    expect(counts.slice(2).every((n) => n === 0)).toBe(true);
+  });
+
+  it("counts a suffix tile that ends a word, and not one that would sit mid-word", () => {
+    const board = boardWith([
+      [0, "a"],
+      [1, "r"],
+      [2, "t"],
+      [3, "-s"],
+    ]);
+    const withSuffix = coverageCounts(board, ["arts"]);
+    expect(withSuffix[3]).toBe(1);
+    const withoutSuffix = coverageCounts(board, ["tra"]);
+    expect(withoutSuffix[3]).toBe(0);
+  });
+
+  it("counts an either/or tile against both variants", () => {
+    const board = boardWith([
+      [0, "a/e"],
+      [1, "i"],
+      [2, "n"],
+    ]);
+    const counts = coverageCounts(board, ["ein", "ain"]);
+    expect(counts[0]).toBe(2);
+    expect(counts[1]).toBe(2);
+    expect(counts[2]).toBe(2);
+  });
+
+  it("lets a prefix start a word but never sit in the middle", () => {
+    const board = boardWith([
+      [0, "w"],
+      [1, "an-"],
+      [2, "d"],
+      [3, "a"],
+    ]);
+    const prefixStart = coverageCounts(board, ["and"]);
+    expect(prefixStart[1]).toBe(1);
+    expect(prefixStart[2]).toBe(1);
+    const midWord = coverageCounts(board, ["wand"]);
+    expect(midWord.slice(0, 4).every((n) => n === 0)).toBe(true);
+  });
+
+  it("counts a word reachable by two paths once per cell", () => {
+    const board = boardWith([
+      [0, "a"],
+      [1, "b"],
+      [4, "b"],
+      [5, "a"],
+    ]);
+    const counts = coverageCounts(board, ["aba"]);
+    expect(counts[0]).toBe(1);
+    expect(counts[1]).toBe(1);
+    expect(counts[4]).toBe(1);
+    expect(counts[5]).toBe(1);
+  });
+
+  it("caps coverage counts at the stop threshold", () => {
+    const board = boardWith([
+      [0, "a"],
+      [1, "b"],
+      [4, "b"],
+      [5, "a"],
+    ]);
+    const counts = coverageCounts(board, ["aba", "abb"], 1);
+    expect(counts[0]).toBe(1);
+    expect(counts.every((n) => n <= 1)).toBe(true);
   });
 });
 

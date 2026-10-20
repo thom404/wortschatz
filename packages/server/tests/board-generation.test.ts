@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { PROTOCOL, TILE_BAG, tileSpellingLength } from "@wortschatz/shared";
+import {
+  EITHER_OR_MENU,
+  PREFIX_MENU,
+  SUFFIX_MENU,
+  TILE_BAG,
+  PROTOCOL,
+  isDigram,
+  neighbors,
+  tileKind,
+} from "@wortschatz/shared";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createRoom, FAST_CLOCK, joinPlayer, makeScene, type Scene } from "./scene.js";
@@ -12,6 +21,11 @@ const FIXTURE_WORDS = readFileSync(join(import.meta.dirname, "fixtures", "words.
   .filter(Boolean);
 
 const fixtureDict = () => createDictionary(FIXTURE_WORDS);
+
+const DIGRAM_MENU = Object.keys(TILE_BAG).filter((t) => isDigram(t));
+const SPECIAL_MENU = new Set<string>([...DIGRAM_MENU, ...EITHER_OR_MENU, ...PREFIX_MENU, ...SUFFIX_MENU]);
+const isSingleTile = (t: string): boolean => tileKind(t) === "single";
+const isSpecialTile = (t: string): boolean => !isSingleTile(t);
 
 function realCfg(seed = 42n, log?: ServerConfig["log"]): Partial<ServerConfig> {
   const dictionary = fixtureDict();
@@ -50,11 +64,16 @@ describe("board generation wiring", () => {
     await scene.stop();
   });
 
-  test("round-start broadcasts a 16-cell board drawn from the tile bag", async () => {
+  test("round-start broadcasts 15 inventory singles and one menu special", async () => {
     const { rs } = await startedRound(scene);
     expect(rs.round.board).toHaveLength(PROTOCOL.BOARD_SIZE);
+    expect(rs.round.board.filter(isSpecialTile)).toHaveLength(1);
     for (const t of rs.round.board) {
-      expect(TILE_BAG[t]).toBeGreaterThan(0);
+      if (isSingleTile(t)) {
+        expect(TILE_BAG[t], t).toBeGreaterThan(0);
+      } else {
+        expect(SPECIAL_MENU.has(t), t).toBe(true);
+      }
     }
     expect(rs.round.roundNumber).toBe(1);
     expect(rs.round.deadline).toBeGreaterThan(Date.now());
@@ -135,17 +154,16 @@ describe("submissions against a real generated board", () => {
     expect(err.message).toBe("not placeable");
   });
 
-  test("generation never hands out two adjacent multi-letter tiles", async () => {
+  test("generation places exactly one special tile and no identical neighbours", async () => {
     const seeded = await realScene(5n);
     try {
       const { rs } = await startedRound(seeded);
-      const multi = rs.round.board.map((t, i) => (tileSpellingLength(t) > 1 ? i : -1)).filter((i) => i >= 0);
-      for (const i of multi) {
-        for (const j of multi) {
-          if (i === j) continue;
-          const [r1, c1] = [Math.floor(i / 4), i % 4];
-          const [r2, c2] = [Math.floor(j / 4), j % 4];
-          expect(Math.abs(r1 - r2) > 1 || Math.abs(c1 - c2) > 1).toBe(true);
+      expect(rs.round.board.filter(isSpecialTile)).toHaveLength(1);
+      for (let cell = 0; cell < rs.round.board.length; cell++) {
+        for (const nb of neighbors(cell)) {
+          if (nb > cell) {
+            expect(rs.round.board[nb], `cells ${cell}/${nb}`).not.toBe(rs.round.board[cell]);
+          }
         }
       }
     } finally {

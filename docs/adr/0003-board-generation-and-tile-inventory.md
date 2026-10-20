@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-15
+- Amended: 2026-10-20 (#148) — board variety, one special tile, per-cell coverage
 - Ticket: [#7](https://github.com/thom404/wortschatz/issues/7) (board
   generation, tile inventory & solvability)
 - Research: [`docs/research/wordament-rules.md`](../research/wordament-rules.md)
@@ -126,3 +127,60 @@ real list, pruned DFS cross-checked against brute force).
 - **Seed derivation from room code / persisted seeds**: rejected — rooms are
   memory-only (#4/#13), and same-room fairness comes from broadcast, not seed
   reuse.
+
+## Amendment (#148, 2026-10-20): board variety, one special tile, per-cell coverage
+
+Three player-visible properties of the original decision were wrong in practice:
+97.5 % of sampled boards repeated a tile, 46.7 % had at least one cell used by no
+word, and the "~5 special/multi slots" routinely put several multi-letter tiles
+on one board. The original Wordament draws from a weighted pool, rejects
+candidate boards against a rule set and deploys only boards that pass; there is
+no published duplicate cap, but its boards only duplicate common letters and
+never Q/Z/J/X (see the research document's 2026-10-20 update). The solvability
+gate, scoring, wire protocol, client and round lifecycle stay unchanged.
+
+13. **Board variety.** A candidate is accepted only if it carries at most **three**
+    copies of any single-letter tile, exactly **one** special tile (digram,
+    either/or, prefix or suffix), and no two identical tile strings are 8-way
+    adjacent. Letter contributions from specials do not count toward the
+    single-letter cap (`e` next to `er` is fine). Comparison is exact:
+    `st` ≠ `sch`, `ge-` ≠ `an-`. The three-copy cap matches the maximum seen on
+    the official boards we could inspect; the adjacency rule is deliberately
+    stricter than the original, which can stack two E tiles on a suffix board.
+14. **One special.** Every board has sixteen cells: fifteen singles drawn without
+    replacement from the single-letter entries of `TILE_BAG`, plus one special
+    drawn from the four existing menus. The type is weighted **9 : 2 : 2 : 2**
+    (digram : either/or : prefix : suffix, so 60 % digrams); within a type the
+    menu is uniform. The old "~5 special/multi slots" composition, its
+    excess-multi trade-back and the per-type caps are superseded. No letter is
+    added to or removed from the alphabet; runts keep one tile each.
+15. **Per-cell coverage.** For every cell, count the distinct words in the
+    enumerated, `isFormable`-filtered list for which at least one valid path uses
+    that cell (a word reachable by two paths counts once). Every cell, including
+    the special, must reach **three** distinct words. The metric runs inside
+    `boardgen` on the already-enumerated list, uses the same path rules as the
+    submission mirror, and stops early once every cell reaches the threshold. The
+    public `Dictionary` surface is unchanged. The 200-board full-list simulation
+    met the floor without invoking the documented two-then-one ladder, so the
+    committed threshold stays three.
+16. **Acceptance and fallback.** A board is returned only when it passes the
+    unchanged gate (≥ 40 words, ≥ 14 words of ≥ 5 letters, ≥ 2 words of ≥ 7
+    letters), coverage and variety. The attempt cap stays 200. Rejection consumes
+    the seeded stream as before, so a seed still reproduces one board. The
+    fallback rank is lexicographic: gate passed, coverage passed, variety passed,
+    ≥5-letter word count, total words — playability wins every tie.
+17. **Budget.** The generation budget rises from ~10 ms to **15 ms median**,
+    because coverage is a second analysis pass over the word list. No new
+    dependency or protocol change is involved.
+18. **Measured acceptance (200 boards, full curated list, seeds 1 + i·7919).**
+    200/200 boards passed gate + variety + coverage, with **0** fallbacks.
+    Median total words **119**, median ≥5-letter words **55**, median ≥7-letter
+    words **7** (the new composition's guardrail floor is 55 / 25 / 5). Median
+    generation **5.43 ms**, p95 **22.65 ms**. Vowel share **42.3 %** of cells.
+    Special types came out 133 digram / 35 either/or / 17 prefix / 15 suffix.
+    The golden board was regenerated from its pinned seed.
+19. **Deliberate divergences.** One special per board and coverage ≥ 3 are
+    aligned with the original; the three-copy cap is aligned with the observed
+    official maximum. There is no published duplicate-letter cap, and our
+    "no adjacent identical tiles" rule is a quality choice that is stricter than
+    the original. The gate was not lowered to fit the new composition.

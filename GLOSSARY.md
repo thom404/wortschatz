@@ -12,6 +12,14 @@ once). It is used by board generation (to check a board is good enough) and by t
 end-of-round reveal. Also surfaced as `Dictionary.findWords(board)`. See
 [ADR-0001](docs/adr/0001-word-list-source-and-packaging.md).
 
+## Board variety
+
+The acceptance rules that keep a generated board from looking like a rendering
+accident: at most three copies of any single-letter tile, exactly one **special
+tile**, and no two identical tiles 8-way adjacent. Letters contributed by a
+special do not count toward the single-letter cap, so an `e` cell next to an `er`
+cell is allowed. See [ADR-0003](docs/adr/0003-board-generation-and-tile-inventory.md).
+
 ## Close outcome
 
 The single client-seam event that ends a room connection: `kicked`, `room-ended`
@@ -191,6 +199,15 @@ The once-per-second server→client `tick` carrying the remaining round time and
 the round deadline, used to re-anchor a client's local interpolation between
 bounds. It exists only while `playing`; a pause sends no tick. See Deadline.
 (Renamed from the earlier `round-tick` when the real-time architecture landed.)
+
+## Tile coverage
+
+The number of distinct **Valid words** in the round's enumerated list in which a
+cell can take part along at least one valid 8-way path; a word reachable by
+several paths still counts once for that cell. Every cell, including the special,
+must be usable in at least three words. Board generation computes it from the
+already-enumerated, formability-filtered list. See
+[ADR-0003](docs/adr/0003-board-generation-and-tile-inventory.md).
 
 ## Tile value
 
