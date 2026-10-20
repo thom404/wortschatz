@@ -99,7 +99,9 @@ describe("submit-word", () => {
     spec.send({ type: "submit-word", word: "test", reqId: 31 });
     expect((await spec.expect((m) => m.type === "error" && m.reqId === 31)).code).toBe("not-playing");
 
-    // next round starts automatically → promoted exactly at round-start
+    // the host starts the next round → promoted exactly at round-start
+    await host.expect((m) => m.type === "round-end", 4000);
+    host.send({ type: "start-round", reqId: 2 });
     await host.expect((m) => m.type === "round-start" && m["round"].roundNumber === 2);
     spec.send({ type: "resync", reqId: 32 });
     const promoted = (await spec.expect(

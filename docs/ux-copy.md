@@ -53,8 +53,8 @@ The binding strings from the #50 copy pass, as a sample of the voice:
 | Trace hint                | `Wische über die Felder, um ein Wort zu bilden.`         |
 | Spectator note            | `Du schaust zu. Ab der nächsten Runde bist du dabei.`    |
 | Intermission scoring note | `Es zählt das Gesamtergebnis der Sitzung.`               |
+| Pause hint                | `Der Gastgeber startet die nächste Runde.`               |
 | Duplicate-word error      | `Das Wort hast du schon.`                                |
-| Need-players error        | `Für eine Runde braucht es mindestens 2 Spieler.`        |
 | Taken-name error          | `Dieser Name ist bereits vergeben. Wähle einen anderen.` |
 
 ## Related

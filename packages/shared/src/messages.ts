@@ -46,11 +46,6 @@ export interface StartRoundMsg {
   reqId?: number | undefined;
 }
 
-export interface SkipMsg {
-  type: "skip";
-  reqId?: number | undefined;
-}
-
 export interface KickMsg {
   type: "kick";
   seatId: number;
@@ -82,7 +77,6 @@ export type ClientMessage =
   | GreetingMsg
   | SubmitWordMsg
   | StartRoundMsg
-  | SkipMsg
   | KickMsg
   | TransferHostMsg
   | LeaveMsg
@@ -108,17 +102,16 @@ export interface SnapshotMsg {
 
 /** Why a room ended — the one word of server truth the end screen
  *  renders (client outcome screens, #21). */
-export type RoomEndReason = "host-closed" | "expired" | "server-shutdown";
+export type RoomEndReason = "host-closed" | "expired" | "no-players" | "server-shutdown";
 
 export interface RoomsEndedMsg {
   type: "room-ended";
   reason: RoomEndReason;
 }
 
-/** 1 Hz re-anchor during `playing` and `intermission`. */
+/** 1 Hz re-anchor of the round clock; only ever sent while `playing`. */
 export interface TickMsg {
   type: "tick";
-  phase: "playing" | "intermission";
   remaining: number;
   deadline: number;
 }
@@ -234,7 +227,7 @@ export interface PlayerInfo {
 export interface RoundInfo {
   roundNumber: number;
   board: Board;
-  /** Absolute epoch-ms deadline of the current phase. */
+  /** Absolute epoch-ms deadline of the current round. */
   deadline: number;
 }
 
@@ -242,7 +235,7 @@ export interface FinishedRoundInfo {
   roundNumber: number;
   board: Board;
   reveal: RevealPayload;
-  /** Absolute epoch-ms deadline of the intermission. */
+  /** Zero: the host-paced pause has no deadline. */
   deadline: number;
 }
 

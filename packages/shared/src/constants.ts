@@ -18,8 +18,6 @@ export const PROTOCOL = {
   /* ---------- clock ---------- */
   /** Length of one playing round, in ms. */
   ROUND_MS: 120_000,
-  /** Length of one intermission between rounds, in ms. */
-  INTERMISSION_MS: 20_000,
   /** Cadence of the tick re-anchoring message, in ms. */
   TICK_INTERVAL_MS: 1_000,
 

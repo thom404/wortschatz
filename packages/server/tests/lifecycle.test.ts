@@ -134,7 +134,7 @@ describe("seat lifecycle", () => {
     }
 
     // Auto-release of a long-absent seat: the same roster-removal announcement.
-    const scene2 = await makeScene({ roundMs: 300, intermissionMs: 200, tickIntervalMs: 100 });
+    const scene2 = await makeScene({ roundMs: 300, tickIntervalMs: 100 });
     try {
       const { host, snap } = await createRoom(scene2, "Hansi");
       const { player: gretl } = await joinPlayer(scene2, snap.room.code, "Gretl");
@@ -143,7 +143,14 @@ describe("seat lifecycle", () => {
       await host.expect((m) => m.type === "round-start");
       gretl.close();
       await host.expect((m) => m.type === "player-disconnected" && m.seatId === 1, 4000);
-      await host.expect((m) => m.type === "player-left" && m.seatId === 1, 6000);
+      // Two more host-started rounds: the seat misses a full round and pause
+      // before the auto-release on the third start.
+      await host.expect((m) => m.type === "round-end", 2000);
+      host.send({ type: "start-round", reqId: 2 });
+      await host.expect((m) => m.type === "round-start" && m["round"].roundNumber === 2, 2000);
+      await host.expect((m) => m.type === "round-end", 2000);
+      host.send({ type: "start-round", reqId: 3 });
+      await host.expect((m) => m.type === "player-left" && m.seatId === 1, 4000);
       await new Promise((r) => setTimeout(r, 100));
       expect(departures(events)).toEqual(["player-left"]);
     } finally {
@@ -230,7 +237,6 @@ describe("room lifetime", () => {
   test("disconnected seat auto-releases after missing a full round + intermission", async () => {
     const scene2 = await makeScene({
       roundMs: 300,
-      intermissionMs: 200,
       tickIntervalMs: 100,
       pingIntervalMs: 60_000,
       pongGraceMs: 60_000,
@@ -244,6 +250,11 @@ describe("room lifetime", () => {
       await host.expect((m) => m.type === "round-start");
       host.close(); // host drops mid-round
       // Seat reserved through the next round-start; released the round after.
+      await player.expect((m) => m.type === "round-end", 2000);
+      player.send({ type: "start-round", reqId: 2 });
+      await player.expect((m) => m.type === "round-start" && m["round"].roundNumber === 2);
+      await player.expect((m) => m.type === "round-end", 2000);
+      player.send({ type: "start-round", reqId: 3 });
       const released = await player.expect((m) => m.type === "player-left" && m.seatId === 0, 4000);
       expect(released.nickname).toBe("Hansi");
       // Old token is dead: rejoining with it is a brand-new player.

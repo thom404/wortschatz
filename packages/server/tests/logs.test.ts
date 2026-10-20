@@ -28,7 +28,6 @@ describe("observability", () => {
       fullCfg({
         log: logger,
         roundMs: 300,
-        intermissionMs: 200,
         tickIntervalMs: 100,
         roomEmptyGraceMs: 30_000,
       })

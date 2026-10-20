@@ -127,7 +127,7 @@ describe("mountable app", () => {
       expect(chips[2]!.querySelector(".dot.off")).toBeTruthy();
       expect(chips[2]!.textContent).toContain("unterbrochen");
 
-      // The host's round-start affordance (spec: start only at ≥ 2 players).
+      // The host's round-start affordance; a lone host may start.
       expect(app!.root.querySelector("#start-btn")).toBeTruthy();
       expect(app!.root.querySelector("#players")).toBeTruthy();
 
@@ -411,15 +411,16 @@ describe("mountable app", () => {
       expect(chips[1]!.textContent).toContain("Gesamt 25 P");
     });
 
-    it("the host gets a working skip control that starts the next round now", () => {
+    it("the host button sends start-round to begin the next round", () => {
       driveToRoundOne("LAG4T");
       app!.conn().feed(roundEnded(1, REVEAL));
-      const skip = app!.root.querySelector<HTMLButtonElement>("#skip-btn")!;
-      skip.click();
-      expect(app!.conn().sent().at(-1)).toEqual({ type: "skip", reqId: 3 });
+      const start = app!.root.querySelector<HTMLButtonElement>("#start-btn")!;
+      expect(start.textContent).toBe("Nächste Runde starten");
+      start.click();
+      expect(app!.conn().sent().at(-1)).toEqual({ type: "start-round", reqId: 3 });
     });
 
-    it("a non-host sees the server-owned next-round indicator instead of a skip control", () => {
+    it("a non-host is told the host starts the next round", () => {
       window.history.pushState({}, "", "/r/LATE5");
       typeInto("#jn-code", "LATE5");
       typeInto("#jn-nick", "Ben");
@@ -435,67 +436,47 @@ describe("mountable app", () => {
         })
       );
       expect(app!.root.querySelector("h1")!.textContent).toBe("Pause");
-      expect(app!.root.querySelector("#skip-btn")).toBeNull();
-      // Unambiguous: the pause belongs to the server, not to any button.
-      expect(app!.root.querySelector(".next-round-hint")!.textContent).toContain(
-        "Die nächste Runde startet gleich"
+      expect(app!.root.querySelector("#start-btn")).toBeNull();
+      expect(app!.root.querySelector(".next-round-hint")!.textContent).toBe(
+        "Der Gastgeber startet die nächste Runde."
       );
     });
 
-    it("auto-advances into the next round when the countdown expires — no click anywhere", async () => {
-      vi.useFakeTimers();
-      try {
-        driveToRoundOne("LAG4T");
-        app!.conn().feed(roundEnded(1, REVEAL));
-        app!.conn().feed(tick("intermission", 2_000));
-        await vi.advanceTimersByTimeAsync(251);
-        // Interpolated intermission digits are live…
-        expect(app!.root.querySelector("#countdown")!.textContent).toBe("0:02");
-        app!.conn().feed(tick("intermission", 0));
-        await vi.advanceTimersByTimeAsync(251);
-        // …clamped at zero — the client never self-transitions.
-        expect(app!.root.querySelector("#countdown")!.textContent).toBe("0:00");
-        expect(document.title).toBe("Wortschatz — Pause");
-        // The expiry lands as the server's next round: everyone flips
-        // without so much as a hover over a button.
-        app!.conn().feed(roundStarted(BOARD, 2));
-        expect(app!.root.querySelector("h1")!.textContent).toContain("Runde 2");
-        expect(tileEls(app!.root)).toHaveLength(16);
-        // Nothing was sent but the original lobby truth — no skip, no start.
-        expect(app!.conn().sentTypes()).toEqual(["create-room", "start-round"]);
-      } finally {
-        vi.useRealTimers();
-      }
+    it("shows no countdown on the pause screen — the break is not on a timer", () => {
+      driveToRoundOne("LAG4T");
+      app!.conn().feed(roundEnded(1, REVEAL));
+
+      expect(app!.root.querySelector("#timer")).toBeNull();
+      expect(app!.root.querySelector("#countdown")).toBeNull();
+      // The finished board, reveal and standings stay visible for as long as
+      // the host holds the pause open.
+      expect(tileEls(app!.root)).toHaveLength(16);
+      expect(app!.root.querySelector("#reveal")!.textContent).toContain("ort");
+      // Even a late tick cannot conjure a countdown back onto the pause.
+      app!.conn().feed(tick(12_000));
+      expect(app!.root.querySelector("#countdown")).toBeNull();
+      expect(app!.root.querySelector("#players")).not.toBeNull();
     });
 
-    it("a reconnecting client shows the intermission's remaining time on the first render", () => {
-      vi.useFakeTimers();
-      try {
-        // The reconnect snapshot carries the authoritative intermission
-        // deadline; the first render must already show its remaining time
-        // instead of waiting for the next tick to fill 0:00.
-        const deadline = Date.now() + 12_000;
-        window.history.pushState({}, "", "/r/SPAT7");
-        typeInto("#jn-code", "SPAT7");
-        typeInto("#jn-nick", "Ben");
-        click("#jn-btn");
-        app!.conn().feed(
-          intermissionSnapshot({
-            code: "SPAT7",
-            selfSeatId: 2,
-            nickname: "Ben",
-            hostSeatId: 1,
-            board: BOARD,
-            reveal: REVEAL,
-            deadline,
-          })
-        );
+    it("a reconnecting client lands in the same clockless pause", () => {
+      window.history.pushState({}, "", "/r/SPAT7");
+      typeInto("#jn-code", "SPAT7");
+      typeInto("#jn-nick", "Ben");
+      click("#jn-btn");
+      app!.conn().feed(
+        intermissionSnapshot({
+          code: "SPAT7",
+          selfSeatId: 2,
+          nickname: "Ben",
+          hostSeatId: 1,
+          board: BOARD,
+          reveal: REVEAL,
+        })
+      );
 
-        expect(app!.root.querySelector("h1")!.textContent).toBe("Pause");
-        expect(app!.root.querySelector("#countdown")!.textContent).toBe("0:12");
-      } finally {
-        vi.useRealTimers();
-      }
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Pause");
+      expect(app!.root.querySelector("#countdown")).toBeNull();
+      expect(tileEls(app!.root)).toHaveLength(16);
     });
 
     it("a snapshot during the intermission renders the same reveal the round-end delta carried", () => {
@@ -535,17 +516,12 @@ describe("mountable app", () => {
       ]);
       app!.conn().feed(roundEnded(1, REVEAL));
 
-      const timer = app!.root.querySelector("#timer")!;
       const players = app!.root.querySelector("#players")!;
-      // The intermission declares no private found-word chips.
+      // The pause declares neither a countdown nor private found-word chips.
+      expect(app!.root.querySelector("#timer")).toBeNull();
       expect(app!.root.querySelector("#found")).toBeNull();
 
-      // A Tick refreshes the countdown in place.
-      app!.conn().feed(tick("intermission", 12_000));
-      expect(app!.root.querySelector("#timer")).toBe(timer);
-      expect(app!.root.querySelector("#countdown")!.textContent).toBe("0:12");
-
-      // A later score-update re-ranks the session standings in place — by
+      // A score-update re-ranks the session standings in place — by
       // cumulative score, the intermission's designated mode — without
       // replacing the list element.
       app!.conn().feed({
@@ -590,7 +566,7 @@ describe("mountable app", () => {
 
         // The tick still refreshes the two regions this screen renders in
         // place; the absent found region is skipped without error.
-        deep.conn().feed(tick("playing", 90_000));
+        deep.conn().feed(tick(90_000));
         expect(deep.root.querySelector("#timer")).toBe(timer);
         expect(deep.root.querySelector("#players")).toBe(players);
         expect(deep.root.querySelector("#countdown")!.textContent).toBe("1:30");
@@ -965,18 +941,13 @@ describe("mountable app", () => {
     expect(app!.root.querySelectorAll("#found li")).toHaveLength(1);
   });
 
-  it("the lobby renders the need-players error as a natural German request", () => {
+  it("the lobby lets a solo host start round one", () => {
     typeInto("#mk-nick", "Lena");
     click("#mk-btn");
     app!.conn().feed(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
 
-    // The lone host clicks start; the server's typed verdict lands on the
-    // lobby's start hint, not as an internal constant.
     click("#start-btn");
-    app!.conn().feed({ type: "error", code: "need-players" });
-    expect(app!.root.querySelector("#start-hint")!.textContent).toBe(
-      "Für eine Runde braucht es mindestens 2 Spieler."
-    );
+    expect(app!.conn().sent().at(-1)).toEqual({ type: "start-round", reqId: 2 });
   });
 
   it("the taken-name error calls the conflict a Name, not a Spitzname", () => {
@@ -1327,7 +1298,6 @@ describe("mountable app", () => {
       // ring fraction shrinking with the interpolated remaining time.
       app!.conn().feed({
         type: "tick",
-        phase: "playing",
         remaining: 18_000,
         deadline: Date.now() + 18_000,
       });
@@ -1351,7 +1321,7 @@ describe("mountable app", () => {
 
       // A play-time delta: the server re-anchors the countdown, and the very
       // same ring timer and digits survive — updated, never replaced.
-      app!.conn().feed(tick("playing", 90_000));
+      app!.conn().feed(tick(90_000));
       expect(app!.root.querySelector("#timer")).toBe(timer);
       expect(app!.root.querySelector("#countdown")).toBe(digits);
       expect(digits.textContent).toBe("1:30");

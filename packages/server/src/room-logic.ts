@@ -120,6 +120,7 @@ export class RoomLogic {
       this.moveHostToSuccessor(room);
     }
     this.maybeScheduleEmptyGrace(room);
+    this.maybeEndHostlessNonPlayingRoom(room);
   }
 
   /**
@@ -138,6 +139,7 @@ export class RoomLogic {
     }
     this.deps.broadcast(room, { type: "player-left", seatId: seat.seatId, nickname: seat.nickname });
     this.maybeScheduleEmptyGrace(room);
+    this.maybeEndHostlessNonPlayingRoom(room);
   }
 
   /**
@@ -172,6 +174,14 @@ export class RoomLogic {
     this.deps.broadcast(room, { type: "host-changed", hostSeatId: room.hostSeatId });
   }
 
+  /** A room without a host adopts the connecting seat, so a hostless room
+   *  can recover on the next arrival instead of dead-ending. */
+  adoptHostIfMissing(room: Room, seat: Seat): void {
+    if (room.hostSeatId !== -1) return;
+    room.hostSeatId = seat.seatId;
+    this.deps.broadcast(room, { type: "host-changed", hostSeatId: room.hostSeatId });
+  }
+
   /** Host duties move to the longest-connected remaining connected player. */
   private moveHostToSuccessor(room: Room): void {
     const candidates = [...room.seats.values()]
@@ -185,18 +195,10 @@ export class RoomLogic {
     this.deps.broadcast(room, { type: "host-changed", hostSeatId: room.hostSeatId });
   }
 
-  /** Story 22: the host's start gate counts *connected* players. */
+  /** Connected player seats, used to cap spectator promotion at round start. */
   playerCount(room: Room): number {
     let n = 0;
     for (const s of room.seats.values()) if (s.role === "player" && s.present) n++;
-    return n;
-  }
-
-  /** The rolling clock gates on seats: reserved-but-absent seats still
-   *  have their round to return to, and auto-release on schedule. */
-  seatPlayerCount(room: Room): number {
-    let n = 0;
-    for (const s of room.seats.values()) if (s.role === "player") n++;
     return n;
   }
 
@@ -304,7 +306,6 @@ export class RoomLogic {
     });
     this.deps.broadcast(room, {
       type: "tick",
-      phase: "playing",
       remaining: room.deadline - this.deps.clock.now(),
       deadline: room.deadline,
     });
@@ -316,9 +317,11 @@ export class RoomLogic {
     }
   }
 
+  /** Enter the host-paced pause: no clock, no timer, no tick — the next
+   *  round starts only when the host asks for it. */
   endRound(room: Room): void {
     room.phase = "intermission";
-    room.deadline = this.deps.clock.now() + this.deps.cfg.intermissionMs;
+    room.deadline = 0;
     room.reveal = this.deps.cfg.reveal({
       words: room.words,
       wordsBySeat: room.wordsBySeat,
@@ -326,47 +329,15 @@ export class RoomLogic {
       // shared word price: priced ownerless, via the engine's "no seat" id.
       points: (word) => this.deps.cfg.scoreWord(word, -1),
     });
+    this.clearPhaseTimer(room);
+    this.clearTickLoop(room);
     this.deps.cfg.log.info({ event: "round-end", room: room.code, round: room.roundNumber });
     this.deps.broadcast(room, {
       type: "round-end",
       roundNumber: room.roundNumber,
       reveal: room.reveal,
     });
-    this.armPhaseTimer(room);
-    this.deps.broadcast(room, {
-      type: "tick",
-      phase: "intermission",
-      remaining: room.deadline - this.deps.clock.now(),
-      deadline: room.deadline,
-    });
-  }
-
-  /** Skipping pulls the intermission deadline forward — the same clock
-   *  fabric, never an extension. */
-  skip(room: Room): void {
-    room.deadline = this.deps.clock.now();
-    this.armPhaseTimer(room);
-    this.deps.broadcast(room, {
-      type: "tick",
-      phase: "intermission",
-      remaining: 0,
-      deadline: room.deadline,
-    });
-    this.touch(room);
-  }
-
-  /** Auto-advance; waits (ticks at remaining 0) while under 2 player seats. */
-  autoAdvance(room: Room): boolean {
-    if (this.seatPlayerCount(room) < 2) return false;
-    this.touch(room);
-    this.startRound(room);
-    return true;
-  }
-
-  tryAutoAdvance(room: Room): void {
-    if (room.phase === "intermission" && room.deadline <= this.deps.clock.now()) {
-      this.autoAdvance(room);
-    }
+    this.maybeEndHostlessNonPlayingRoom(room);
   }
 
   private armPhaseTimer(room: Room): void {
@@ -386,26 +357,16 @@ export class RoomLogic {
       this.armPhaseTimer(room); // coalesced early fire: re-arm for the remainder
       return;
     }
-    if (room.phase === "playing") {
-      this.endRound(room);
-    } else if (room.phase === "intermission") {
-      // Under the 2-player gate: wait (ticks at remaining 0) for players.
-      // The tick loop retries the advance every interval.
-      this.autoAdvance(room);
-    }
+    if (room.phase === "playing") this.endRound(room);
   }
 
+  /** The tick loop carries the round clock only; the pause has no clock. */
   private armTickLoop(room: Room): void {
     this.clearTickLoop(room);
     const fire = () => {
-      if (room.closing || room.phase === "closed") return;
-      if (room.phase !== "playing" && room.phase !== "intermission") return;
-      const phase = room.phase;
+      if (room.closing || room.phase !== "playing") return;
       const remaining = Math.max(0, room.deadline - this.deps.clock.now());
-      this.deps.broadcast(room, { type: "tick", phase, remaining, deadline: room.deadline });
-      if (phase === "intermission" && remaining === 0) {
-        if (this.autoAdvance(room)) return; // round-start replaced the loop
-      }
+      this.deps.broadcast(room, { type: "tick", remaining, deadline: room.deadline });
       this.tickTimers.set(room.code, this.deps.clock.setTimeout(fire, this.deps.cfg.tickIntervalMs));
     };
     this.tickTimers.set(room.code, this.deps.clock.setTimeout(fire, this.deps.cfg.tickIntervalMs));
@@ -426,6 +387,24 @@ export class RoomLogic {
   /* ------------------------------------------------------------------ */
   /* Room end                                                            */
   /* ------------------------------------------------------------------ */
+
+  /**
+   * A non-playing room left without a host and with someone still present has
+   * no way forward: end it cleanly instead of hanging. A fully empty room
+   * keeps its existing grace period, and a hostless `playing` room finishes
+   * its round first — this check then fires on entry to the pause.
+   */
+  private maybeEndHostlessNonPlayingRoom(room: Room): void {
+    if (room.phase === "playing" || room.phase === "closed" || room.closing) return;
+    if (room.hostSeatId !== -1) return;
+    if (!this.hasPresentOccupant(room)) return;
+    this.deps.cfg.log.info({
+      event: "room-ended",
+      room: room.code,
+      reason: "no-players",
+    });
+    this.deps.expire(room, "no-players");
+  }
 
   /** Stop every timer this room owns; the room is leaving the map. */
   destroy(room: Room): void {

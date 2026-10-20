@@ -12,16 +12,6 @@ afterEach(async () => {
 });
 
 describe("review fixes", () => {
-  test("need-players counts connected players only, not reserved seats", async () => {
-    const { host, snap } = await createRoom(scene, "Hansi");
-    const { player } = await joinPlayer(scene, snap.room.code, "Gretl");
-    void player.close();
-    // Deterministic ordering: only test the gate once the seat went absent.
-    await host.expect((m) => m.type === "player-disconnected");
-    host.send({ type: "start-round", reqId: 1 });
-    expect((await host.expect((m) => m.type === "error" && m.reqId === 1)).code).toBe("need-players");
-  });
-
   test("field validation uses one error reply shape and echoes reqId verbatim", async () => {
     const c = await scene.makeClient();
     const cases: { frame: Record<string, unknown>; message: RegExp }[] = [
@@ -75,7 +65,6 @@ describe("review fixes", () => {
   test("spectators bypass the player cap mid-round and stay capped out on promotion", async () => {
     const scene2 = await makeScene({
       roundMs: 1200,
-      intermissionMs: 700,
       tickIntervalMs: 150,
       maxPlayers: 2,
     });
@@ -90,7 +79,10 @@ describe("review fixes", () => {
       const joinSnap = (await over.expect((m) => m.type === "snapshot")) as unknown as SnapshotMsg;
       expect(joinSnap.self.role).toBe("spectator");
 
-      // Next round: first-come promotion fills to the cap; Dritte stays out.
+      // Next round: the host starts it, first-come promotion fills to the
+      // cap; Dritte stays out.
+      await host.expect((m) => m.type === "round-end", 4000);
+      host.send({ type: "start-round", reqId: 2 });
       await host.expect((m) => m.type === "round-start" && m["round"].roundNumber === 2);
       over.send({ type: "resync", reqId: 3 });
       const after = (await over.expect(

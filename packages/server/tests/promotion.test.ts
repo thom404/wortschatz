@@ -24,10 +24,12 @@ describe("spectator promotion (in-room screens, #20)", () => {
     const joinSnap = (await watch.expect((m) => m.type === "snapshot")) as unknown as SnapshotMsg;
     expect(joinSnap.self.role).toBe("spectator");
 
-    // Round 2 begins via auto-advance: spectators are promoted in join
-    // order (server truth), and the promoted seat is told about its own
+    // Round 2 begins when the host starts it: spectators are promoted in
+    // join order (server truth), and the promoted seat is told about its own
     // change through a snapshot — the client's game screen flips its
     // input affordance on exactly there, without a resync request.
+    await host.expect((m) => m.type === "round-end", 4000);
+    host.send({ type: "start-round", reqId: 3 });
     const after = (await watch.expect(
       (m) => m.type === "snapshot" && m.self.role === "player"
     )) as unknown as SnapshotMsg;
