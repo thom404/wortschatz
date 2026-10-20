@@ -91,6 +91,17 @@ its template, and the in-place updater walks those declarations. See
 [ADR-0009](docs/adr/0009-play-time-deltas-in-place.md) and
 [ADR-0013](docs/adr/0013-live-regions-beside-templates.md).
 
+## Notification layer
+
+The app-owned floating surface at the bottom centre of the viewport that shows
+connection status and the current error outside the screen markup, so a rebuild
+cannot remove it. It has two slots — a polite connection-status slot
+(`role="status"`) above an assertive error slot (`role="alert"`) — replaces an
+error in place, never blocks pointer input, keeps no timer or history, and
+clears an error on a fresh action or a phase change. Outcome screens remain
+full screens. See
+[ADR-0018](docs/adr/0018-floating-notification-layer.md).
+
 ## Lobby
 
 The pre-round phase of a room, before the host starts round one. Players join, take a

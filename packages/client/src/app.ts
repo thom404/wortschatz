@@ -66,13 +66,25 @@ type Unsubscribe = () => void;
 export type RevealSort = "length" | "points" | "alphabet";
 
 interface App {
+  /** The shell's screen container: every screen rebuilds into this. */
   root: HTMLElement;
+  /** The mount root: a shell holding the screen and the notification layer
+   *  (ADR-0018). The layer lives outside every screen's markup. */
+  shell: HTMLElement;
   connect: ConnFactory;
   store: GameStore;
   conn: RoomConn | null;
   renderTimer: ReturnType<typeof setInterval> | null;
   inRoom: boolean;
-  connStatus: ConnStatus;
+  /** The live connection attempt, or `null` when no attempt exists (the idle
+   *  start screen). `open` is also the absence of a notice. */
+  connStatus: ConnStatus | null;
+  /** The current local validation copy, surfaced in the error slot. Server
+   *  errors come from the store; a local string replaces them. */
+  localError: string | null;
+  /** The two app-owned notice slots (ADR-0018), in DOM order. */
+  noticeStatus: HTMLElement;
+  noticeError: HTMLElement;
   unsub: Unsubscribe | null;
   /** Room-scoped view state: the intermission's chosen reveal order. It
    *  survives consecutive intermissions in one room but resets on a fresh
@@ -156,14 +168,27 @@ function boardHtml(board: readonly string[]): string {
  * exactly once per mount.
  */
 export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
+  // The app root is a shell (ADR-0018): one screen container that every
+  // render replaces, beside one notification layer created here once. The
+  // layer survives re-renders and screen transitions; unmount removes both.
+  rootEl.innerHTML = `
+    <div id="screen"></div>
+    <div id="notifications" class="notifications">
+      <p id="notice-status" class="notice status" role="status" aria-live="polite"></p>
+      <p id="notice-error" class="notice error" role="alert" aria-live="assertive"></p>
+    </div>`;
   const app: App = {
-    root: rootEl,
+    root: rootEl.querySelector<HTMLElement>("#screen")!,
+    shell: rootEl,
     connect,
     store: new GameStore(),
     conn: null,
     renderTimer: null,
     inRoom: false,
-    connStatus: "connecting",
+    connStatus: null,
+    localError: null,
+    noticeStatus: rootEl.querySelector<HTMLElement>("#notice-status")!,
+    noticeError: rootEl.querySelector<HTMLElement>("#notice-error")!,
     unsub: null,
     revealSort: "length",
     roomCode: "",
@@ -201,6 +226,10 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
 function home(app: App): void {
   document.title = APP_NAME;
   app.liveRegions = [];
+  // Returning to home is a screen change: no notice may follow it.
+  app.localError = null;
+  app.store.lastError = null;
+  app.connStatus = null;
   const deepCode = deepLinkCode();
   const stored = deepCode ? loadSession(deepCode) : null;
   app.root.innerHTML = `
@@ -219,13 +248,12 @@ function home(app: App): void {
         <label>Name <input id="jn-nick" maxlength="24" placeholder="z. B. Jörg" value="${stored?.nickname ?? ""}" /></label>
         <button id="jn-btn">Beitreten</button>
       </section>
-      <p id="home-errors"></p>
       ${skinSwitcherHtml(loadSkin())}
     </div>`;
   app.root.querySelector<HTMLButtonElement>("#mk-btn")!.onclick = () => {
     const nickname = input(app, "mk-nick");
     if (!nickname) {
-      setHomeError(app, "Bitte gib einen Namen ein.");
+      setLocalError(app, "Bitte gib einen Namen ein.");
       return;
     }
     startRoom(app, nickname, () => ({ type: "create-room", nickname }));
@@ -234,11 +262,11 @@ function home(app: App): void {
     const code = (input(app, "jn-code") || deepCode || "").trim().toUpperCase();
     const nickname = input(app, "jn-nick");
     if (!code) {
-      setHomeError(app, "Bitte gib einen Raumcode ein.");
+      setLocalError(app, "Bitte gib einen Raumcode ein.");
       return;
     }
     if (!nickname) {
-      setHomeError(app, "Bitte gib einen Namen ein.");
+      setLocalError(app, "Bitte gib einen Namen ein.");
       return;
     }
     const greet: GreetFn = () => {
@@ -250,6 +278,7 @@ function home(app: App): void {
     startRoom(app, code, greet);
   };
   wireSkinSwitcher(app.root);
+  renderNotices(app);
 }
 
 function deepLinkCode(): string | null {
@@ -278,7 +307,7 @@ function startRoom(app: App, code: string, greet: GreetFn): void {
   app.unsub = app.store.subscribe((kind) => render(app, kind));
   // A retry follows a prior home error (a validation request or a rejected
   // greeting); the fresh attempt owns the form from here.
-  setHomeError(app, "");
+  clearError(app);
   app.conn.start();
   // The address bar stays on the home URL until a snapshot names the room
   // (syncRoomUrl): a rejected greeting must never claim `/r/<code>`.
@@ -319,7 +348,8 @@ function isGreetingRejection(app: App, msg: ServerMessage): msg is ServerErrorMs
 
 /** Rejected greeting (join/create): stop the connection so a retry starts
  *  fresh, stay on the home form still on screen — its typed code and
- *  nickname survive — and surface the shared German copy in `#home-errors`. */
+ *  nickname survive — and surface the shared German copy in the floating
+ *  error slot. */
 function rejectGreeting(app: App, msg: ServerErrorMsg): void {
   app.store.lastError = msg;
   const errorText = app.store.errorText;
@@ -332,9 +362,10 @@ function rejectGreeting(app: App, msg: ServerErrorMsg): void {
     app.unsub = null;
   }
   app.inRoom = false;
+  app.connStatus = null;
   teardown(app);
   app.store.reset();
-  setHomeError(app, errorText);
+  setLocalError(app, errorText);
 }
 
 /** The address bar tells the room's real deep link — but only once a
@@ -392,6 +423,9 @@ function teardown(app: App): void {
 /* ------------------------------------------------------------------ */
 
 function render(app: App, kind: DeltaKind = "structural"): void {
+  // The notification layer sits outside the screen, so it is refreshed on
+  // every path — including while the home form stays put during a greeting.
+  renderNotices(app);
   if (!app.inRoom) return;
   // A play-time delta changes only live, already-rendered game state: it
   // refreshes the running ring timer, the scoreboard and the found-word chips
@@ -577,14 +611,13 @@ function renderLobby(app: App): void {
         ${qrSvg(deepLink)}
         <p class="invite-link"><code id="join-link">${escapeHtml(location.origin)}<wbr />/r/${escapeHtml(code)}</code></p>
       </section>
-      ${statusHtml(app)}
       <section class="panel">
         <h2>Spieler</h2>
         <ul id="players" class="chips">${scoreboardHtml(app.store)}</ul>
         <p class="dim">${app.store.players.filter((p) => p.connected).length} von 8 verbunden</p>
         ${
           app.store.isHost
-            ? `<button id="start-btn">Runde starten</button><span id="start-hint" class="dim"></span>`
+            ? `<button id="start-btn">Runde starten</button>`
             : `<p class="dim">Warte auf den Gastgeber …</p>`
         }
       </section>
@@ -594,14 +627,11 @@ function renderLobby(app: App): void {
   const start = app.root.querySelector<HTMLButtonElement>("#start-btn");
   if (start) {
     start.onclick = () => {
+      clearError(app);
       app.conn!.request({ type: "start-round" });
     };
   }
   app.root.querySelector<HTMLButtonElement>("#leave-btn")!.onclick = () => leaveRoom(app);
-  if (app.store.lastError) {
-    const hint = app.root.querySelector("#start-hint");
-    if (hint) hint.textContent = app.store.errorText;
-  }
 }
 
 /** The game screen's live regions: the ring timer, the ranked scoreboard and
@@ -614,8 +644,6 @@ function renderGame(app: App): void {
   const spectating = app.store.self.role === "spectator";
   app.root.innerHTML = `
     <div class="sheet">
-      ${statusHtml(app)}
-      ${app.store.lastError ? `<p id="error">${escapeHtml(app.store.errorText)}</p>` : ""}
       <div id="dashboard" class="dashboard">
         <h1 class="area-title">Runde ${app.store.roundNumber}</h1>
         ${timerHtml(app)}
@@ -663,7 +691,6 @@ function renderIntermission(app: App): void {
   const board = app.store.round?.board ?? [];
   app.root.innerHTML = `
     <div class="sheet">
-      ${statusHtml(app)}
       <div id="dashboard" class="dashboard intermission">
         <h1 class="area-title">Pause</h1>
         <section class="panel area-board">
@@ -691,7 +718,11 @@ function renderIntermission(app: App): void {
   app.liveRegions = INTERMISSION_LIVE_REGIONS;
   wireRevealSort(app);
   const start = app.root.querySelector<HTMLButtonElement>("#start-btn");
-  if (start) start.onclick = () => app.conn!.request({ type: "start-round" });
+  if (start)
+    start.onclick = () => {
+      clearError(app);
+      app.conn!.request({ type: "start-round" });
+    };
   app.root.querySelector<HTMLButtonElement>("#leave-btn")!.onclick = () => leaveRoom(app);
 }
 
@@ -714,7 +745,13 @@ function renderOutcome(app: App, outcome: OutcomeScreen): void {
     app.conn = null;
   }
   app.inRoom = false;
+  // Outcome screens are their own full explanation: no notice rides over
+  // them, and the torn-down connection has no status.
+  app.connStatus = null;
+  app.localError = null;
+  app.store.lastError = null;
   teardown(app);
+  renderNotices(app);
   document.title = APP_NAME;
   app.liveRegions = [];
   app.root.innerHTML = `
@@ -938,6 +975,9 @@ function submitTrace(app: App, trace: number[]): void {
   paintTrace(app);
   const word = traceWord(app, trace);
   if (word && app.store.phase === "playing") {
+    // A new submit is the action that addresses the previous rejection, so
+    // the old verdict leaves at once.
+    clearError(app);
     app.conn?.request({ type: "submit-word", word });
   }
 }
@@ -993,9 +1033,52 @@ function paintTrace(app: App): void {
 /* Fragments / helpers                                                 */
 /* ------------------------------------------------------------------ */
 
-function statusHtml(app: App): string {
-  if (app.connStatus === "open") return "";
-  return `<p class="dim">${app.connStatus === "retrying" ? "Verbindung wird wiederhergestellt …" : "Verbinde …"}</p>`;
+function statusNoticeText(app: App): string {
+  if (app.connStatus === "connecting") return "Verbinde …";
+  if (app.connStatus === "retrying") return "Verbindung wird wiederhergestellt …";
+  return "";
+}
+
+/** The error slot's one message: the server's catalogue text when present,
+ *  otherwise the current local validation string. */
+function errorNoticeText(app: App): string {
+  return app.store.lastError ? app.store.errorText : (app.localError ?? "");
+}
+
+/** Refreshes the two app-owned slots from existing state. A slot whose text
+ *  is unchanged is left untouched: no re-announcement, no entry animation. */
+function renderNotices(app: App): void {
+  setNotice(app.noticeStatus, statusNoticeText(app));
+  setNotice(app.noticeError, errorNoticeText(app));
+}
+
+function setNotice(el: HTMLElement, text: string): void {
+  if (el.textContent === text) return;
+  el.textContent = text;
+  if (text === "") {
+    el.classList.remove("enter");
+    return;
+  }
+  // Restart the entry animation for a genuinely new message, but never for
+  // an identical repeat (the early return above).
+  el.classList.remove("enter");
+  void el.offsetWidth;
+  el.classList.add("enter");
+}
+
+/** A fresh action (retry, new submit, new start attempt) addresses the
+ *  current error: both sources clear together. */
+function clearError(app: App): void {
+  app.localError = null;
+  app.store.lastError = null;
+  renderNotices(app);
+}
+
+/** Local validation copy goes to the same error slot as server errors. */
+function setLocalError(app: App, msg: string): void {
+  app.localError = msg;
+  app.store.lastError = null;
+  renderNotices(app);
 }
 
 /**
@@ -1152,11 +1235,6 @@ function foundHtml(store: GameStore): string {
     )
     .join("");
   return chips || `<li class="chip none">—</li>`;
-}
-
-function setHomeError(app: App, msg: string): void {
-  const box = app.root.querySelector("#home-errors");
-  if (box) box.textContent = msg;
 }
 
 function input(app: App, id: string): string {
