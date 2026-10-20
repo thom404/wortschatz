@@ -22,7 +22,7 @@ import {
   type Mounted,
   type PlayerInfo,
 } from "./harness.js";
-import type { RevealPayload } from "@wortschatz/shared";
+import type { ErrorCode, RevealPayload } from "@wortschatz/shared";
 import { SKINS } from "../src/skins.js";
 
 /** The #17 reveal wire shape, worked out by hand from the hand-scored words:
@@ -68,6 +68,19 @@ function click(sel: string): void {
 
 function typeInto(sel: string, value: string): void {
   app!.root.querySelector<HTMLInputElement>(sel)!.value = value;
+}
+
+/** The floating layer's non-empty notices, in DOM order (status, then
+ *  error) — the external view ADR-0018 tests assert. */
+function notices(root: HTMLElement): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>("#notifications .notice")].filter(
+    (el) => (el.textContent ?? "") !== ""
+  );
+}
+
+/** One named notice slot's current text. */
+function noticeText(root: HTMLElement, slot: "status" | "error"): string {
+  return root.querySelector<HTMLElement>(`#notice-${slot}`)?.textContent ?? "";
 }
 
 /** The rendered intermission reveal, whitespace-normalized — the identity
@@ -977,10 +990,10 @@ describe("mountable app", () => {
       expect(app!.root.querySelector("#players")).toBeNull();
       expect(app!.root.textContent).not.toContain("Verbindung beendet.");
 
-      // The shared German copy lands in the existing home error surface.
-      expect(app!.root.querySelector("#home-errors")!.textContent).toBe(
-        "Dieser Name ist bereits vergeben. Wähle einen anderen."
-      );
+      // The shared German copy lands in the floating error slot; the old
+      // inline home paragraph is gone.
+      expect(noticeText(app!.root, "error")).toBe("Dieser Name ist bereits vergeben. Wähle einen anderen.");
+      expect(app!.root.querySelector("#home-errors")).toBeNull();
 
       // The typed code and name survive for a corrected retry, and the
       // address bar never claims the room.
@@ -999,9 +1012,7 @@ describe("mountable app", () => {
       click("#jn-btn");
       app!.conn().feed({ type: "error", code: "room-full" });
       expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
-      expect(app!.root.querySelector("#home-errors")!.textContent).toBe(
-        "Der Raum ist voll (max. 8 Spieler)."
-      );
+      expect(noticeText(app!.root, "error")).toBe("Der Raum ist voll (max. 8 Spieler).");
       expect(app!.root.querySelector("#board")).toBeNull();
       expect(app!.conn().stopped).toBe(true);
     });
@@ -1012,7 +1023,7 @@ describe("mountable app", () => {
       click("#jn-btn");
       app!.conn().feed({ type: "error", code: "invalid-message" });
       expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
-      expect(app!.root.querySelector("#home-errors")!.textContent).toBe("Ungültige Nachricht.");
+      expect(noticeText(app!.root, "error")).toBe("Ungültige Nachricht.");
       expect(app!.root.querySelector("#board")).toBeNull();
       expect(app!.conn().stopped).toBe(true);
     });
@@ -1023,7 +1034,7 @@ describe("mountable app", () => {
       click("#jn-btn");
       app!.conn().feed({ type: "error", code: "nickname-taken" });
       expect(app!.conn().stopped).toBe(true);
-      expect(app!.root.querySelector("#home-errors")!.textContent).not.toBe("");
+      expect(noticeText(app!.root, "error")).not.toBe("");
 
       // Correct the name and retry: one fresh connection with one greeting,
       // and the previous error is gone.
@@ -1031,11 +1042,152 @@ describe("mountable app", () => {
       click("#jn-btn");
       expect(app!.connections()).toHaveLength(2);
       expect(app!.conn().sent()).toEqual([{ type: "join", code: "ABC12", nickname: "Ben", reqId: 1 }]);
-      expect(app!.root.querySelector("#home-errors")!.textContent).toBe("");
+      expect(noticeText(app!.root, "error")).toBe("");
 
       // The fresh attempt still reaches a room on the confirming snapshot.
       app!.conn().feed(lobbySnapshot({ code: "ABC12", nickname: "Ben" }));
       expect(app!.root.querySelector("h1")!.textContent).toBe("Raum ABC12");
+    });
+  });
+
+  describe("floating notifications (#146)", () => {
+    it("owns one layer outside the screen that survives a rebuild and a screen transition", () => {
+      typeInto("#mk-nick", "Lena");
+      click("#mk-btn");
+      app!.conn().feed(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
+      const layer = app!.root.querySelector("#notifications")!;
+      const status = app!.root.querySelector("#notice-status")!;
+      const error = app!.root.querySelector("#notice-error")!;
+
+      // A structural re-render replaces the lobby markup…
+      app!.conn().feed(playerJoined(2, "Ben"));
+      expect(app!.root.querySelector("#notifications")).toBe(layer);
+      expect(app!.root.querySelector("#notice-status")).toBe(status);
+      expect(app!.root.querySelector("#notice-error")).toBe(error);
+
+      // …and a screen transition replaces it again, with the layer intact.
+      app!.conn().feed(roundStarted(BOARD));
+      expect(app!.root.querySelector("#notifications")).toBe(layer);
+      expect(app!.root.querySelector("#notice-status")).toBe(status);
+      expect(app!.root.querySelector("#notice-error")).toBe(error);
+    });
+
+    it("shows nothing on the idle start screen", () => {
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+      expect(notices(app!.root)).toEqual([]);
+      expect(noticeText(app!.root, "status")).toBe("");
+      expect(noticeText(app!.root, "error")).toBe("");
+    });
+
+    it("shows the connection status on the start screen while a room attempt is in flight, then clears it when open", () => {
+      typeInto("#mk-nick", "Lena");
+      click("#mk-btn");
+
+      // The home screen stays put, and the status is visible exactly where
+      // the player first waits for the connection.
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+      expect(noticeText(app!.root, "status")).toBe("Verbinde …");
+
+      app!.conn().feed(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
+      expect(noticeText(app!.root, "status")).toBe("");
+    });
+
+    it("renders connection status and an error together, status first", () => {
+      driveToRoundOne("LAG4T");
+      app!.conn().feed({ type: "error", code: "word-duplicate", message: "HAU" });
+      app!.conn().retry();
+
+      const shown = notices(app!.root);
+      expect(shown.map((n) => n.id)).toEqual(["notice-status", "notice-error"]);
+      expect(shown.map((n) => n.textContent)).toEqual([
+        "Verbindung wird wiederhergestellt …",
+        "Das Wort hast du schon.",
+      ]);
+    });
+
+    it("marks the status slot polite and the error slot assertive", () => {
+      const status = app!.root.querySelector("#notice-status")!;
+      const error = app!.root.querySelector("#notice-error")!;
+      expect(status.getAttribute("role")).toBe("status");
+      expect(status.getAttribute("aria-live")).toBe("polite");
+      expect(error.getAttribute("role")).toBe("alert");
+      expect(error.getAttribute("aria-live")).toBe("assertive");
+      // Messages are text, not focusable elements.
+      expect(status.getAttribute("tabindex")).toBeNull();
+      expect(error.getAttribute("tabindex")).toBeNull();
+    });
+
+    it("replaces a repeated identical error in place instead of stacking notices", () => {
+      driveToRoundOne("LAG4T");
+      const slot = app!.root.querySelector("#notice-error")!;
+      app!.conn().feed({ type: "error", code: "word-duplicate", message: "HAU" });
+      app!.conn().feed({ type: "error", code: "word-duplicate", message: "HAU" });
+
+      expect(app!.root.querySelector("#notice-error")).toBe(slot);
+      expect(notices(app!.root)).toHaveLength(1);
+      expect(notices(app!.root)[0]!.textContent).toBe("Das Wort hast du schon.");
+    });
+
+    it("keeps a notice through play-time and structural re-renders while its situation is unchanged", () => {
+      driveToRoundOne("LAG4T");
+      app!.conn().feed({ type: "error", code: "invalid-word" });
+      expect(noticeText(app!.root, "error")).toBe("Kein gültiges Wort.");
+
+      // A play-time tick updates live regions in place…
+      app!.conn().feed(tick(90_000));
+      expect(noticeText(app!.root, "error")).toBe("Kein gültiges Wort.");
+
+      // …and a structural roster change rebuilds the screen: the layer and
+      // its message are outside that rebuild.
+      app!.conn().feed(playerJoined(2, "Ben"));
+      expect(app!.root.querySelector("h1")!.textContent).toContain("Runde 1");
+      expect(noticeText(app!.root, "error")).toBe("Kein gültiges Wort.");
+    });
+
+    it("drops an error when the phase changes", () => {
+      driveToRoundOne("LAG4T");
+      app!.conn().feed({ type: "error", code: "word-duplicate", message: "HAU" });
+      expect(noticeText(app!.root, "error")).toBe("Das Wort hast du schon.");
+
+      app!.conn().feed(roundEnded(1, REVEAL));
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Pause");
+      expect(noticeText(app!.root, "error")).toBe("");
+      expect(notices(app!.root)).toEqual([]);
+    });
+
+    it("clears an error on the next submit", () => {
+      driveToRoundOne("LAG4T");
+      app!.conn().feed({ type: "error", code: "invalid-word" });
+      expect(noticeText(app!.root, "error")).toBe("Kein gültiges Wort.");
+
+      synthesizePointerDrag([tileEls(app!.root)[0]!, tileEls(app!.root)[1]!]);
+      expect(noticeText(app!.root, "error")).toBe("");
+    });
+
+    it("shows a rejected round start in the layer, not beside the start button", () => {
+      typeInto("#mk-nick", "Lena");
+      click("#mk-btn");
+      app!.conn().feed(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
+
+      click("#start-btn");
+      app!.conn().feed({ type: "error", code: "invalid-phase" });
+      expect(app!.root.querySelector("#start-hint")).toBeNull();
+      expect(noticeText(app!.root, "error")).toBe("Das geht gerade nicht.");
+
+      // A new start attempt addresses the old rejection at once.
+      click("#start-btn");
+      expect(noticeText(app!.root, "error")).toBe("");
+    });
+
+    it.each([
+      ["invalid-word", "Kein gültiges Wort."],
+      ["round-over", "Die Runde ist bereits vorbei."],
+      ["rate-limited", "Zu viele Nachrichten."],
+      ["not-playing", "Du spielst in dieser Runde nicht."],
+    ])("renders the shared German copy for %s in the error slot", (code, copy) => {
+      driveToRoundOne("LAG4T");
+      app!.conn().feed({ type: "error", code: code as ErrorCode });
+      expect(noticeText(app!.root, "error")).toBe(copy);
     });
   });
 
@@ -1058,7 +1210,7 @@ describe("mountable app", () => {
 
     // The synchronous verdict lands as a private chip with its points —
     // immediately, before any broadcast scoreboard update.
-    expect(app!.root.querySelector("#error")).toBeNull();
+    expect(noticeText(app!.root, "error")).toBe("");
     app!.conn().feed({ type: "word-accepted", word: "HAT", points: 2 });
     const chips = app!.root.querySelectorAll("#found li");
     expect(chips).toHaveLength(1);
@@ -1143,11 +1295,12 @@ describe("mountable app", () => {
     app!.conn().feed({ type: "word-accepted", word: "HAU", points: 3 });
     expect(app!.root.querySelectorAll("#found li")).toHaveLength(1);
 
-    // Same swipe again: the server verdict is word-duplicate; the error
-    // renders as the existing typed German error, the chips unchanged.
+    // Same swipe again: the server verdict is word-duplicate; the floating
+    // error slot carries the existing German copy, the chips unchanged.
     synthesizePointerDrag([tiles[0]!, tiles[1]!, tiles[2]!]);
     app!.conn().feed({ type: "error", code: "word-duplicate", message: "HAU" });
-    expect(app!.root.querySelector("#error")!.textContent).toBe("Das Wort hast du schon.");
+    expect(noticeText(app!.root, "error")).toBe("Das Wort hast du schon.");
+    expect(app!.root.querySelector("#error")).toBeNull();
     expect(app!.root.querySelectorAll("#found li")).toHaveLength(1);
   });
 
@@ -1162,10 +1315,10 @@ describe("mountable app", () => {
 
   it("the taken-name error calls the conflict a Name, not a Spitzname", () => {
     driveToRoundOne("LAG4T");
-    // Every catalog entry renders through the game screen's error paragraph
-    // (#50's copy-testing seam), so the taken-name wording is covered too.
+    // Every catalog entry renders through the one error slot (#50's
+    // copy-testing seam), so the taken-name wording is covered too.
     app!.conn().feed({ type: "error", code: "nickname-taken" });
-    const error = app!.root.querySelector("#error")!.textContent;
+    const error = noticeText(app!.root, "error");
     expect(error).toBe("Dieser Name ist bereits vergeben. Wähle einen anderen.");
     expect(error).not.toContain("Spitzname");
   });
@@ -1516,7 +1669,7 @@ describe("mountable app", () => {
       const nowTimer = app!.root.querySelector<HTMLElement>("#timer")!;
       expect(nowTimer.classList.contains("low")).toBe(true);
       expect(Number(nowTimer.style.getPropertyValue("--p"))).toBeCloseTo(0.15, 2);
-      expect(app!.root.querySelector("#error")).toBeNull();
+      expect(noticeText(app!.root, "error")).toBe("");
     } finally {
       vi.useRealTimers();
     }
@@ -1670,12 +1823,13 @@ describe("mountable app", () => {
 
     it("asks for a name in plain German when create or join is submitted empty", () => {
       click("#mk-btn");
-      expect(app!.root.querySelector("#home-errors")!.textContent).toBe("Bitte gib einen Namen ein.");
+      expect(noticeText(app!.root, "error")).toBe("Bitte gib einen Namen ein.");
+      expect(app!.root.querySelector("#home-errors")).toBeNull();
       expect(app!.connections()).toHaveLength(0);
 
       typeInto("#jn-code", "ABC12");
       click("#jn-btn");
-      expect(app!.root.querySelector("#home-errors")!.textContent).toBe("Bitte gib einen Namen ein.");
+      expect(noticeText(app!.root, "error")).toBe("Bitte gib einen Namen ein.");
       expect(app!.connections()).toHaveLength(0);
     });
   });

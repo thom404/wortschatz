@@ -49,6 +49,21 @@
   --timer-inset: 6px;
   --pts-top: 2px;
   --pts-left: 4px;
+
+  /* Floating notification layer (ADR-0018) */
+  --sheet-width: 640px; /* the sheet and the notice cap share one width */
+  --z-notice: 30;
+  --notice-inset: var(--gap); /* clear of the viewport edge */
+  --notice-gap: var(--gap-xs);
+  --notice-pad-y: var(--gap-s);
+  --notice-pad-x: var(--gap);
+  --notice-radius: var(--radius);
+  --notice-surface: var(--panel);
+  --notice-border: var(--border);
+  --notice-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+  --notice-ease: ease-out;
+  --notice-enter-ms: 160ms;
+  --notice-leave-ms: 100ms;
 }
 
 /* ==================================================================
@@ -75,6 +90,12 @@ body[data-skin="arcade"] {
   /* Shape */
   --border: #263352;
   --glow: rgba(34, 211, 238, 0.55); /* brighter halo for neon */
+
+  /* Floating notification layer (ADR-0018): the same arrangement, this
+   * skin's surface and shadow. */
+  --notice-surface: var(--panel);
+  --notice-border: var(--border);
+  --notice-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
 }
 
 body {
@@ -98,9 +119,74 @@ h2 {
 }
 
 .sheet {
-  max-width: 640px;
+  max-width: var(--sheet-width);
   margin: 0 auto;
   padding: var(--gap);
+}
+
+/* ------------------------------------------------------------------
+ * Floating notification layer (ADR-0018): one viewport-anchored layer
+ * outside every screen's markup. Bottom centre, above the safe-area
+ * inset, content width capped at the sheet width, transparent to
+ * pointer/touch input so it never blocks the board or a button. Two
+ * slots, status above error; both consume tokens only.
+ * ------------------------------------------------------------------ */
+.notifications {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--notice-inset) + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: var(--z-notice);
+  width: min(calc(100% - 2 * var(--notice-inset)), var(--sheet-width));
+  display: flex;
+  flex-direction: column;
+  gap: var(--notice-gap);
+  pointer-events: none;
+}
+.notice {
+  margin: 0;
+  padding: var(--notice-pad-y) var(--notice-pad-x);
+  border: 1px solid var(--notice-border);
+  border-radius: var(--notice-radius);
+  background: var(--notice-surface);
+  box-shadow: var(--notice-shadow);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity var(--notice-leave-ms) var(--notice-ease);
+}
+/* An empty slot is invisible and occupies no visual weight; its text lives
+ * in the live region only when there is something to announce. */
+.notice:empty {
+  opacity: 0;
+}
+.notice.status {
+  color: var(--dim);
+}
+.notice.error {
+  color: var(--danger);
+  font-weight: 600;
+}
+.notice.enter {
+  animation: notice-in var(--notice-enter-ms) var(--notice-ease);
+}
+@keyframes notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .notice,
+  .notice.enter {
+    animation: none;
+    transition: none;
+  }
 }
 
 /* ------------------------------------------------------------------
@@ -375,12 +461,6 @@ button#home-btn {
 .note {
   margin: 0;
   color: var(--dim);
-}
-#error,
-#home-errors {
-  color: var(--danger);
-  font-size: 0.9rem;
-  margin: 0 0 var(--gap-s);
 }
 code {
   background: var(--panel-inset);

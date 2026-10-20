@@ -103,6 +103,14 @@ export class ScriptedConnection implements RoomConn {
     this.open = false;
   }
 
+  /** A reconnect attempt after a drop: mirrors `RoomConnection`'s capped
+   *  backoff status, without replaying the transport itself. The app drives
+   *  the floating status slot from this existing callback. */
+  retry(): void {
+    this.statuses.push("retrying");
+    this.onStatus("retrying");
+  }
+
   /** An orderly transport close with no server frame ahead. Mirrors
    *  `RoomConnection`: one connection-lost close outcome reaches the app. */
   abruptClose(): void {

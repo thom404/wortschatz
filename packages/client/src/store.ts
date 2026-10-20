@@ -128,6 +128,8 @@ export class GameStore {
         this.roundWords = new Map();
         this.roundScores.clear();
         this.wikiLinks = new Map();
+        // A phase change never carries an error into the next screen.
+        this.lastError = null;
         break;
       case "round-end":
         this.phase = "intermission";
@@ -138,6 +140,7 @@ export class GameStore {
           reveal: msg.reveal,
         };
         this.wikiLinks = new Map();
+        this.lastError = null;
         break;
       case "wiki-links":
         if (this.finishedRound?.roundNumber === msg.roundNumber) {
