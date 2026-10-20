@@ -13,6 +13,8 @@ import { applySkin, loadSkin, skinSwitcherHtml, wireSkinSwitcher } from "./skins
 import type {
   ClientMessage,
   PlayerInfo,
+  RevealPayload,
+  RevealWord,
   RoomEndReason,
   ServerErrorMsg,
   ServerMessage,
@@ -58,6 +60,11 @@ export type ConnFactory = (opts: {
 
 type Unsubscribe = () => void;
 
+/** How the intermission reveal is ordered for this viewer (issue #140).
+ *  `length` is the server's grouped default; `points` and `alphabet` are
+ *  client-side flat views over the same payload. */
+export type RevealSort = "length" | "points" | "alphabet";
+
 interface App {
   root: HTMLElement;
   connect: ConnFactory;
@@ -67,6 +74,10 @@ interface App {
   inRoom: boolean;
   connStatus: ConnStatus;
   unsub: Unsubscribe | null;
+  /** Room-scoped view state: the intermission's chosen reveal order. It
+   *  survives consecutive intermissions in one room but resets on a fresh
+   *  mount, reconnect snapshot, or a different room. Never wire state. */
+  revealSort: RevealSort;
   /** The room code this mount's connection was built for — creating a
    *  room greets with the nickname, and the server names the room later
    *  (first snapshot). The outcome screens that fire without a snapshot
@@ -114,6 +125,7 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
     inRoom: false,
     connStatus: "connecting",
     unsub: null,
+    revealSort: "length",
     roomCode: "",
     onPopState: () => {
       if (!app.inRoom) home(app);
@@ -212,6 +224,9 @@ function deepLinkCode(): string | null {
 function startRoom(app: App, code: string, greet: GreetFn): void {
   app.inRoom = true;
   app.roomCode = code;
+  // A sort choice is local to one room visit (issue #140): joining another
+  // room starts again at the grouped default.
+  app.revealSort = "length";
   app.conn = app.connect({
     code,
     greet,
@@ -240,6 +255,10 @@ function onMessage(app: App, msg: ServerMessage): void {
   if (isGreetingRejection(app, msg) && msg.code !== "room-not-found") {
     return rejectGreeting(app, msg);
   }
+  // A snapshot is the reconnect/resync channel (and a fresh join): the
+  // viewer's local sort choice starts over at the grouped default. Ordinary
+  // round-end deltas between intermissions keep it (issue #140).
+  if (msg.type === "snapshot") app.revealSort = "length";
   app.store.apply(msg);
   // Room end and kick are close outcomes, reported once by the connection
   // after this frame reached the store (see `onClose`). `room-not-found`
@@ -592,6 +611,8 @@ const INTERMISSION_LIVE_REGIONS: readonly LiveRegion[] = [SCOREBOARD_REGION];
 function renderIntermission(app: App): void {
   document.title = `${APP_NAME} — Pause`;
   const finishedRoundNumber = app.store.finishedRound?.roundNumber ?? app.store.roundNumber;
+  const reveal = app.store.finishedRound?.reveal;
+  const hasRevealWords = reveal ? revealWordCount(reveal) > 0 : false;
   // The finished board stays on screen: for live players it survives from
   // the round, and the intermission snapshot re-anchors it for joiners.
   const board = app.store.round?.board ?? [];
@@ -609,7 +630,8 @@ function renderIntermission(app: App): void {
         </section>
         <section class="panel area-reveal">
           <h2>Gefundene Wörter</h2>
-          <dl id="reveal">${revealHtml(app.store)}</dl>
+          ${hasRevealWords ? revealSortHtml(app.revealSort) : ""}
+          <dl id="reveal">${revealHtml(app.store, app.revealSort)}</dl>
         </section>
         <section class="panel area-score">
           <h2>Punkte</h2>
@@ -625,6 +647,7 @@ function renderIntermission(app: App): void {
       <button id="leave-btn">Raum verlassen</button>
     </div>`;
   app.liveRegions = INTERMISSION_LIVE_REGIONS;
+  wireRevealSort(app);
   const start = app.root.querySelector<HTMLButtonElement>("#start-btn");
   if (start) start.onclick = () => app.conn!.request({ type: "start-round" });
   app.root.querySelector<HTMLButtonElement>("#leave-btn")!.onclick = () => leaveRoom(app);
@@ -981,29 +1004,92 @@ function playerChipsHtml(store: GameStore, mode: "seats" | "ranked" | "session" 
 }
 
 /**
- * The concrete reveal (#17, #22): groups ascend by length; each word shows
- * its points and one found-by chip per finder. Missed words stay visible —
- * dimmed, without invented credit. No tile paths, no first-finder marks.
+ * The concrete reveal (#17, #22). `length` keeps the server's grouped
+ * default untouched: groups ascend by length and each group's word order is
+ * exactly what the server sent. `points` and `alphabet` flatten the same
+ * payload into one list, both compared with a German collator so umlauts
+ * sort near their base vowels and `ß` sorts as `ss`. Missed words stay
+ * visible — dimmed, without invented credit. No tile paths, no first-finder
+ * marks.
  */
-function revealHtml(store: GameStore): string {
+function revealHtml(store: GameStore, mode: RevealSort): string {
   const reveal = store.finishedRound?.reveal;
-  if (!reveal || reveal.groups.length === 0) return "<dt>Ergebnisse</dt><dd>—</dd>";
-  return reveal.groups
-    .map(
-      (g) =>
-        `<dt>${g.length} Buchstaben</dt><dd>${g.words
-          .map((w) => {
-            const by = w.foundBy
-              .map((id) => store.players.find((p) => p.seatId === id)?.nickname)
-              .filter((n): n is string => Boolean(n))
-              .map((n) => `<span class="fby">${escapeHtml(n)}</span>`)
-              .join("");
-            const missed = w.foundBy.length === 0 ? " missed" : "";
-            return `<span class="rw${missed}"><span class="rw-word">${escapeHtml(w.word)}</span><small class="rw-pts">+${w.points}</small>${by}</span>`;
-          })
-          .join(" ")}</dd>`
-    )
+  if (!reveal || revealWordCount(reveal) === 0) return "<dt>Ergebnisse</dt><dd>—</dd>";
+  if (mode === "length") {
+    return reveal.groups
+      .map(
+        (g) =>
+          `<dt>${g.length} Buchstaben</dt><dd>${g.words.map((w) => revealWordHtml(store, w)).join(" ")}</dd>`
+      )
+      .join("");
+  }
+  const words = reveal.groups.flatMap((g) => g.words);
+  const ordered =
+    mode === "points"
+      ? [...words].sort((a, b) => b.points - a.points || germanCompare(a, b))
+      : [...words].sort(germanCompare);
+  return `<dd class="reveal-flat">${ordered.map((w) => revealWordHtml(store, w)).join(" ")}</dd>`;
+}
+
+/** One word in every reveal mode: its points, one found-by chip per finder
+ *  and the dimmed treatment for a word nobody found. */
+function revealWordHtml(store: GameStore, w: RevealWord): string {
+  const by = w.foundBy
+    .map((id) => store.players.find((p) => p.seatId === id)?.nickname)
+    .filter((n): n is string => Boolean(n))
+    .map((n) => `<span class="fby">${escapeHtml(n)}</span>`)
     .join("");
+  const missed = w.foundBy.length === 0 ? " missed" : "";
+  return `<span class="rw${missed}"><span class="rw-word">${escapeHtml(w.word)}</span><small class="rw-pts">+${w.points}</small>${by}</span>`;
+}
+
+const GERMAN_COLLATOR = new Intl.Collator("de");
+
+function germanCompare(a: RevealWord, b: RevealWord): number {
+  return GERMAN_COLLATOR.compare(a.word, b.word);
+}
+
+function revealWordCount(reveal: RevealPayload): number {
+  return reveal.groups.reduce((count, group) => count + group.words.length, 0);
+}
+
+/** The reveal's three local sort modes, in display order. */
+const REVEAL_SORTS: readonly { mode: RevealSort; label: string }[] = [
+  { mode: "length", label: "Länge" },
+  { mode: "points", label: "Punkte" },
+  { mode: "alphabet", label: "Alphabet" },
+];
+
+/** The labelled, pressed-state button group. Selection is announced by
+ *  `aria-pressed` and shown by an underline/weight, never colour alone. */
+function revealSortHtml(active: RevealSort): string {
+  return `<div id="reveal-sort" class="reveal-sort" role="group" aria-label="Sortieren nach">
+    <span class="sort-label">Sortieren nach</span>
+    ${REVEAL_SORTS.map(
+      ({ mode, label }) =>
+        `<button type="button" class="sort-btn${mode === active ? " active" : ""}" data-sort="${mode}" aria-pressed="${mode === active}">${label}</button>`
+    ).join("")}
+  </div>`;
+}
+
+/** Wires the sort buttons to a reveal-only repaint: no store notification,
+ *  no rebuild, no wire message, so the finished board keeps its identity and
+ *  the hidden intermission timer (if any) is never touched. */
+function wireRevealSort(app: App): void {
+  for (const button of app.root.querySelectorAll<HTMLButtonElement>("#reveal-sort button")) {
+    button.onclick = () => {
+      const mode = button.dataset.sort as RevealSort | undefined;
+      if (!mode || mode === app.revealSort) return;
+      app.revealSort = mode;
+      const reveal = app.root.querySelector<HTMLElement>("#reveal");
+      if (reveal) reveal.innerHTML = revealHtml(app.store, app.revealSort);
+      for (const other of app.root.querySelectorAll<HTMLButtonElement>("#reveal-sort button")) {
+        const pressed = other.dataset.sort === app.revealSort;
+        other.setAttribute("aria-pressed", String(pressed));
+        other.classList.toggle("active", pressed);
+      }
+    };
+  }
 }
 
 /** The private found-word chips: what I found this round, with each word's

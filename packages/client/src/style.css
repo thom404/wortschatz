@@ -454,6 +454,32 @@ code {
  * found-by chip per finder, missed words visible — dimmed, chip-free.
  * No tile paths, no first-finder credit. */
 /* ------------------------------------------------------------------ */
+.reveal-sort {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-xs);
+  margin-bottom: var(--gap-s);
+}
+.reveal-sort .sort-label {
+  color: var(--dim);
+  font-size: 0.85rem;
+}
+.reveal-sort .sort-btn {
+  margin-top: 0;
+  padding: var(--gap-2xs) var(--gap-s);
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--border);
+}
+/* The selected mode is more than a colour: aria-pressed plus an underline
+ * and heavier weight keep it legible without relying on hue. */
+.reveal-sort .sort-btn.active {
+  border-color: var(--accent);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .reveal dl,
 dl#reveal {
   margin: 0;
