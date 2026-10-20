@@ -338,13 +338,83 @@ describe("mountable app", () => {
       app!.conn().feed(roundStarted(NOTATED, 2));
       const shown = tileEls(app!.root)
         .slice(0, 5)
-        .map((t) => (t.firstChild?.textContent ?? "").trim()); // tile letters only (the .idx span rides along)
+        .map((t) => (t.firstChild?.textContent ?? "").trim()); // tile letters only (the value span rides along)
       expect(shown).toEqual(["an", "s", "e/ä", "H", "qu"]);
 
       // The input still spells the cleaned letters (trace uses the data).
       const tiles = tileEls(app!.root);
       synthesizePointerDrag([tiles[7]!, tiles[11]!], "mouse"); // R → M (8-way adjacent, both singles)
       expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "RM", reqId: 3 });
+    });
+
+    it("shows each tile's points where the index used to be, with German labels and a hover title", () => {
+      driveToRoundOne("LAG4T");
+      // A digram, prefix, suffix, differing either/or, equal either/or and a
+      // plain letter, plus fillers — every value rule on one board (#142).
+      const VALUED = [
+        "sch",
+        "an-",
+        "-ung",
+        "e/ä",
+        "o/u",
+        "i/e",
+        "e",
+        "a",
+        "b",
+        "c",
+        "d",
+        "f",
+        "g",
+        "h",
+        "i",
+        "j",
+      ];
+      app!.conn().feed(roundStarted(VALUED, 2));
+
+      const tiles = tileEls(app!.root);
+      // The corner value occupies the old index footprint; no indices remain.
+      expect(tiles.map((t) => t.querySelector(".pts")?.textContent)).toEqual([
+        "7",
+        "2",
+        "4",
+        "1/6",
+        "2/1",
+        "1",
+        "1",
+        "1",
+        "3",
+        "4",
+        "1",
+        "4",
+        "2",
+        "2",
+        "1",
+        "6",
+      ]);
+      expect(app!.root.querySelector("#board .idx")).toBeNull();
+
+      // The visible number is decorative: the tile's label carries the whole
+      // announcement, and the same points phrase is the hover title.
+      expect(tiles[0]!.getAttribute("aria-label")).toBe("sch, 7 Punkte");
+      expect(tiles[0]!.getAttribute("title")).toBe("7 Punkte");
+      expect(tiles[0]!.querySelector(".pts")!.getAttribute("aria-hidden")).toBe("true");
+      expect(tiles[6]!.getAttribute("aria-label")).toBe("e, 1 Punkt");
+      expect(tiles[6]!.getAttribute("title")).toBe("1 Punkt");
+      // Either/or pairs read in letter order; equal values collapse.
+      expect(tiles[3]!.getAttribute("aria-label")).toBe("e/ä, 1 oder 6 Punkte");
+      expect(tiles[4]!.getAttribute("aria-label")).toBe("o/u, 2 oder 1 Punkte");
+      expect(tiles[5]!.getAttribute("aria-label")).toBe("i/e, 1 Punkt");
+
+      // Letters still render as before: notation markers and slashes are
+      // display-cleaned only.
+      expect(tiles.slice(0, 6).map((t) => t.firstChild?.textContent)).toEqual([
+        "sch",
+        "an",
+        "ung",
+        "e/ä",
+        "o/u",
+        "i/e",
+      ]);
     });
   });
 
@@ -379,6 +449,57 @@ describe("mountable app", () => {
       expect(missed.querySelectorAll(".fby")).toHaveLength(0);
       // No first-finder credit beyond the chips: the word itself is naked.
       expect(ort.querySelector(".rw-word")!.textContent).not.toContain("Lena");
+    });
+
+    it("the intermission board carries the same tile values, labels and titles as the live board", () => {
+      driveToRoundOne("LAG4T");
+      const VALUED = [
+        "sch",
+        "an-",
+        "-ung",
+        "e/ä",
+        "o/u",
+        "i/e",
+        "e",
+        "a",
+        "b",
+        "c",
+        "d",
+        "f",
+        "g",
+        "h",
+        "i",
+        "j",
+      ];
+      app!.conn().feed(roundStarted(VALUED, 2));
+      const livePoints = tileEls(app!.root).map((t) => t.querySelector(".pts")?.textContent);
+
+      app!.conn().feed(roundEnded(2, REVEAL));
+
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Pause");
+      const paused = tileEls(app!.root);
+      expect(paused.map((t) => t.querySelector(".pts")?.textContent)).toEqual(livePoints);
+      expect(paused.map((t) => t.querySelector(".pts")?.textContent)).toEqual([
+        "7",
+        "2",
+        "4",
+        "1/6",
+        "2/1",
+        "1",
+        "1",
+        "1",
+        "3",
+        "4",
+        "1",
+        "4",
+        "2",
+        "2",
+        "1",
+        "6",
+      ]);
+      expect(app!.root.querySelector("#board .idx")).toBeNull();
+      expect(paused[3]!.getAttribute("aria-label")).toBe("e/ä, 1 oder 6 Punkte");
+      expect(paused[3]!.getAttribute("title")).toBe("1 oder 6 Punkte");
     });
 
     it("standings show round and cumulative session score side by side, read by cumulative score", () => {
@@ -629,7 +750,9 @@ describe("mountable app", () => {
     app!.conn().feed(roundStarted(BOARD));
     expect(app!.root.querySelector("h1")!.textContent).toContain("Runde 1");
     const tiles = tileEls(app!.root);
-    expect(tiles.map((t) => t.textContent)).toEqual(BOARD.map((letter, i) => `${letter}${i}`));
+    expect(tiles.map((t) => t.firstChild?.textContent)).toEqual(BOARD);
+    // Points replaced the old 0–15 indices everywhere.
+    expect(app!.root.querySelector("#board .idx")).toBeNull();
 
     // Playing is drag-only: the typed input is gone.
     expect(app!.root.querySelector("#word-input")).toBeNull();
@@ -1440,7 +1563,7 @@ describe("mountable app", () => {
       { type: "submit-word", word: "ESM", reqId: 4 },
     ]);
     expect(app!.root.querySelector("h1")!.textContent).toContain("Runde 1");
-    expect(tileEls(app!.root).map((t) => t.textContent)).toEqual(BOARD.map((letter, i) => `${letter}${i}`));
+    expect(tileEls(app!.root).map((t) => t.firstChild?.textContent)).toEqual(BOARD);
   });
 
   describe("home copy (#53)", () => {

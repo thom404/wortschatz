@@ -47,8 +47,8 @@
   --code-pad-x: 6px;
   --btn-pad-x: 14px;
   --timer-inset: 6px;
-  --idx-top: 2px;
-  --idx-left: 4px;
+  --pts-top: 2px;
+  --pts-left: 4px;
 }
 
 /* ==================================================================
@@ -428,13 +428,18 @@ code {
   border-color: var(--accent);
   color: var(--accent-ink);
 }
-.tile .idx {
+.tile .pts {
   position: absolute;
-  top: var(--idx-top);
-  left: var(--idx-left);
+  top: var(--pts-top);
+  left: var(--pts-left);
   font-size: 0.6rem;
   color: var(--dim);
   font-weight: 400;
+}
+/* The selected accent fill recolours the corner value so it stays legible
+ * (issue #142). */
+.tile.sel .pts {
+  color: var(--accent-ink);
 }
 .trace {
   min-height: 1.6rem;

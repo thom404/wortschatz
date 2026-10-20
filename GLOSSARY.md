@@ -181,6 +181,18 @@ the round deadline, used to re-anchor a client's local interpolation between
 bounds. It exists only while `playing`; a pause sends no tick. See Deadline.
 (Renamed from the earlier `round-tick` when the real-time architecture landed.)
 
+## Tile value
+
+The points a single tile is worth: the plain sum of the German Scrabble values
+of the letters it spells. Digrams, prefixes and suffixes show one total (`sch`
+→ 7, `an-` → 2, `-ung` → 4). An **either/or** tile has one value per spelling
+in declared letter order; the board shows both joined by `/` when they differ
+(`e/ä` → 1/6, `o/u` → 2/1) and a single number when they are equal (`i/e` → 1).
+A tile value reads the same table as the **word score** — the sum for a whole
+submitted word — so the corner number can never disagree with the scoreboard,
+but it is not itself a word score. See
+[ADR-0002](docs/adr/0002-game-screen-layout-and-skins.md).
+
 ## Valid word
 
 A word the game accepts: a sequence of 3 or more letters formable by an 8-way
