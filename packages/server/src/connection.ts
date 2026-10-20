@@ -184,7 +184,6 @@ const MESSAGE_SPECS: ReadonlyMap<string, MessageSpec> = new Map<string, MessageS
   ],
   ["submit-word", { fields: [{ key: "word", kind: "string", message: "word required" }] }],
   ["start-round", { fields: [] }],
-  ["skip", { fields: [] }],
   ["leave", { fields: [] }],
   ["close-room", { fields: [] }],
   ["resync", { fields: [] }],

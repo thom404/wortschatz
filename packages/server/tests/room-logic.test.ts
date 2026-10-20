@@ -61,7 +61,6 @@ function makeCfg(over: Partial<ServerConfig> = {}): ServerConfigResolved {
     // Scaled-down clock; the tick loop is parked far out so only the phase
     // timer drives the tests.
     roundMs: 1000,
-    intermissionMs: 500,
     tickIntervalMs: 60_000,
     roomEmptyGraceMs: 300,
     roomIdleMs: 10_000,
@@ -125,10 +124,11 @@ describe("room phase", () => {
       round: { roundNumber: 1, deadline: 2000 },
     });
     const tick = h.sent.find((m) => m.type === "tick");
-    expect(tick).toMatchObject({ type: "tick", phase: "playing", remaining: 1000, deadline: 2000 });
+    expect(tick).toMatchObject({ type: "tick", remaining: 1000, deadline: 2000 });
+    expect(tick).not.toHaveProperty("phase");
   });
 
-  test("the round ends at the deadline: round-end then an intermission tick", () => {
+  test("the round ends at the deadline: round-end only, with no pause clock", () => {
     const h = makeHarness();
     h.addSeat("Hansi");
     h.logic.startRound(h.room); // t = 0, deadline 1000
@@ -137,40 +137,36 @@ describe("room phase", () => {
     h.clock.advance(1000);
 
     expect(h.room.phase).toBe("intermission");
-    expect(h.room.deadline).toBe(1500); // now + intermissionMs
-    expect(types(h.sent)).toEqual(["round-end", "tick"]);
-    expect(h.sent[1]).toMatchObject({
-      type: "tick",
-      phase: "intermission",
-      remaining: 500,
-      deadline: 1500,
-    });
+    expect(h.room.deadline).toBe(0);
+    expect(types(h.sent)).toEqual(["round-end"]);
   });
 
-  test("the intermission auto-advances to the next round when two player seats exist", () => {
+  test("the pause never advances on its own", () => {
     const h = makeHarness();
-    h.addSeat("Hansi");
-    h.addSeat("Gretl");
+    const host = h.addSeat("Hansi");
+    h.room.hostSeatId = host.seatId;
     h.logic.startRound(h.room); // t = 0, deadline 1000
+    h.clock.advance(1000); // intermission, no deadline
+    h.sent.length = 0;
 
-    h.clock.advance(1500); // round deadline 1000, intermission deadline 1500
-
-    expect(h.room.phase).toBe("playing");
-    expect(h.room.roundNumber).toBe(2);
-    expect(h.room.deadline).toBe(2500); // intermission end + roundMs
-    expect(h.sent.filter((m) => m.type === "round-start")).toHaveLength(2);
-  });
-
-  test("with fewer than two player seats the intermission waits instead of advancing", () => {
-    const h = makeHarness();
-    h.addSeat("Hansi");
-    h.logic.startRound(h.room); // t = 0, deadline 1000
-
-    h.clock.advance(5000);
+    h.clock.advance(60_000);
 
     expect(h.room.phase).toBe("intermission");
     expect(h.room.roundNumber).toBe(1);
-    expect(h.sent.filter((m) => m.type === "round-start")).toHaveLength(1);
+    expect(h.sent).toEqual([]);
+  });
+
+  test("a solo host can start the next round from the pause", () => {
+    const h = makeHarness();
+    const host = h.addSeat("Hansi");
+    h.room.hostSeatId = host.seatId;
+    h.logic.startRound(h.room); // t = 0, deadline 1000
+    h.clock.advance(1000); // pause
+    h.logic.startRound(h.room); // t = 1000, deadline 2000
+
+    expect(h.room.phase).toBe("playing");
+    expect(h.room.roundNumber).toBe(2);
+    expect(h.room.deadline).toBe(2000);
   });
 
   test("round start promotes spectators in join order and snapshots each promoted seat", () => {
@@ -196,19 +192,65 @@ describe("room phase", () => {
     h.clock.advance(1000); // the round has ended; intermission
     expect(h.logic.acceptsSubmissions(h.room)).toBe(false);
   });
+});
 
-  test("skip pulls the intermission deadline to now and announces a zero tick", () => {
+describe("hostless rooms", () => {
+  test("a hostless pause with a present spectator ends the room as no-players", () => {
     const h = makeHarness();
-    h.addSeat("Hansi");
-    h.logic.startRound(h.room);
-    h.clock.advance(1000); // endRound: intermission deadline 1500
-    h.clock.advance(200); // t = 1200
+    const host = h.addSeat("Hansi");
+    const spectator = h.addSeat("Sepp");
+    spectator.role = "spectator";
+    h.room.hostSeatId = host.seatId;
+    h.room.phase = "intermission";
     h.sent.length = 0;
 
-    h.logic.skip(h.room);
+    h.logic.releaseSeat(h.room, host);
 
-    expect(h.room.deadline).toBe(1200);
-    expect(h.sent).toEqual([{ type: "tick", phase: "intermission", remaining: 0, deadline: 1200 }]);
+    expect(h.room.hostSeatId).toBe(-1);
+    expect(h.expired).toEqual(["no-players"]);
+  });
+
+  test("a hostless playing room waits for the round to end, then ends as no-players", () => {
+    const h = makeHarness();
+    const host = h.addSeat("Hansi");
+    const spectator = h.addSeat("Sepp");
+    spectator.role = "spectator";
+    h.room.hostSeatId = host.seatId;
+    h.room.phase = "playing";
+    h.room.roundNumber = 1;
+    h.room.deadline = 1000;
+    h.sent.length = 0;
+
+    h.logic.releaseSeat(h.room, host);
+    expect(h.expired).toEqual([]); // the round finishes first
+
+    h.logic.endRound(h.room);
+    expect(h.expired).toEqual(["no-players"]);
+  });
+
+  test("a fully empty hostless room keeps its empty grace", () => {
+    const h = makeHarness({ roomEmptyGraceMs: 300 });
+    const host = h.addSeat("Hansi");
+    h.room.hostSeatId = host.seatId;
+    h.room.phase = "intermission";
+
+    h.logic.releaseSeat(h.room, host);
+    expect(h.expired).toEqual([]);
+
+    h.clock.advance(300);
+    expect(h.expired).toEqual(["expired"]);
+  });
+
+  test("a connecting player becomes host when the room has none", () => {
+    const h = makeHarness();
+    const player = h.addSeat("Gretl");
+    h.room.hostSeatId = -1;
+    h.sent.length = 0;
+
+    h.logic.adoptHostIfMissing(h.room, player);
+
+    expect(h.room.hostSeatId).toBe(player.seatId);
+    expect(h.sent).toEqual([{ type: "host-changed", hostSeatId: player.seatId }]);
   });
 });
 

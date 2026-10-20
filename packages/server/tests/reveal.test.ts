@@ -16,7 +16,6 @@ let scene: Scene;
 beforeEach(async () => {
   scene = await makeScene({
     roundMs: 1600,
-    intermissionMs: 3000, // roomy window for late joins while revealing
     tickIntervalMs: 250,
     roomEmptyGraceMs: 60_000,
     roomIdleMs: 30 * 60_000,
@@ -68,7 +67,6 @@ function expectedReveal(hostSeat: number, playerSeat: number) {
 describe("round-end reveal", () => {
   test("findable words grouped by length ascending, scored, found-by seat ids, missed words present", async () => {
     const { host, hostSnap, playerSnap } = await playedRound();
-    host.send({ type: "skip", reqId: 5 });
     const end = (await host.expect((m) => m.type === "round-end", 6000)) as {
       reveal: unknown;
     };
@@ -79,7 +77,6 @@ describe("round-end reveal", () => {
 describe("identical reveal across channels", () => {
   test("a late joiner gets the finished round's standing as a room-wide score-update on join", async () => {
     const { host, hostSnap, playerSnap } = await playedRound();
-    host.send({ type: "skip", reqId: 5 });
     const end = (await host.expect((m) => m.type === "round-end", 6000)) as unknown as {
       roundNumber: number;
     };

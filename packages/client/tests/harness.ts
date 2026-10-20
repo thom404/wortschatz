@@ -304,9 +304,9 @@ export function roundEnded(roundNumber: number, reveal: RevealPayload): RoundEnd
   return { type: "round-end", roundNumber, reveal };
 }
 
-/** One 1 Hz re-anchor tick for either countdown phase. */
-export function tick(phase: "playing" | "intermission", remaining: number): TickMsg {
-  return { type: "tick", phase, remaining, deadline: Date.now() + remaining };
+/** One 1 Hz re-anchor of the round clock. */
+export function tick(remaining: number): TickMsg {
+  return { type: "tick", remaining, deadline: Date.now() + remaining };
 }
 
 /** A snapshot taken mid-intermission — the late-joiner / reconnect channel:
@@ -321,7 +321,7 @@ export function intermissionSnapshot(opts: {
   board: readonly string[];
   reveal: RevealPayload;
   players?: PlayerInfo[];
-  /** Absolute intermission deadline; defaults to a fresh full intermission. */
+  /** The pause has no clock: the snapshot's deadline is always zero. */
   deadline?: number;
 }): SnapshotMsg {
   const hostSeatId = opts.hostSeatId ?? 1;
@@ -340,7 +340,7 @@ export function intermissionSnapshot(opts: {
       roundNumber,
       board: [...opts.board],
       reveal: opts.reveal,
-      deadline: opts.deadline ?? Date.now() + 20_000,
+      deadline: opts.deadline ?? 0,
     },
   };
 }

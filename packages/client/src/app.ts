@@ -23,7 +23,7 @@ import "./style.css";
 /**
  * Screens of the minimal functional shell (visual language is ticket #8):
  * - Home: create a room / join by code (a stored session auto-reclaims).
- * - Lobby: waiting room; the host starts at >= 2 players.
+ * - Lobby: waiting room; the host starts round one, even alone.
  * - Game: board, interpolated countdown, scoreboard, typed word input.
  * - Intermission: finished round's board + reveal until the next round.
  * - Ended: kicked / room-ended outcomes, each with a real action.
@@ -371,7 +371,7 @@ function render(app: App, kind: DeltaKind = "structural"): void {
  * change only upon server messages, never self-transitioned.
  */
 function remainingOf(store: GameStore): number {
-  if (store.phase !== "playing" && store.phase !== "intermission") return 0;
+  if (store.phase !== "playing") return 0;
   if (!store.deadline) return 0;
   return Math.max(0, store.deadline - Date.now());
 }
@@ -401,23 +401,18 @@ function timerHtml(app: App): string {
     </div>`;
 }
 
-/** The ring timer's live state: progress fraction (0..1) across the wall
- *  length of the current phase, and the shared low-time look toggle. */
+/** The ring timer's live state: progress fraction (0..1) across the round,
+ *  and the shared low-time look toggle. Only the round has a countdown. */
 function timerState(app: App): { fraction: number; low: boolean } {
   const remaining = remainingOf(app.store);
   return {
-    fraction: Math.min(1, Math.max(0, remaining / totalPhaseMs(app.store.phase))),
+    fraction: Math.min(1, Math.max(0, remaining / PROTOCOL.ROUND_MS)),
     low: remaining <= LOW_TIME_MS,
   };
 }
 
-/** The wall length of the current countdown phase — the ring's 1.0 point. */
-function totalPhaseMs(phase: GameStore["phase"]): number {
-  return phase === "playing" ? PROTOCOL.ROUND_MS : PROTOCOL.INTERMISSION_MS;
-}
-
 function updateTimer(app: App): void {
-  if (app.store.phase !== "playing" && app.store.phase !== "intermission") return;
+  if (app.store.phase !== "playing") return;
   const el = app.root.querySelector<HTMLElement>("#countdown");
   if (!el) return;
   const remaining = remainingOf(app.store);
@@ -590,9 +585,9 @@ function renderGame(app: App): void {
   paintTrace(app);
 }
 
-/** The intermission's live regions: the countdown and the session standings.
- *  The private found-word chips are not part of this screen. */
-const INTERMISSION_LIVE_REGIONS: readonly LiveRegion[] = [TIMER_REGION, SCOREBOARD_REGION];
+/** The intermission's live region: the session standings. The pause has no
+ *  countdown and no private found-word chips. */
+const INTERMISSION_LIVE_REGIONS: readonly LiveRegion[] = [SCOREBOARD_REGION];
 
 function renderIntermission(app: App): void {
   document.title = `${APP_NAME} — Pause`;
@@ -606,7 +601,6 @@ function renderIntermission(app: App): void {
       ${statusHtml(app)}
       <div id="dashboard" class="dashboard intermission">
         <h1 class="area-title">Pause</h1>
-        ${timerHtml(app)}
         <section class="panel area-board">
           <h2>Runde ${finishedRoundNumber}</h2>
           <div id="board" class="board" style="--tile-span:${tileSpan}">${board
@@ -625,14 +619,14 @@ function renderIntermission(app: App): void {
       </div>
       ${
         app.store.isHost
-          ? `<button id="skip-btn">Nächste Runde starten</button>`
-          : `<p class="dim next-round-hint">Die nächste Runde startet gleich …</p>`
+          ? `<button id="start-btn">Nächste Runde starten</button>`
+          : `<p class="dim next-round-hint">Der Gastgeber startet die nächste Runde.</p>`
       }
       <button id="leave-btn">Raum verlassen</button>
     </div>`;
   app.liveRegions = INTERMISSION_LIVE_REGIONS;
-  const skip = app.root.querySelector<HTMLButtonElement>("#skip-btn");
-  if (skip) skip.onclick = () => app.conn!.request({ type: "skip" });
+  const start = app.root.querySelector<HTMLButtonElement>("#start-btn");
+  if (start) start.onclick = () => app.conn!.request({ type: "start-round" });
   app.root.querySelector<HTMLButtonElement>("#leave-btn")!.onclick = () => leaveRoom(app);
 }
 

@@ -27,13 +27,13 @@ function playingSnapshot(): SnapshotMsg {
   };
 }
 
-function intermissionSnapshot(deadline: number): SnapshotMsg {
+function intermissionSnapshot(): SnapshotMsg {
   return {
     type: "snapshot",
     room: { code: "LAG4T", phase: "intermission", hostSeatId: 1, roundNumber: 1 },
     self: { seatId: 1, nickname: "Lena", role: "player", cumulativeScore: 0 },
     players: [seat(1, "Lena"), seat(2, "Ben")],
-    finishedRound: { roundNumber: 1, board: BOARD, reveal: REVEAL, deadline },
+    finishedRound: { roundNumber: 1, board: BOARD, reveal: REVEAL, deadline: 0 },
   };
 }
 
@@ -53,10 +53,9 @@ describe("GameStore.apply", () => {
     const store = new GameStore();
     store.apply(playingSnapshot());
 
-    expect(store.apply({ type: "tick", phase: "playing", remaining: 90_000, deadline: 20_000 })).toBe(
-      "play-time"
-    );
+    expect(store.apply({ type: "tick", remaining: 90_000, deadline: 20_000 })).toBe("play-time");
     expect(store.deadline).toBe(20_000);
+    expect(store.phase).toBe("playing"); // a tick only re-anchors the round clock
 
     expect(
       store.apply({
@@ -104,21 +103,29 @@ describe("GameStore.apply", () => {
     store.subscribe((kind) => seen.push(kind));
 
     store.apply(playingSnapshot());
-    store.apply({ type: "tick", phase: "playing", remaining: 90_000, deadline: 20_000 });
+    store.apply({ type: "tick", remaining: 90_000, deadline: 20_000 });
     store.apply({ type: "player-joined", player: seat(3, "Cem") });
 
     expect(seen).toEqual(["structural", "play-time", "structural"]);
   });
 
-  it("a reconnecting client's intermission snapshot carries the live intermission deadline", () => {
+  it("a reconnecting client's intermission snapshot carries a zero pause deadline", () => {
     const store = new GameStore();
-    const deadline = Date.now() + 12_000;
-    expect(store.apply(intermissionSnapshot(deadline))).toBe<DeltaKind>("structural");
+    expect(store.apply(intermissionSnapshot())).toBe<DeltaKind>("structural");
 
     expect(store.phase).toBe("intermission");
-    expect(store.deadline).toBe(deadline);
+    expect(store.deadline).toBe(0);
     expect(store.round?.board).toEqual(BOARD);
-    expect(store.round?.deadline).toBe(deadline);
+    expect(store.round?.deadline).toBe(0);
     expect(store.finishedRound?.reveal).toEqual(REVEAL);
+  });
+
+  it("a round-end delta enters the pause with a zero deadline", () => {
+    const store = new GameStore();
+    store.apply(playingSnapshot());
+    expect(store.apply({ type: "round-end", roundNumber: 1, reveal: REVEAL })).toBe<DeltaKind>("structural");
+
+    expect(store.phase).toBe("intermission");
+    expect(store.deadline).toBe(0);
   });
 });

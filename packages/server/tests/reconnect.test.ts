@@ -74,10 +74,8 @@ describe("snapshots & resync", () => {
     expect(snap2.finishedRound!.board).toHaveLength(16);
     expect(snap2.finishedRound!.reveal).toBeDefined();
     expect(snap2.finishedRound!.reveal.groups).toEqual([]); // no words were enumerated on the scene's board
-    // The snapshot carries the live intermission deadline, so the client's
-    // first render shows the correct countdown instead of 0:00.
-    expect(snap2.finishedRound!.deadline).toBeGreaterThan(Date.now());
-    expect(snap2.finishedRound!.deadline - Date.now()).toBeLessThanOrEqual(900);
+    // The pause has no clock: its snapshot carries a zero deadline.
+    expect(snap2.finishedRound!.deadline).toBe(0);
   });
 
   test("a dead token silently degrades to a brand-new player, never an error", async () => {

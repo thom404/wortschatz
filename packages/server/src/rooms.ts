@@ -143,12 +143,12 @@ export class Rooms {
       this.logic.markPresent(seat);
       this.logic.touch(room);
       this.logic.clearEmptyTimer(room);
+      this.logic.adoptHostIfMissing(room, seat);
       this.cfg.log.info({ event: "reconnect", room: room.code, seat: seat.seatId });
       this.sendSnapshot(ws, room, seat, msg.reqId, seat.token);
       // Reconnect repair: room-wide scoreboard refresh that also carries
       // the reclaimed seat back into everyone's view.
       this.broadcastScores(room);
-      this.logic.tryAutoAdvance(room);
       return;
     }
     const nickname = normalizeNickname(msg.nickname);
@@ -178,6 +178,7 @@ export class Rooms {
     this.bindConn(ws, room, created);
     this.logic.touch(room);
     this.logic.clearEmptyTimer(room);
+    this.logic.adoptHostIfMissing(room, created);
     this.cfg.log.info({
       event: "join",
       room: room.code,
@@ -190,7 +191,6 @@ export class Rooms {
     // the finished round never scored the new seat, so a room-wide
     // score-update re-anchors the standings everyone renders (#22).
     if (room.phase === "intermission") this.broadcastScores(room);
-    this.logic.tryAutoAdvance(room);
   }
   private mintCode(): string {
     for (let attempt = 0; attempt < 1000; attempt++) {
@@ -240,9 +240,6 @@ export class Rooms {
         break;
       case "start-round":
         this.handleStartRound(room, seat, msg.reqId);
-        break;
-      case "skip":
-        this.handleSkip(room, seat, msg.reqId);
         break;
       case "kick":
         this.handleKick(room, seat, msg.seatId, msg.reqId);
@@ -332,20 +329,8 @@ export class Rooms {
       this.sendToSeat(seat, { type: "error", reqId, code: "invalid-phase" });
       return;
     }
-    if (this.logic.playerCount(room) < 2) {
-      this.sendToSeat(seat, { type: "error", reqId, code: "need-players" });
-      return;
-    }
     this.logic.touch(room);
     this.logic.startRound(room);
-  }
-  private handleSkip(room: Room, seat: Seat, reqId?: number): void {
-    if (!this.requireHost(room, seat, reqId)) return;
-    if (room.phase !== "intermission") {
-      this.sendToSeat(seat, { type: "error", reqId, code: "invalid-phase" });
-      return;
-    }
-    this.logic.skip(room);
   }
   private handleKick(room: Room, host: Seat, targetSeatId: number, reqId?: number): void {
     if (!this.requireHost(room, host, reqId)) return;

@@ -113,7 +113,6 @@ export class GameStore {
         this.applySnapshot(msg);
         break;
       case "tick":
-        this.phase = msg.phase;
         this.deadline = msg.deadline;
         break;
       case "round-start":
@@ -126,6 +125,7 @@ export class GameStore {
         break;
       case "round-end":
         this.phase = "intermission";
+        this.deadline = 0;
         this.roundNumber = msg.roundNumber;
         this.finishedRound = {
           roundNumber: msg.roundNumber,
@@ -189,8 +189,7 @@ export class GameStore {
     }
     if (snap.finishedRound) {
       // Intermission re-joiners still see the finished round's board and
-      // the authoritative intermission deadline, so their first render
-      // shows the correct remaining time instead of 0:00.
+      // reveal. The pause has no clock, so its deadline is zero.
       this.deadline = snap.finishedRound.deadline;
       this.round = {
         roundNumber: snap.finishedRound.roundNumber,
@@ -306,6 +305,5 @@ export const GERMAN_ERRORS: Record<ErrorCode, string> = {
   "server-full": "Der Server ist ausgelastet.",
   "invalid-message": "Ungültige Nachricht.",
   "not-playing": "Du spielst in dieser Runde nicht.",
-  "need-players": "Für eine Runde braucht es mindestens 2 Spieler.",
   "invalid-phase": "Das geht gerade nicht.",
 };

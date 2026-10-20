@@ -11,7 +11,6 @@ test("constants carry the protocol's documented defaults", () => {
   expect(PROTOCOL.MAX_PLAYERS).toBe(8);
   expect(PROTOCOL.MAX_ROOMS).toBe(32);
   expect(PROTOCOL.ROUND_MS).toBe(120_000);
-  expect(PROTOCOL.INTERMISSION_MS).toBe(20_000);
   expect(PROTOCOL.TICK_INTERVAL_MS).toBe(1_000);
   expect(PROTOCOL.ROOM_EMPTY_GRACE_MS).toBe(60_000);
   expect(PROTOCOL.ROOM_IDLE_MS).toBe(30 * 60_000);

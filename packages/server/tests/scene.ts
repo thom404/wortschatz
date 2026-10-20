@@ -9,7 +9,6 @@ import type { SnapshotMsg } from "@wortschatz/shared";
 
 export const FAST_CLOCK: Partial<ServerConfig> = {
   roundMs: 1600,
-  intermissionMs: 900,
   tickIntervalMs: 250,
   roomEmptyGraceMs: 60_000,
   roomIdleMs: 30 * 60_000,

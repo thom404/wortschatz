@@ -63,7 +63,6 @@ export interface ServerConfig {
 
   /** Clock overrides (ms). Defaults come from `PROTOCOL`. */
   roundMs?: number;
-  intermissionMs?: number;
   tickIntervalMs?: number;
   roomEmptyGraceMs?: number;
   roomIdleMs?: number;
@@ -87,7 +86,6 @@ export type ServerConfigResolved = Required<
     ServerConfig,
     | "port"
     | "roundMs"
-    | "intermissionMs"
     | "tickIntervalMs"
     | "roomEmptyGraceMs"
     | "roomIdleMs"
@@ -129,7 +127,6 @@ export function resolveConfig(overrides: ServerConfig): ServerConfigResolved {
     reveal: overrides.reveal,
     seedSource: overrides.seedSource ?? ((): bigint => randomBytes(8).readBigUInt64BE(0)),
     roundMs: overrides.roundMs ?? PROTOCOL.ROUND_MS,
-    intermissionMs: overrides.intermissionMs ?? PROTOCOL.INTERMISSION_MS,
     tickIntervalMs: overrides.tickIntervalMs ?? PROTOCOL.TICK_INTERVAL_MS,
     roomEmptyGraceMs: overrides.roomEmptyGraceMs ?? PROTOCOL.ROOM_EMPTY_GRACE_MS,
     roomIdleMs: overrides.roomIdleMs ?? PROTOCOL.ROOM_IDLE_MS,

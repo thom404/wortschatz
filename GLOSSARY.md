@@ -30,10 +30,10 @@ expires. Contrast a per-round score, which is shown in the round breakdown.
 
 ## Deadline
 
-The server-owned absolute end time (epoch ms) of the current room phase — the
-2-minute round or the intermission. Clients render their countdown by interpolating
-against it, but the deadline is authoritative and the client's local zero is cosmetic.
-See Tick.
+The server-owned absolute end time (epoch ms) of the current round — the 2-minute
+round clock, and the only clock in a room. Clients render their countdown by
+interpolating against it, but the deadline is authoritative and the client's local
+zero is cosmetic. A pause has no deadline. See Tick.
 
 ## Deep link
 
@@ -71,13 +71,16 @@ travels inside a join greeting's first frame, never in the WebSocket URL. See
 
 The player who controls the room. The **creator** of a room is its first host; if the
 host disconnects, host transfers to the longest-connected remaining connected player.
-Host powers: start the first round, skip the intermission, kick a connected player,
-close the room, and transfer host.
+Host powers: start every round, kick a connected player, close the room, and
+transfer host.
 
 ## Intermission
 
-The short (~20 s, host-skippable) pause between rounds that shows the round result
-before play auto-advances to the next round.
+The host-paced pause between rounds. It has no clock and never advances on its
+own: it shows the finished board, the reveal and the session standings for as
+long as the host holds it open, and ends only when the host starts the next
+round. A lone host may start that round. See
+[ADR-0016](docs/adr/0016-host-paced-intermission.md).
 
 ## Live region
 
@@ -91,8 +94,8 @@ its template, and the in-place updater walks those declarations. See
 ## Lobby
 
 The pre-round phase of a room, before the host starts round one. Players join, take a
-nickname and a seat, and wait; the first round starts when at least 2 players are
-present.
+nickname and a seat, and wait; the host starts the first round, and a lone host is
+enough.
 
 ## Play-time delta
 
@@ -110,7 +113,8 @@ rebuilds the whole screen. See
 
 A single private game session, identified by a room code, holding at most 8 players
 and an unbounded sequence of rounds. Rooms are in-memory only and lives end on host
-close or expiry (60 s empty, 30 min idle).
+close, on a hostless pause with someone still present (`no-players`), or on expiry
+(60 s empty, 30 min idle).
 
 ## Room code
 
@@ -159,8 +163,8 @@ adding one cannot break layout. See [ADR-0002](docs/adr/0002-game-screen-layout-
 ## Snapshot
 
 The complete authoritative room-and-player state (`room`, `self`, `players`, the
-live `round` when playing, or the finished round and the live intermission
-deadline when in intermission) that the server sends on join, on every
+live `round` when playing, or the finished round when in intermission) that the
+server sends on join, on every
 reconnect, on `resync`, and — without being asked — to every seat promoted from
 spectator to player at round start. The client never reconstructs state from
 deltas; everything else is a delta.
@@ -172,11 +176,10 @@ next one. A joiner with no valid session token is a spectator.
 
 ## Tick
 
-The once-per-second server→client `tick` carrying the phase, the remaining time
-and the deadline, used to re-anchor a client's local interpolation between
-bounds. One message type covers both the round countdown and the intermission
-countdown. See Deadline. (Renamed from the earlier `round-tick` when the
-real-time architecture landed.)
+The once-per-second server→client `tick` carrying the remaining round time and
+the round deadline, used to re-anchor a client's local interpolation between
+bounds. It exists only while `playing`; a pause sends no tick. See Deadline.
+(Renamed from the earlier `round-tick` when the real-time architecture landed.)
 
 ## Valid word
 
