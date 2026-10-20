@@ -523,3 +523,18 @@ dd {
 .rw.missed {
   opacity: 0.55;
 }
+/* An outbound dictionary link belongs to the word row: the existing muted
+ * text colour, no button chrome, and enough padding to be tappable without
+ * stealing space from the points or finders. */
+.rw-link {
+  color: var(--dim);
+  font-weight: 400;
+  text-decoration: none;
+  padding: 2px var(--gap-2xs);
+  border-radius: var(--radius-s);
+}
+.rw-link:hover,
+.rw-link:focus-visible {
+  color: var(--accent);
+  text-decoration: underline;
+}

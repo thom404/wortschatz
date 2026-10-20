@@ -20,10 +20,11 @@ export type Outcome = "none" | "kicked" | "room-ended";
  * live, already-rendered game state **in place** — the countdown, the
  * scoreboard and the private found-word chips — so the ring timer keeps its
  * identity; a structural change rebuilds the whole screen. Tick,
- * score-update and word-accepted are play-time deltas.
- * See [GLOSSARY](../GLOSSARY.md): Play-time delta.
+ * score-update and word-accepted are play-time deltas. Late Wiktionary links
+ * (`reveal-links`) patch only the intermission reveal, leaving the board and
+ * standings untouched. See [GLOSSARY](../GLOSSARY.md): Play-time delta.
  */
-export type DeltaKind = "play-time" | "structural";
+export type DeltaKind = "play-time" | "structural" | "reveal-links";
 
 /**
  * Classifies one server message for rendering (ADR-0009): a play-time delta
@@ -31,6 +32,7 @@ export type DeltaKind = "play-time" | "structural";
  * every other message is a structural change that rebuilds the screen.
  */
 export function deltaKind(msg: ServerMessage): DeltaKind {
+  if (msg.type === "wiki-links") return "reveal-links";
   return msg.type === "tick" || msg.type === "score-update" || msg.type === "word-accepted"
     ? "play-time"
     : "structural";
@@ -83,6 +85,9 @@ export class GameStore {
   /** Round number + reveal of the finished round; the board itself stays in
    *  `round` (a bare `round-end` delta carries no board). */
   finishedRound: { roundNumber: number; reveal: RevealPayload } | null = null;
+  /** Exact-form German Wiktionary URLs for the finished reveal, by word.
+   *  Empty until the server's lookup resolves (or when it found nothing). */
+  wikiLinks = new Map<string, string>();
   deadline = 0;
   /** My score for THIS round alone — the ring timer's centered value. One
    *  state, not two: it reads the scoreboard map's entry for my seat. */
@@ -122,6 +127,7 @@ export class GameStore {
         this.deadline = msg.round.deadline;
         this.roundWords = new Map();
         this.roundScores.clear();
+        this.wikiLinks = new Map();
         break;
       case "round-end":
         this.phase = "intermission";
@@ -131,6 +137,12 @@ export class GameStore {
           roundNumber: msg.roundNumber,
           reveal: msg.reveal,
         };
+        this.wikiLinks = new Map();
+        break;
+      case "wiki-links":
+        if (this.finishedRound?.roundNumber === msg.roundNumber) {
+          this.wikiLinks = new Map(Object.entries(msg.links));
+        }
         break;
       case "score-update":
         this.applyScores(msg.roundNumber, msg.scores);
@@ -184,6 +196,7 @@ export class GameStore {
     this.finishedRound = snap.finishedRound
       ? { roundNumber: snap.finishedRound.roundNumber, reveal: snap.finishedRound.reveal }
       : null;
+    this.wikiLinks = new Map(Object.entries(snap.finishedRound?.links ?? {}));
     if (snap.round) {
       this.deadline = snap.round.deadline;
     }
@@ -285,6 +298,7 @@ export class GameStore {
     this.roundScores.clear();
     this.round = null;
     this.finishedRound = null;
+    this.wikiLinks = new Map();
     this.deadline = 0;
     this.roundWords = new Map();
     this.lastError = null;

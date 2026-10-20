@@ -8,6 +8,7 @@ import type {
   ServerMessage,
   SnapshotMsg,
   TickMsg,
+  WikiLinksMsg,
 } from "@wortschatz/shared";
 
 export type { PlayerInfo };
@@ -309,6 +310,11 @@ export function tick(remaining: number): TickMsg {
   return { type: "tick", remaining, deadline: Date.now() + remaining };
 }
 
+/** Late-arriving exact-form Wiktionary links for the finished reveal. */
+export function wikiLinks(roundNumber: number, links: Record<string, string>): WikiLinksMsg {
+  return { type: "wiki-links", roundNumber, links };
+}
+
 /** A snapshot taken mid-intermission — the late-joiner / reconnect channel:
  *  the full standing roster plus the finished round (board + reveal). */
 export function intermissionSnapshot(opts: {
@@ -320,6 +326,8 @@ export function intermissionSnapshot(opts: {
   roundNumber?: number;
   board: readonly string[];
   reveal: RevealPayload;
+  /** Resolved exact-form Wiktionary URLs for the reveal, if any. */
+  links?: Record<string, string>;
   players?: PlayerInfo[];
   /** The pause has no clock: the snapshot's deadline is always zero. */
   deadline?: number;
@@ -340,6 +348,7 @@ export function intermissionSnapshot(opts: {
       roundNumber,
       board: [...opts.board],
       reveal: opts.reveal,
+      ...(opts.links ? { links: opts.links } : {}),
       deadline: opts.deadline ?? 0,
     },
   };

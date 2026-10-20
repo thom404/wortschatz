@@ -18,6 +18,7 @@ import {
   tileAtPoint,
   tileEls,
   tilePoint,
+  wikiLinks,
   type Mounted,
   type PlayerInfo,
 } from "./harness.js";
@@ -561,6 +562,92 @@ describe("mountable app", () => {
       expect(app!.root.querySelector(".next-round-hint")!.textContent).toBe(
         "Der Gastgeber startet die nächste Runde."
       );
+    });
+
+    it("marks linked words with a quiet Wiktionary anchor and leaves unlinked words unchanged", () => {
+      driveToRoundWith("LAG4T", [
+        seat({ seatId: 1, nickname: "Lena" }),
+        seat({ seatId: 2, nickname: "Ben" }),
+      ]);
+      app!.conn().feed(roundEnded(1, REVEAL));
+      app!.conn().feed(
+        wikiLinks(1, {
+          test: "https://de.wiktionary.org/wiki/Test",
+          saat: "https://de.wiktionary.org/wiki/Saat",
+          fremd: "https://de.wiktionary.org/wiki/Fremd",
+        })
+      );
+
+      const linked = [...app!.root.querySelectorAll<HTMLAnchorElement>("#reveal .rw-link")];
+      expect(linked).toHaveLength(2);
+      expect(linked.map((a) => a.textContent)).toEqual(["↗", "↗"]);
+      for (const anchor of linked) {
+        expect(anchor.getAttribute("target")).toBe("_blank");
+        expect(anchor.getAttribute("rel")).toBe("noopener noreferrer");
+        expect(anchor.getAttribute("aria-label")).toBe("Bei Wiktionary nachschlagen");
+        expect(anchor.getAttribute("title")).toBe("Bei Wiktionary nachschlagen");
+      }
+      expect(linked.map((a) => a.getAttribute("href"))).toEqual([
+        "https://de.wiktionary.org/wiki/Saat",
+        "https://de.wiktionary.org/wiki/Test",
+      ]);
+
+      // A word that resolves nothing renders no element at all; a mapping
+      // entry for a word outside the reveal adds nothing anywhere.
+      const ort = [...app!.root.querySelectorAll<HTMLElement>("#reveal .rw")].find(
+        (r) => r.querySelector(".rw-word")!.textContent === "ort"
+      )!;
+      expect(ort.querySelector(".rw-link")).toBeNull();
+      expect(app!.root.querySelector("#reveal")!.textContent).not.toContain("fremd");
+
+      // The missed word is still dimmed; its link inherits that treatment.
+      const missed = app!.root.querySelector("#reveal .rw.missed")!;
+      expect(missed.querySelector(".rw-word")!.textContent).toBe("saat");
+      expect(missed.querySelector(".rw-link")).toBeTruthy();
+    });
+
+    it("links arriving after the reveal patch the rows in place, leaving board and standings untouched", () => {
+      driveToRoundWith("LAG4T", [
+        seat({ seatId: 1, nickname: "Lena" }),
+        seat({ seatId: 2, nickname: "Ben" }),
+      ]);
+      app!.conn().feed(roundEnded(1, REVEAL));
+      const board = app!.root.querySelector("#board");
+      const players = app!.root.querySelector("#players");
+      const standings = players!.innerHTML;
+
+      app!.conn().feed(wikiLinks(1, { ort: "https://de.wiktionary.org/wiki/Ort" }));
+
+      expect(app!.root.querySelector("#board")).toBe(board);
+      expect(app!.root.querySelector("#players")).toBe(players);
+      expect(players!.innerHTML).toBe(standings);
+      expect(app!.root.querySelectorAll("#reveal .rw-link")).toHaveLength(1);
+      expect(app!.root.querySelector("#reveal .rw-link")!.getAttribute("href")).toBe(
+        "https://de.wiktionary.org/wiki/Ort"
+      );
+    });
+
+    it("an intermission snapshot carrying links renders the same anchors", () => {
+      const links = { ort: "https://de.wiktionary.org/wiki/Ort" };
+      window.history.pushState({}, "", "/r/SPAT7");
+      typeInto("#jn-code", "SPAT7");
+      typeInto("#jn-nick", "Ben");
+      click("#jn-btn");
+      app!.conn().feed(
+        intermissionSnapshot({
+          code: "SPAT7",
+          selfSeatId: 2,
+          nickname: "Ben",
+          hostSeatId: 1,
+          board: BOARD,
+          reveal: REVEAL,
+          links,
+        })
+      );
+
+      const anchors = [...app!.root.querySelectorAll<HTMLAnchorElement>("#reveal .rw-link")];
+      expect(anchors).toHaveLength(1);
+      expect(anchors[0]!.getAttribute("href")).toBe(links.ort);
     });
 
     it("shows no countdown on the pause screen — the break is not on a timer", () => {

@@ -398,6 +398,10 @@ function render(app: App, kind: DeltaKind = "structural"): void {
   // in place, so the `#timer` element and its digits keep their identity and
   // never flash the ring's full-circle default. Every structural change
   // rebuilds the whole screen below.
+  if (kind === "reveal-links") {
+    updateRevealLinks(app);
+    return;
+  }
   if (kind === "play-time") {
     updateLive(app);
     return;
@@ -519,6 +523,14 @@ interface LiveRegion {
 const TIMER_REGION: LiveRegion = { selector: "#timer", update: updateTimer };
 const SCOREBOARD_REGION: LiveRegion = { selector: "#players", update: updateScoreboard };
 const FOUND_REGION: LiveRegion = { selector: "#found", update: updateFound };
+
+/** Late-arriving Wiktionary links patch only the reveal rows: no store-wide
+ *  live region walk, so the finished board, timer and standings keep their
+ *  identity. */
+function updateRevealLinks(app: App): void {
+  const el = app.root.querySelector<HTMLElement>("#reveal");
+  if (el) el.innerHTML = revealHtml(app.store, app.revealSort);
+}
 
 /** The in-place refresh of every live region the current screen declares
  *  (ADR-0009), in declaration order. A region whose element is absent from
@@ -1062,7 +1074,8 @@ function revealHtml(store: GameStore, mode: RevealSort): string {
 }
 
 /** One word in every reveal mode: its points, one found-by chip per finder
- *  and the dimmed treatment for a word nobody found. */
+ *  and the dimmed treatment for a word nobody found. A word with a resolved
+ *  Wiktionary entry carries a quiet outbound link after the word itself. */
 function revealWordHtml(store: GameStore, w: RevealWord): string {
   const by = w.foundBy
     .map((id) => store.players.find((p) => p.seatId === id)?.nickname)
@@ -1070,8 +1083,15 @@ function revealWordHtml(store: GameStore, w: RevealWord): string {
     .map((n) => `<span class="fby">${escapeHtml(n)}</span>`)
     .join("");
   const missed = w.foundBy.length === 0 ? " missed" : "";
-  return `<span class="rw${missed}"><span class="rw-word">${escapeHtml(w.word)}</span><small class="rw-pts">+${w.points}</small>${by}</span>`;
+  const url = store.wikiLinks.get(w.word);
+  const link = url
+    ? `<a class="rw-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" aria-label="${WIKTIONARY_LABEL}" title="${WIKTIONARY_LABEL}">↗</a>`
+    : "";
+  return `<span class="rw${missed}"><span class="rw-word">${escapeHtml(w.word)}</span>${link}<small class="rw-pts">+${w.points}</small>${by}</span>`;
 }
+
+/** The German accessible name and tooltip of a reveal's outbound link. */
+const WIKTIONARY_LABEL = "Bei Wiktionary nachschlagen";
 
 const GERMAN_COLLATOR = new Intl.Collator("de");
 

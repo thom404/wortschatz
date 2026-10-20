@@ -9,6 +9,7 @@ import { loadDictionary } from "./dictionary/loader.js";
 import { generateBoard } from "./boardgen/index.js";
 import { germanScore } from "./scoring/index.js";
 import { revealAll } from "./reveal.js";
+import { createWiktionaryLookup } from "./wiktionary.js";
 import type { Logger } from "./config.js";
 
 const logger: Logger = {
@@ -32,6 +33,7 @@ const server = await startServer({
   generateBoard: (seed) => generateBoard(seed, dictionary),
   scoreWord: germanScore,
   reveal: revealAll,
+  lookupWikiLinks: createWiktionaryLookup(),
   staticDir,
 });
 

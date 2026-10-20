@@ -274,6 +274,7 @@ export class RoomLogic {
     room.words = generated.words;
     room.deadline = this.deps.clock.now() + this.deps.cfg.roundMs;
     room.reveal = null;
+    room.wikiLinks = null;
     room.wordsBySeat = new Map();
     for (const seat of room.seats.values()) {
       seat.roundWords = new Set();
@@ -322,6 +323,7 @@ export class RoomLogic {
   endRound(room: Room): void {
     room.phase = "intermission";
     room.deadline = 0;
+    room.wikiLinks = null;
     room.reveal = this.deps.cfg.reveal({
       words: room.words,
       wordsBySeat: room.wordsBySeat,
@@ -337,7 +339,32 @@ export class RoomLogic {
       roundNumber: room.roundNumber,
       reveal: room.reveal,
     });
+    // The outbound lookup starts only after the reveal is on the wire: a
+    // slow dictionary can never delay the end of a round.
+    void this.resolveWikiLinks(room, room.roundNumber);
     this.maybeEndHostlessNonPlayingRoom(room);
+  }
+
+  /** Fill the finished round's exact-form dictionary links, then announce
+   *  them. A failure (including an injected lookup's rejection) is simply
+   *  "no icons this round"; a stale result for a later round is dropped. */
+  private async resolveWikiLinks(room: Room, roundNumber: number): Promise<void> {
+    const words = [...new Set(room.reveal?.groups.flatMap((g) => g.words.map((w) => w.word)) ?? [])];
+    if (words.length === 0) return;
+    let links: Map<string, string>;
+    try {
+      links = await this.deps.cfg.lookupWikiLinks(words);
+    } catch {
+      return;
+    }
+    if (room.closing || room.phase !== "intermission" || room.roundNumber !== roundNumber) return;
+    if (links.size === 0) return;
+    room.wikiLinks = Object.fromEntries(links);
+    this.deps.broadcast(room, {
+      type: "wiki-links",
+      roundNumber,
+      links: room.wikiLinks,
+    });
   }
 
   private armPhaseTimer(room: Room): void {

@@ -39,6 +39,8 @@ export interface Room {
   seats: Map<number, Seat>;
   nextSeatId: number;
   reveal: RevealPayload | null;
+  /** Exact-form Wiktionary URLs for the finished reveal, once resolved. */
+  wikiLinks: Record<string, string> | null;
   wordsBySeat: Map<number, string[]>;
   lastActivity: number;
   closing: boolean;
@@ -58,6 +60,7 @@ export function makeRoom(code: string): Room {
     seats: new Map(),
     nextSeatId: 0,
     reveal: null,
+    wikiLinks: null,
     wordsBySeat: new Map(),
     lastActivity: 0,
     closing: false,
