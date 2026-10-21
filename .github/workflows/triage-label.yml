@@ -1,0 +1,34 @@
+name: Triage label
+
+# A newly opened issue enters the triage machine at `needs-triage` with no
+# manual step. Only the `opened` action is handled, so a `reopened` or
+# `transferred` issue keeps its current triage state. A `wayfinder:*` label
+# marks a planning artifact rather than a triage item, and a bot sender (for
+# example the issue agent filing a follow-up) is left alone.
+# See docs/agents/triage-labels.md.
+
+on:
+  issues:
+    types: [opened]
+
+# Labelling an issue starts no CI, so the default token is enough. Unlike the
+# issue agent, no personal access token is needed: the ADR-0006 rationale for a
+# PAT does not apply here.
+permissions:
+  issues: write
+
+jobs:
+  label:
+    if: >-
+      github.event.action == 'opened' &&
+      github.event.sender.type != 'Bot' &&
+      !contains(join(github.event.issue.labels.*.name, ','), 'wayfinder:')
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+    steps:
+      # No `|| true`: a failed label write fails the run.
+      - name: Apply needs-triage
+        run: gh issue edit "$ISSUE_NUMBER" --add-label needs-triage
