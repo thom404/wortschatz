@@ -91,3 +91,22 @@ scoring, word input and the wire protocol are unchanged.
     visible number is hidden from assistive technology, and the whole tile
     carries the same points phrase as its hover title. Indices disappear from
     the product.
+
+## Amendment (#150, 2026-10-21): ß displays as capital ẞ
+
+The tiles and words keep their uppercase look, but `ß` is the one exception
+to the browser's Unicode full case mapping. CSS `text-transform: uppercase`
+would expand it to two glyphs, `SS`, so a `ß` tile reads like a double `s`
+and the distinct words `straße` and `strasse` render identically. A pure
+display helper maps `ß` to capital `ẞ` (U+1E9E) and changes nothing else;
+`ẞ` is one glyph and is unaffected by the uppercase transform.
+
+12. **One display mapping.** `displayWord(word)` substitutes `ß` → `ẞ` and
+    passes every other character through. `displayTile(tile)` extends it with
+    the notation rules (prefix/suffix markers drop off, either/or variants
+    stay), so tiles, the drag trace, the private found-word chips and the
+    reveal words all render through the same mapping.
+13. **Display only.** Submission, matching, scoring and the tile inventory
+    keep the canonical lowercase `ß`; no `ss` tile is added and `straße` stays
+    distinct from `strasse`. The accessible tile label follows the displayed
+    letters (`ẞ, 2 Punkte`), so the visible glyph and the label agree.
