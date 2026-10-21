@@ -311,7 +311,6 @@ const overflowChip: ScreenshotScenario = {
   id: "targeted-154-long-standings-chip",
   skins: SKINS,
   viewports: [PHONE_SMALL],
-  fixme: "Enabled with the #154 fix: the standings chip must stop overflowing the Punkte panel.",
   wire: {
     messages: [
       intermissionSnapshot({
@@ -507,7 +506,7 @@ export const OUTCOME_SCENARIOS: readonly ScreenshotScenario[] = [
   connectionLost,
 ];
 
-/** 10 targeted states × 2 skins × 360 = 20 (the #154 pair is fixme for now). */
+/** 10 targeted states × 2 skins × 360 = 20. */
 export const TARGETED_SCENARIOS: readonly ScreenshotScenario[] = [
   overflowChip,
   lowTimer,

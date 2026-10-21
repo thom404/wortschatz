@@ -1191,7 +1191,7 @@ function setLocalError(app: App, msg: string): void {
  *   cumulative score (the session's winner key), ties sharing a place.
  */
 function playerChipsHtml(store: GameStore, mode: "seats" | "ranked" | "session" = "seats"): string {
-  const render = (p: PlayerInfo, prefixHtml: string, scoreText: string): string => {
+  const render = (p: PlayerInfo, prefixHtml: string, scoreHtml: string, modifier = ""): string => {
     const self = p.seatId === store.self.seatId;
     const me = self ? " me" : "";
     const host = p.seatId === store.hostSeatId ? `<span class="badge host">Gastgeber</span>` : "";
@@ -1199,24 +1199,34 @@ function playerChipsHtml(store: GameStore, mode: "seats" | "ranked" | "session" 
     const linked = p.connected
       ? `<span class="dot on"></span>`
       : `<span class="dot off"></span><span class="away">unterbrochen</span>`;
-    return `<li class="chip player${me}">${prefixHtml}<span class="nick">${escapeHtml(p.nickname)}</span>${host}${spectator}${
-      scoreText ? `<small class="score">${scoreText}</small>` : ""
-    }${linked}</li>`;
+    return `<li class="chip player${modifier}${me}">${prefixHtml}<span class="nick">${escapeHtml(p.nickname)}</span>${host}${spectator}${scoreHtml}${linked}</li>`;
   };
   if (mode === "ranked") {
     return store
       .rankedPlayers()
-      .map((r) => render(r.player, `<span class="place">${r.place}</span>`, `${r.roundScore} P`))
+      .map((r) =>
+        render(
+          r.player,
+          `<span class="place">${r.place}</span>`,
+          `<small class="score">${r.roundScore} P</small>`
+        )
+      )
       .join("");
   }
   if (mode === "session") {
+    // The session standings chip wraps internally: each segment is its own
+    // flex item, so a narrow Punkte panel breaks the row instead of letting
+    // it overflow. Both scores stay separately addressable — and visible.
     return store
       .sessionRanked()
       .map((r) =>
         render(
           r.player,
           `<span class="place">${r.place}</span>`,
-          `Runde ${r.roundScore} P · Gesamt ${r.cumulativeScore} P`
+          `<small class="score round-score">Runde ${r.roundScore} P</small>` +
+            `<span class="score-sep"> · </span>` +
+            `<small class="score cumulative-score">Gesamt ${r.cumulativeScore} P</small>`,
+          " session"
         )
       )
       .join("");

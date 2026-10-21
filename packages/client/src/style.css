@@ -410,6 +410,24 @@ h2 {
   border-color: var(--accent);
   box-shadow: 0 0 0 var(--halo-spread) var(--glow);
 }
+/* Session standings (#154): the chip can be wider than the Punkte panel's
+ * content box, so its own segments wrap. Ranked and lobby chips keep the
+ * single line. `max-width` plus `overflow-wrap` keeps even a pathological
+ * nickname inside the panel; the halo lives in the panel padding. */
+.chip.player.session {
+  flex-wrap: wrap;
+  max-width: 100%;
+  box-sizing: border-box;
+  white-space: normal;
+}
+.chip.player.session .nick {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.chip.player.session .round-score,
+.chip.player.session .cumulative-score {
+  white-space: nowrap;
+}
 
 /* ------------------------------------------------------------------ */
 /* Forms / buttons                                                     */
