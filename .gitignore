@@ -5,3 +5,6 @@ packages/client/dist_test/
 .vite/
 *.log
 *.mjs.tmp
+test-results/
+playwright-report/
+blob-report/

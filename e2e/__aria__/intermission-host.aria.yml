@@ -1,0 +1,30 @@
+- heading "Pause" [level=1]
+- heading "Runde 1" [level=2]
+- text: sch e i n ch r t a er u g l st o m en
+- group "Spielfeld drehen":
+    - text: ""
+    - button "0°" [pressed]
+    - button /\d+°/
+    - button /\d+°/
+    - button /\d+°/
+- heading "Gefundene Wörter" [level=2]
+- group "Sortieren nach":
+    - text: ""
+    - button "Länge" [pressed]
+    - button "Punkte"
+    - button "Alphabet"
+- term: 3 Buchstaben
+- definition: ast +3 Lena eis +3 rot +2 Jonas
+- term: 4 Buchstaben
+- definition: haus +8 Lena Jonas maus +6
+- term: 5 Buchstaben
+- definition: stein +9 Jonas wolke +9
+- heading "Punkte" [level=2]
+- list:
+    - listitem: /1 Lena Gastgeber Runde \d+ P · Gesamt \d+ P/
+    - listitem: /2 Jonas Runde \d+ P · Gesamt \d+ P/
+    - listitem: /3 Aylin Runde \d+ P · Gesamt \d+ P unterbrochen/
+    - listitem: /4 Mehmet Runde 7 P · Gesamt \d+ P/
+- paragraph: Es zählt das Gesamtergebnis der Sitzung.
+- button "Nächste Runde starten"
+- button "Raum verlassen"
