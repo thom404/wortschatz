@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-17
+- Amended: 2026-10-21 (#59) — workflow-file exclusion is human-only
 - Ticket: [#60](https://github.com/thom404/wortschatz/issues/60)
   (spec: autonomous issue agent for `ready-for-agent` issues), implemented by
   [#61](https://github.com/thom404/wortschatz/issues/61)–[#66](https://github.com/thom404/wortschatz/issues/66);
@@ -197,3 +198,13 @@ create`, `gh pr merge`, `gh issue close`, `git reset --hard`, and `rm -rf`;
   state "this ticket is specified" with the command "start a run now", so
   marking a ticket could start a run before its blocker links exist; the two
   are split into `ready-for-agent` (marker) and `agent-run` (command).
+
+## Amendment (#59, 2026-10-21): workflow-file exclusion is human-only
+
+§5 excludes CI workflow files (`.github/workflows/**`) from the agent's scope.
+The consequence is explicit: an issue whose deliverable is itself a workflow
+file cannot be implemented by the Issue agent. The agent applies the spec gate
+(`needs-info`, stop) and a human implements it. [#59](https://github.com/thom404/wortschatz/issues/59)
+— the auto-triage label workflow, [ADR-0019](0019-auto-triage-label-on-issue-open.md)
+— is the first such issue and was implemented by hand. No automatic path for
+workflow changes is added; the exclusion stays a hard boundary.

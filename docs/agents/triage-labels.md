@@ -23,7 +23,8 @@ new secret. It skips an issue that already carries a `wayfinder:*` label
 (planning artifacts, not triage items) and an issue opened by a bot, and it
 does nothing on `reopened` or `transferred`, so those keep their current state.
 It performs no other transition, and applying `needs-triage` starts no CI — the
-Issue agent still fires only on `agent-run`.
+Issue agent still fires only on `agent-run`. The decision is
+[ADR-0019](../adr/0019-auto-triage-label-on-issue-open.md).
 
 ## Operational labels
 
