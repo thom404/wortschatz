@@ -539,11 +539,61 @@ describe("mountable app", () => {
       expect(chips.map((c) => c.querySelector(".nick")!.textContent)).toEqual(["Cem", "Lena", "Ben"]);
       expect(chips.map((c) => c.querySelector(".place")!.textContent)).toEqual(["1", "2", "3"]);
       // Both scores ride one chip, side by side: round first, session total
-      // second.
+      // second. Each is its own segment so the chip can break between them.
       expect(chips[0]!.textContent).toContain("Runde 2 P");
       expect(chips[0]!.textContent).toContain("Gesamt 40 P");
       expect(chips[1]!.textContent).toContain("Runde 5 P");
       expect(chips[1]!.textContent).toContain("Gesamt 25 P");
+      expect(chips[0]!.querySelector(".round-score")!.textContent).toBe("Runde 2 P");
+      expect(chips[0]!.querySelector(".cumulative-score")!.textContent).toBe("Gesamt 40 P");
+    });
+
+    it("a long host-and-self standing keeps every segment, including both scores, inside its chip (#154)", () => {
+      driveToRoundWith("LAG4T", [
+        seat({ seatId: 1, nickname: "Thomas-Maximilian Mustermann", cumulativeScore: 128 }),
+        seat({ seatId: 2, nickname: "Anne-Sophie Charlotte", role: "spectator", cumulativeScore: 96 }),
+        seat({ seatId: 3, nickname: "Maximilian Alexander", connected: false, cumulativeScore: 84 }),
+      ]);
+      app!.conn().feed({
+        type: "score-update",
+        roundNumber: 1,
+        scores: [
+          { seatId: 1, nickname: "Thomas-Maximilian Mustermann", roundScore: 32, cumulativeScore: 128 },
+          { seatId: 2, nickname: "Anne-Sophie Charlotte", roundScore: 21, cumulativeScore: 96 },
+          { seatId: 3, nickname: "Maximilian Alexander", roundScore: 8, cumulativeScore: 84 },
+        ],
+      });
+      app!.conn().feed(roundEnded(1, REVEAL));
+
+      const chips = [...app!.root.querySelectorAll<HTMLElement>("#players .chip.player")];
+      const [self, spectator, disconnected] = chips;
+
+      // The host is also the viewing player: the own-chip halo and the host
+      // badge stay in the same wrapping chip as the long nickname.
+      expect(self!.classList.contains("me")).toBe(true);
+      expect(self!.classList.contains("session")).toBe(true);
+      expect(self!.querySelector(".place")!.textContent).toBe("1");
+      expect(self!.querySelector(".nick")!.textContent).toBe("Thomas-Maximilian Mustermann");
+      expect(self!.querySelector(".badge.host")!.textContent).toBe("Gastgeber");
+      expect(self!.querySelector(".round-score")!.textContent).toBe("Runde 32 P");
+      expect(self!.querySelector(".cumulative-score")!.textContent).toBe("Gesamt 128 P");
+      expect(self!.querySelector(".dot.on")).not.toBeNull();
+
+      // The separator stays part of the sentence between the two separate
+      // score segments: the browser may break there.
+      expect(self!.querySelector(".round-score")!.nextElementSibling!.textContent).toBe(" · ");
+      expect(self!.querySelector(".cumulative-score")!.previousElementSibling!.textContent).toBe(" · ");
+      expect(self!.textContent).toContain("Runde 32 P · Gesamt 128 P");
+
+      // A spectator row and a disconnected row keep their role and
+      // connection state in the same wrapped layout.
+      expect(spectator!.querySelector(".badge.spec")!.textContent).toBe("Zuschauer");
+      expect(spectator!.querySelector(".round-score")!.textContent).toBe("Runde 21 P");
+      expect(spectator!.querySelector(".cumulative-score")!.textContent).toBe("Gesamt 96 P");
+      expect(disconnected!.querySelector(".dot.off")).not.toBeNull();
+      expect(disconnected!.querySelector(".away")!.textContent).toBe("unterbrochen");
+      expect(disconnected!.querySelector(".round-score")!.textContent).toBe("Runde 8 P");
+      expect(disconnected!.querySelector(".cumulative-score")!.textContent).toBe("Gesamt 84 P");
     });
 
     it("the host button sends start-round to begin the next round", () => {
@@ -760,6 +810,11 @@ describe("mountable app", () => {
       expect(chips.map((c) => c.querySelector(".place")!.textContent)).toEqual(["1", "2", "3"]);
       expect(chips[0]!.textContent).toContain("Runde 7 P");
       expect(chips[0]!.textContent).toContain("Gesamt 60 P");
+      // The in-place rewrite keeps the two score segments separately
+      // addressable, so the wrapped layout cannot be flattened by an update.
+      expect(chips[0]!.querySelector(".round-score")!.textContent).toBe("Runde 7 P");
+      expect(chips[0]!.querySelector(".cumulative-score")!.textContent).toBe("Gesamt 60 P");
+      expect(chips[0]!.classList.contains("session")).toBe(true);
     });
 
     it("a spectator's game screen skips the declared found region it does not render", () => {
