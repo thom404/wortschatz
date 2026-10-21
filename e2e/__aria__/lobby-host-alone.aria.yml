@@ -1,0 +1,12 @@
+- heading "Raum ABC12" [level=1]
+- heading "Einladen" [level=2]
+- paragraph: Scanne den Code mit der Kamera, um beizutreten.
+- img "QR-Code zum Beitreten"
+- paragraph:
+    - code: /http:\/\/\d+\.\d+\.0\.1:\d+\/r\/ABC12/
+- heading "Spieler" [level=2]
+- list:
+    - listitem: 1. Lena Gastgeber
+- paragraph: 1 von 8 verbunden
+- button "Runde starten"
+- button "Zurück zur Startseite"

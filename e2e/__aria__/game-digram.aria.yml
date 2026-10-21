@@ -1,0 +1,20 @@
+- heading "Runde 1" [level=1]
+- text: /1:\d+ \d+ P/
+- heading "Spielfeld" [level=2]
+- text: Wische über die Felder, um ein Wort zu bilden. sch e i n ch r t a er u g l st o m en
+- group "Spielfeld drehen":
+    - text: ""
+    - button "0°" [pressed]
+    - button /\d+°/
+    - button /\d+°/
+    - button /\d+°/
+- heading "Deine Wörter" [level=2]
+- list:
+    - listitem: —
+- heading "Punkte" [level=2]
+- list:
+    - listitem: /1 Lena Gastgeber \d+ P/
+    - listitem: /2 Jonas \d+ P/
+    - listitem: /3 Aylin \d+ P unterbrochen/
+    - listitem: 4 Mehmet 7 P
+- button "Raum verlassen"

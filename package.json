@@ -18,10 +18,13 @@
     "start": "node packages/server/dist/main.js",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:visual": "playwright test",
+    "test:visual:update": "playwright test --update-snapshots",
     "lint": "prettier --check .",
     "format": "prettier --write ."
   },
   "devDependencies": {
+    "@playwright/test": "1.64.1",
     "@types/node": "^26.6.5",
     "happy-dom": "^21.0.1",
     "prettier": "^3.3.3",

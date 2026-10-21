@@ -199,6 +199,14 @@ root, can be switched from the home screen, applies app-wide instantly, and
 persists in localStorage. No component style branches on a skin beyond tokens, and
 adding one cannot break layout. See [ADR-0002](docs/adr/0002-game-screen-layout-and-skins.md).
 
+## Screenshot baseline
+
+A committed full-page PNG of one curated scenario, skin and viewport in
+`e2e/__screenshots__/`, compared pixel-for-pixel by the Playwright suite. It is
+updated only through `npm run test:visual:update` inside the pinned Playwright
+container, and a changed baseline is reviewed in the pull request like code. See
+[ADR-0020](docs/adr/0020-browser-visual-regression-seam.md).
+
 ## Snapshot
 
 The complete authoritative room-and-player state (`room`, `self`, `players`, the
@@ -248,6 +256,16 @@ connected path over the board with each tile used at most once, that is present 
 word list. Matching is case-insensitive and NFC-normalized; `ä/ö/ü/ß` are matched as
 real characters (no `ae/oe/ue/ss` aliasing). Validity is **strict list membership** —
 there is no algorithmic compound validation.
+
+## Visual regression seam
+
+The real-browser layer beside the happy-dom mount tests: Playwright renders the
+production client build, replays deterministic **Wire protocol** fixtures
+through the existing WebSocket boundary, and compares full-page screenshots
+against committed **Screenshot baselines**, with a few ARIA snapshots and wire
+flows for semantics and behavior. It never runs inside `npm test`, the Docker
+build or the issue agent. See
+[ADR-0020](docs/adr/0020-browser-visual-regression-seam.md).
 
 ## Wire protocol
 
