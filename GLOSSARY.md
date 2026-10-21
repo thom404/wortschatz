@@ -50,6 +50,14 @@ The absolute join URL for a room: `location.origin` + `/r/` + the uppercased
 code, so a phone camera can join. Both render from one value, so they never
 disagree. See [ADR-0008](docs/adr/0008-lobby-qr-invite.md).
 
+## Display
+
+The uppercase presentation of tiles and words, independent of the stored data.
+Exactly one letter is special-cased: `ß` renders as capital `ẞ` (U+1E9E), so
+it stays one glyph and never expands to `SS`, and a `ß` word stays visually
+distinct from an `ss` word. Submission, matching and scoring keep the canonical
+lowercase `ß`. See [ADR-0002](docs/adr/0002-game-screen-layout-and-skins.md).
+
 ## Exclusion list
 
 The reviewed set of normalized entries subtracted from the vendored word list

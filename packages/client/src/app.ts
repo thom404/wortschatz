@@ -8,6 +8,7 @@ import {
   type GestureStream,
   type PointerKind,
 } from "./gesture.js";
+import { displayTile, displayWord } from "./display.js";
 import { qrSvg } from "./qr.js";
 import { applySkin, loadSkin, skinSwitcherHtml, wireSkinSwitcher } from "./skins.js";
 import type {
@@ -110,15 +111,6 @@ const APP_NAME = "Wortschatz";
 
 /** The one sentence the drag surface shows between words. */
 const TRACE_HINT = "Wische über die Felder, um ein Wort zu bilden.";
-
-/** Display is independent of data (ADR-0002): the notation's markers drop
- *  off — prefixes render without their trailing `-`, suffixes without
- *  their leading `-`; either/or tiles show both candidate variants. The
- *  trace and scores keep spelling the data's real letters. */
-function displayTile(t: string): string {
-  if (t.includes("/")) return t;
-  return t.replace(/^-|-$/g, "");
-}
 
 /** The German points phrase for a tile: singular at one point, an `oder`
  *  pair when the spellings differ, plural otherwise (issue #142). Equal
@@ -1022,7 +1014,7 @@ function paintTrace(app: App): void {
   if (!el) return;
   if (trace.length > 0) {
     el.classList.remove("hint");
-    el.textContent = traceWord(app, trace);
+    el.textContent = displayWord(traceWord(app, trace));
   } else {
     el.classList.add("hint");
     el.textContent = TRACE_HINT;
@@ -1170,7 +1162,7 @@ function revealWordHtml(store: GameStore, w: RevealWord): string {
   const link = url
     ? `<a class="rw-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" aria-label="${WIKTIONARY_LABEL}" title="${WIKTIONARY_LABEL}">↗</a>`
     : "";
-  return `<span class="rw${missed}"><span class="rw-word">${escapeHtml(w.word)}</span>${link}<small class="rw-pts">+${w.points}</small>${by}</span>`;
+  return `<span class="rw${missed}"><span class="rw-word">${escapeHtml(displayWord(w.word))}</span>${link}<small class="rw-pts">+${w.points}</small>${by}</span>`;
 }
 
 /** The German accessible name and tooltip of a reveal's outbound link. */
@@ -1231,7 +1223,7 @@ function foundHtml(store: GameStore): string {
   const chips = [...store.roundWords]
     .map(
       ([word, points]) =>
-        `<li class="chip find"><span>${escapeHtml(word)}</span> <small>+${points}</small></li>`
+        `<li class="chip find"><span>${escapeHtml(displayWord(word))}</span> <small>+${points}</small></li>`
     )
     .join("");
   return chips || `<li class="chip none">—</li>`;

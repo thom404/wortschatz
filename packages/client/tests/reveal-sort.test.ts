@@ -180,7 +180,7 @@ describe("intermission reveal sorting (#140)", () => {
 
     expect(pressed()).toEqual({ length: "false", points: "false", alphabet: "true" });
     expect(app!.root.querySelectorAll("#reveal dt")).toHaveLength(0);
-    expect(words()).toEqual(["apfel", "ärger", "ölen", "strasse", "straße", "über", "zunge"]);
+    expect(words()).toEqual(["apfel", "ärger", "ölen", "strasse", "straẞe", "über", "zunge"]);
   });
 
   it("keeps the chosen mode across consecutive intermissions in the same room", () => {
