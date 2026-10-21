@@ -534,6 +534,35 @@ code {
   text-transform: none;
 }
 
+/* Board rotation (#151): the reveal-sort control pattern beside the board.
+ * The active quarter turn is `aria-pressed` plus weight/underline, never
+ * colour alone. The control changes the view only; it never touches data. */
+.board-rotation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap-xs);
+  margin-top: var(--gap-s);
+}
+.board-rotation .rotate-label {
+  color: var(--dim);
+  font-size: 0.85rem;
+}
+.board-rotation .rotate-btn {
+  margin-top: 0;
+  padding: var(--gap-2xs) var(--gap-s);
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--border);
+}
+.board-rotation .rotate-btn.active {
+  border-color: var(--accent);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 /* ------------------------------------------------------------------ */
 /* Reveal (intermission, #22): grouped by length; each word priced, one
  * found-by chip per finder, missed words visible — dimmed, chip-free.
