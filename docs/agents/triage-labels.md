@@ -14,6 +14,17 @@ When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the 
 
 Edit the "Label in our tracker" column to match whatever vocabulary you actually use.
 
+## Entering the machine
+
+A newly opened issue enters at `needs-triage` automatically: the `Triage label`
+workflow (`.github/workflows/triage-label.yml`) applies the label on the
+`opened` action, using the default `GITHUB_TOKEN` with `issues: write` and no
+new secret. It skips an issue that already carries a `wayfinder:*` label
+(planning artifacts, not triage items) and an issue opened by a bot, and it
+does nothing on `reopened` or `transferred`, so those keep their current state.
+It performs no other transition, and applying `needs-triage` starts no CI — the
+Issue agent still fires only on `agent-run`.
+
 ## Operational labels
 
 Two labels sit outside the five triage roles and drive the Issue agent
