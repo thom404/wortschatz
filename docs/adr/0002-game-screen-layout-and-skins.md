@@ -91,3 +91,57 @@ scoring, word input and the wire protocol are unchanged.
     visible number is hidden from assistive technology, and the whole tile
     carries the same points phrase as its hover title. Indices disappear from
     the product.
+
+## Amendment (#150, 2026-10-21): ß displays as capital ẞ
+
+The tiles and words keep their uppercase look, but `ß` is the one exception
+to the browser's Unicode full case mapping. CSS `text-transform: uppercase`
+would expand it to two glyphs, `SS`, so a `ß` tile reads like a double `s`
+and the distinct words `straße` and `strasse` render identically. A pure
+display helper maps `ß` to capital `ẞ` (U+1E9E) and changes nothing else;
+`ẞ` is one glyph and is unaffected by the uppercase transform.
+
+12. **One display mapping.** `displayWord(word)` substitutes `ß` → `ẞ` and
+    passes every other character through. `displayTile(tile)` extends it with
+    the notation rules (prefix/suffix markers drop off, either/or variants
+    stay), so tiles, the drag trace, the private found-word chips and the
+    reveal words all render through the same mapping.
+13. **Display only.** Submission, matching, scoring and the tile inventory
+    keep the canonical lowercase `ß`; no `ss` tile is added and `straße` stays
+    distinct from `strasse`. The accessible tile label follows the displayed
+    letters (`ẞ, 2 Punkte`), so the visible glyph and the label agree.
+
+## Amendment (#151, 2026-10-21): player-local board rotation
+
+A player may turn the board in 90° steps to see the same letters in another
+arrangement. The board stays server-owned and shared; rotation is a view
+choice, not data.
+
+14. **Presentation, not data.** Rotation is a client-only arrangement. The
+    server, wire protocol, board generation, word list, scoring, deadline and
+    reveal are untouched, and no message crosses the wire when the view turns.
+15. **Arrangement rotates, glyphs do not.** The sixteen tiles are permuted
+    over the grid; each tile keeps its upright letters and its point value in
+    the corner. A rigid rotation of the whole board is not the mechanism,
+    because it would turn the letters with it.
+16. **Quarter turns, index-based selection.** The state is one of 0/90/180/270,
+    so cells map cell-to-cell and the pointer→tile hit-test and clear-hit
+    margin stay exact. A trace stores grid cells and maps each back to its
+    server board index before reading the tile, so the submitted word is
+    exactly what the tiles under the finger spell.
+17. **Lifetime and control.** The step is an in-memory client field, default 0,
+    reset when a new board starts (a reload also starts at 0°). It survives
+    re-renders within its board and is shown on that round's intermission. A
+    labelled control group beside the board on the game and intermission
+    screens carries the active step in `aria-pressed`, follows the reveal-sort
+    control pattern, and is available to spectators too. Turning the board
+    ends any in-progress drag.
+
+## Suppressed alternatives (#151)
+
+- **Rigid board rotation:** rejected — the letters would turn and become
+  unreadable.
+- **Mirroring/flipping or free angles:** rejected — they break the fixed cell
+  geometry the drag hit-test relies on.
+- **Persisting the step or syncing it room-wide:** rejected — the choice is
+  per player and per board, never a hidden preference or shared state.

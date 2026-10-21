@@ -8,6 +8,7 @@ import {
   type GestureStream,
   type PointerKind,
 } from "./gesture.js";
+import { displayTile, displayWord } from "./display.js";
 import { qrSvg } from "./qr.js";
 import { applySkin, loadSkin, skinSwitcherHtml, wireSkinSwitcher } from "./skins.js";
 import type {
@@ -18,6 +19,7 @@ import type {
   RoomEndReason,
   ServerErrorMsg,
   ServerMessage,
+  SnapshotMsg,
 } from "@wortschatz/shared";
 import { PROTOCOL, tileSpellingLength, tileStrings, tileValues } from "@wortschatz/shared";
 import "./style.css";
@@ -65,6 +67,44 @@ type Unsubscribe = () => void;
  *  client-side flat views over the same payload. */
 export type RevealSort = "length" | "points" | "alphabet";
 
+/** The client-only arrangement of the shared board (issue #151): a
+ *  clockwise quarter-turn count. The board data never changes; only which
+ *  cell each tile renders in. */
+export type BoardRotation = 0 | 90 | 180 | 270;
+
+/** The four rotation steps, in cycle order, with their visible labels. */
+const BOARD_ROTATIONS: readonly { rotation: BoardRotation; label: string }[] = [
+  { rotation: 0, label: "0°" },
+  { rotation: 90, label: "90°" },
+  { rotation: 180, label: "180°" },
+  { rotation: 270, label: "270°" },
+];
+
+/** For each rendered grid cell, the server board index whose tile it shows.
+ *  Precomputed once: a clockwise turn maps source (row, col) to destination
+ *  (col, 3 − row), so the inverse walks each cell counter-clockwise. */
+const BOARD_CELL_SOURCES: Readonly<Record<BoardRotation, readonly number[]>> = {
+  0: cellSources(0),
+  90: cellSources(1),
+  180: cellSources(2),
+  270: cellSources(3),
+};
+
+function cellSources(quarterTurns: number): readonly number[] {
+  const sources: number[] = [];
+  for (let cell = 0; cell < 16; cell += 1) {
+    let row = Math.floor(cell / 4);
+    let col = cell % 4;
+    for (let turn = 0; turn < quarterTurns; turn += 1) {
+      const nextRow = 3 - col;
+      col = row;
+      row = nextRow;
+    }
+    sources.push(row * 4 + col);
+  }
+  return sources;
+}
+
 interface App {
   /** The shell's screen container: every screen rebuilds into this. */
   root: HTMLElement;
@@ -90,6 +130,10 @@ interface App {
    *  survives consecutive intermissions in one room but resets on a fresh
    *  mount, reconnect snapshot, or a different room. Never wire state. */
   revealSort: RevealSort;
+  /** The player-local board arrangement (issue #151), in memory and per
+   *  board: it survives re-renders within a round, rides into that round's
+   *  intermission, and resets when the next board starts. Never wire state. */
+  boardRotation: BoardRotation;
   /** The room code this mount's connection was built for — creating a
    *  room greets with the nickname, and the server names the room later
    *  (first snapshot). The outcome screens that fire without a snapshot
@@ -110,15 +154,6 @@ const APP_NAME = "Wortschatz";
 
 /** The one sentence the drag surface shows between words. */
 const TRACE_HINT = "Wische über die Felder, um ein Wort zu bilden.";
-
-/** Display is independent of data (ADR-0002): the notation's markers drop
- *  off — prefixes render without their trailing `-`, suffixes without
- *  their leading `-`; either/or tiles show both candidate variants. The
- *  trace and scores keep spelling the data's real letters. */
-function displayTile(t: string): string {
-  if (t.includes("/")) return t;
-  return t.replace(/^-|-$/g, "");
-}
 
 /** The German points phrase for a tile: singular at one point, an `oder`
  *  pair when the spellings differ, plural otherwise (issue #142). Equal
@@ -152,12 +187,39 @@ function tileHtml(t: string): string {
 
 /** The 4×4 board both screens share. Font sizing lives on the grid
  *  container via the widest tile span knob (ADR-0002): per-tile `em`
- *  resolves against the parent and breaks. */
-function boardHtml(board: readonly string[]): string {
+ *  resolves against the parent and breaks. Rotation only permutes the
+ *  cells (ADR-0002 amendment #151): the tile markup stays upright and the
+ *  server board array is never reordered. */
+function boardHtml(board: readonly string[], rotation: BoardRotation): string {
+  return `<div id="board" class="board" data-rotation="${rotation}" style="${boardSpanStyle(board)}">${boardTilesHtml(board, rotation)}</div>`;
+}
+
+/** The tiles in rotated render order: each cell shows the tile its server
+ *  board index names, so the arrangement turns while every glyph, corner
+ *  value and tile identity stays as authored. */
+function boardTilesHtml(board: readonly string[], rotation: BoardRotation): string {
+  if (board.length === 0) return "";
+  return BOARD_CELL_SOURCES[rotation].map((source) => tileHtml(board[source] ?? "")).join("");
+}
+
+/** The grid container's one font-size knob: the widest tile span on the
+ *  server board (rotation never changes the set of tiles). */
+function boardSpanStyle(board: readonly string[]): string {
   const tileSpan = Math.max(1, ...board.map((t) => tileSpellingLength(t)));
-  return `<div id="board" class="board" style="--tile-span:${tileSpan}">${board
-    .map(tileHtml)
-    .join("")}</div>`;
+  return `--tile-span:${tileSpan}`;
+}
+
+/** The labelled rotation control (issue #151), following the reveal-sort
+ *  group: one button per quarter turn, the active step carried by
+ *  `aria-pressed` so assistive technology announces the current state. */
+function boardRotationHtml(active: BoardRotation): string {
+  return `<div id="board-rotation" class="board-rotation" role="group" aria-label="Spielfeld drehen">
+    <span class="rotate-label">Spielfeld drehen</span>
+    ${BOARD_ROTATIONS.map(
+      ({ rotation, label }) =>
+        `<button type="button" class="rotate-btn${rotation === active ? " active" : ""}" data-rotation="${rotation}" aria-pressed="${rotation === active}">${label}</button>`
+    ).join("")}
+  </div>`;
 }
 
 /**
@@ -191,6 +253,7 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
     noticeError: rootEl.querySelector<HTMLElement>("#notice-error")!,
     unsub: null,
     revealSort: "length",
+    boardRotation: 0,
     roomCode: "",
     onPopState: () => {
       if (!app.inRoom) home(app);
@@ -294,8 +357,10 @@ function startRoom(app: App, code: string, greet: GreetFn): void {
   app.inRoom = true;
   app.roomCode = code;
   // A sort choice is local to one room visit (issue #140): joining another
-  // room starts again at the grouped default.
+  // room starts again at the grouped default. A board rotation is local to
+  // one board (issue #151), so a fresh room visit starts at 0° too.
   app.revealSort = "length";
+  app.boardRotation = 0;
   app.conn = app.connect({
     code,
     greet,
@@ -327,7 +392,15 @@ function onMessage(app: App, msg: ServerMessage): void {
   // A snapshot is the reconnect/resync channel (and a fresh join): the
   // viewer's local sort choice starts over at the grouped default. Ordinary
   // round-end deltas between intermissions keep it (issue #140).
-  if (msg.type === "snapshot") app.revealSort = "length";
+  if (msg.type === "snapshot") {
+    app.revealSort = "length";
+    // Board rotation is per board, not per connection (issue #151): a
+    // reconnect snapshot for the same board keeps the chosen arrangement,
+    // while a snapshot that names a different board (or none) resets it.
+    if (snapshotBoardKey(msg) !== currentBoardKey(app.store)) app.boardRotation = 0;
+  }
+  // Every round start is a new board, so the next puzzle opens at 0°.
+  if (msg.type === "round-start") app.boardRotation = 0;
   app.store.apply(msg);
   // Room end and kick are close outcomes, reported once by the connection
   // after this frame reached the store (see `onClose`). `room-not-found`
@@ -336,6 +409,21 @@ function onMessage(app: App, msg: ServerMessage): void {
   // mid-game verdict.
   if (msg.type === "error" && msg.code === "room-not-found")
     return renderOutcome(app, roomNotFoundOutcome(app));
+}
+
+/** A snapshot's board identity: round number plus the server's board array.
+ *  Two snapshots naming the same board are the same puzzle for the local
+ *  rotation's lifetime (issue #151). */
+function snapshotBoardKey(msg: SnapshotMsg): string {
+  const round = msg.round ?? msg.finishedRound;
+  return round ? `${round.roundNumber}:${round.board.join("/")}` : "";
+}
+
+/** The board identity currently rendered (the finished board during the
+ *  intermission), or empty before any round. */
+function currentBoardKey(store: GameStore): string {
+  const round = store.round;
+  return round ? `${round.roundNumber}:${round.board.join("/")}` : "";
 }
 
 /** A greeting rejection: an `error` frame that arrives while the join is
@@ -650,7 +738,8 @@ function renderGame(app: App): void {
         <section class="panel area-board">
           <h2>Spielfeld</h2>
           ${spectating ? "" : `<div id="trace" class="trace hint">${TRACE_HINT}</div>`}
-          ${boardHtml(board)}
+          ${boardHtml(board, app.boardRotation)}
+          ${boardRotationHtml(app.boardRotation)}
         </section>
         ${
           spectating
@@ -671,6 +760,7 @@ function renderGame(app: App): void {
       <button id="leave-btn">Raum verlassen</button>
     </div>`;
   app.liveRegions = GAME_LIVE_REGIONS;
+  wireBoardRotation(app);
   app.root.querySelector<HTMLButtonElement>("#leave-btn")!.onclick = () => leaveRoom(app);
   // Re-render can happen mid-drag (server deltas don't pause the game);
   // rehydrate the trace paint onto the fresh DOM.
@@ -695,7 +785,8 @@ function renderIntermission(app: App): void {
         <h1 class="area-title">Pause</h1>
         <section class="panel area-board">
           <h2>Runde ${finishedRoundNumber}</h2>
-          ${boardHtml(board)}
+          ${boardHtml(board, app.boardRotation)}
+          ${boardRotationHtml(app.boardRotation)}
         </section>
         <section class="panel area-reveal">
           <h2>Gefundene Wörter</h2>
@@ -717,6 +808,7 @@ function renderIntermission(app: App): void {
     </div>`;
   app.liveRegions = INTERMISSION_LIVE_REGIONS;
   wireRevealSort(app);
+  wireBoardRotation(app);
   const start = app.root.querySelector<HTMLButtonElement>("#start-btn");
   if (start)
     start.onclick = () => {
@@ -982,12 +1074,16 @@ function submitTrace(app: App, trace: number[]): void {
   }
 }
 
-/** The string a release would submit: each traced tile's letters, in
- *  order. Either/or tiles contribute their first variant (swipes don't
- *  choose variants — later tickets own special-tile input). */
+/** The string a release would submit: each traced cell's tile letters, in
+ *  order. The trace holds grid cells, so the rotation maps a cell back to
+ *  its server board index before reading the tile — the submitted word is
+ *  always exactly what the tiles under the finger spell (issue #151).
+ *  Either/or tiles contribute their first variant (swipes don't choose
+ *  variants — later tickets own special-tile input). */
 function traceWord(app: App, trace: readonly number[]): string {
   const board = app.store.round?.board ?? [];
-  return trace.map((i) => tileStrings(board[i] ?? "")[0] ?? "").join("");
+  const sources = BOARD_CELL_SOURCES[app.boardRotation];
+  return trace.map((cell) => tileStrings(board[sources[cell] ?? cell] ?? "")[0] ?? "").join("");
 }
 
 /** Point → tile resolution, the same for mouse and finger. Real browsers
@@ -1022,7 +1118,7 @@ function paintTrace(app: App): void {
   if (!el) return;
   if (trace.length > 0) {
     el.classList.remove("hint");
-    el.textContent = traceWord(app, trace);
+    el.textContent = displayWord(traceWord(app, trace));
   } else {
     el.classList.add("hint");
     el.textContent = TRACE_HINT;
@@ -1170,7 +1266,7 @@ function revealWordHtml(store: GameStore, w: RevealWord): string {
   const link = url
     ? `<a class="rw-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" aria-label="${WIKTIONARY_LABEL}" title="${WIKTIONARY_LABEL}">↗</a>`
     : "";
-  return `<span class="rw${missed}"><span class="rw-word">${escapeHtml(w.word)}</span>${link}<small class="rw-pts">+${w.points}</small>${by}</span>`;
+  return `<span class="rw${missed}"><span class="rw-word">${escapeHtml(displayWord(w.word))}</span>${link}<small class="rw-pts">+${w.points}</small>${by}</span>`;
 }
 
 /** The German accessible name and tooltip of a reveal's outbound link. */
@@ -1225,13 +1321,52 @@ function wireRevealSort(app: App): void {
   }
 }
 
+/** Wires the rotation buttons to an arrangement-only repaint: no store
+ *  notification and no wire message, so the board data, score and timer
+ *  identity stay untouched. Rotation ends any live gesture first, so a
+ *  trace can never span two arrangements (issue #151). */
+function wireBoardRotation(app: App): void {
+  for (const button of app.root.querySelectorAll<HTMLButtonElement>("#board-rotation button")) {
+    button.onclick = () => {
+      const rotation = Number(button.dataset.rotation);
+      if (!isBoardRotation(rotation) || rotation === app.boardRotation) return;
+      app.boardRotation = rotation;
+      if (app.gesture) app.gesture = null;
+      repaintBoard(app);
+      paintTrace(app);
+    };
+  }
+}
+
+function isBoardRotation(value: number): value is BoardRotation {
+  return BOARD_ROTATIONS.some((step) => step.rotation === value);
+}
+
+/** Re-renders only the board tiles and the control's pressed state, in
+ *  place: the board element survives, as do the timer, scoreboard and
+ *  found-word chips around it. */
+function repaintBoard(app: App): void {
+  const board = app.store.round?.board ?? [];
+  const el = app.root.querySelector<HTMLElement>("#board");
+  if (el) {
+    el.dataset.rotation = String(app.boardRotation);
+    el.setAttribute("style", boardSpanStyle(board));
+    el.innerHTML = boardTilesHtml(board, app.boardRotation);
+  }
+  for (const button of app.root.querySelectorAll<HTMLButtonElement>("#board-rotation button")) {
+    const pressed = button.dataset.rotation === String(app.boardRotation);
+    button.setAttribute("aria-pressed", String(pressed));
+    button.classList.toggle("active", pressed);
+  }
+}
+
 /** The private found-word chips: what I found this round, with each word's
  *  points value. Cleared at every round start. */
 function foundHtml(store: GameStore): string {
   const chips = [...store.roundWords]
     .map(
       ([word, points]) =>
-        `<li class="chip find"><span>${escapeHtml(word)}</span> <small>+${points}</small></li>`
+        `<li class="chip find"><span>${escapeHtml(displayWord(word))}</span> <small>+${points}</small></li>`
     )
     .join("");
   return chips || `<li class="chip none">—</li>`;

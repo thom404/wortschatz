@@ -1915,4 +1915,57 @@ describe("mountable app", () => {
       expect(app!.root.querySelector<HTMLSelectElement>("#skin-select")!.value).toBe("standard");
     });
   });
+
+  describe("ß display (#150)", () => {
+    /** The ß tile is canonical lowercase data; the display layer is what
+     *  keeps it from reading as a double `s`. */
+    const BOARD_WITH_ẞ = ["ß", "a", "u", "s", "t", "i", "r", "e", "b", "u", "m", "s", "k", "a", "t", "z"];
+
+    function driveToẞRound(): void {
+      driveToRoundOne("LAG4T");
+      app!.conn().feed(roundStarted(BOARD_WITH_ẞ, 2));
+    }
+
+    it("renders the ß tile as one ẞ glyph with a matching accessible label", () => {
+      driveToẞRound();
+      const tile = tileEls(app!.root)[0]!;
+      expect(tile.firstChild?.textContent).toBe("ẞ");
+      expect(tile.textContent).not.toContain("SS");
+      expect(tile.getAttribute("aria-label")).toBe("ẞ, 2 Punkte");
+    });
+
+    it("shows ẞ in the drag trace while the submitted word still spells ß", () => {
+      driveToẞRound();
+      const tiles = tileEls(app!.root);
+      const traceSeen: string[] = [];
+      synthesizePointerDrag([tiles[0]!, tiles[1]!], "mouse", () => {
+        traceSeen.push(app!.root.querySelector("#trace")!.textContent!);
+      });
+
+      expect(traceSeen).toEqual(["ẞ", "ẞa", "Wische über die Felder, um ein Wort zu bilden."]);
+      expect(traceSeen[1]).not.toContain("SS");
+      // Display only: the wire still carries the data's real `ß`.
+      expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "ßa", reqId: 3 });
+    });
+
+    it("shows ẞ in a found-word chip and in the reveal, keeping straße and strasse distinct", () => {
+      driveToẞRound();
+      app!.conn().feed({ type: "word-accepted", word: "ßa", points: 2 });
+      const chip = app!.root.querySelector<HTMLElement>("#found .chip.find")!;
+      expect(chip.textContent).toContain("ẞa");
+      expect(chip.textContent).not.toContain("SS");
+
+      app!.conn().feed(
+        roundEnded(1, {
+          groups: [
+            { length: 5, words: [{ word: "straße", points: 7, foundBy: [1] }] },
+            { length: 6, words: [{ word: "strasse", points: 7, foundBy: [1] }] },
+          ],
+        })
+      );
+      const words = [...app!.root.querySelectorAll(".rw-word")].map((el) => el.textContent);
+      expect(words).toEqual(["straẞe", "strasse"]);
+      expect(words[0]).not.toBe(words[1]);
+    });
+  });
 });

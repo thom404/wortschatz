@@ -12,6 +12,18 @@ once). It is used by board generation (to check a board is good enough) and by t
 end-of-round reveal. Also surfaced as `Dictionary.findWords(board)`. See
 [ADR-0001](docs/adr/0001-word-list-source-and-packaging.md).
 
+## Board rotation
+
+A player-local, client-only view transform that turns the shared board in 90°
+steps (0° → 90° → 180° → 270° → 0°). The sixteen tiles are permuted over the
+grid; each tile stays upright with its point value in the corner, while the
+server board data, tile paths, valid words, scoring and wire protocol are
+unchanged. The choice lives in client memory for one board: it survives
+re-renders within that round, shows on that round's **Intermission**, and
+resets when the next board starts or the app is reloaded. It is never a
+room-wide or host setting. See
+[ADR-0002](docs/adr/0002-game-screen-layout-and-skins.md).
+
 ## Board variety
 
 The acceptance rules that keep a generated board from looking like a rendering
@@ -49,6 +61,14 @@ The absolute join URL for a room: `location.origin` + `/r/` + the uppercased
 **Room code**. The lobby shows it as text and encodes the same string as a QR
 code, so a phone camera can join. Both render from one value, so they never
 disagree. See [ADR-0008](docs/adr/0008-lobby-qr-invite.md).
+
+## Display
+
+The uppercase presentation of tiles and words, independent of the stored data.
+Exactly one letter is special-cased: `ß` renders as capital `ẞ` (U+1E9E), so
+it stays one glyph and never expands to `SS`, and a `ß` word stays visually
+distinct from an `ss` word. Submission, matching and scoring keep the canonical
+lowercase `ß`. See [ADR-0002](docs/adr/0002-game-screen-layout-and-skins.md).
 
 ## Exclusion list
 
