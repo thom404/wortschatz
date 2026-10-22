@@ -145,3 +145,41 @@ choice, not data.
   geometry the drag hit-test relies on.
 - **Persisting the step or syncing it room-wide:** rejected — the choice is
   per player and per board, never a hidden preference or shared state.
+
+## Amendment (#172, 2026-10-22): desktop sheet and board scale
+
+At ≥ 860 px the two-column dashboard was real but small: `--sheet-width` capped
+the whole app at 640 px, so the desktop "dashboard" was a 640 px column holding a
+`320px`-wide board — roughly 77 px cells with a 6 px gap, tight for a mouse drag
+on a 4×4 grid.
+
+18. **Three tokens, one breakpoint.** Inside the existing `@media (min-width:
+860px)` block, `--sheet-width` steps to 1040 px, the board's `max-width` to
+    460 px and `--board-gap` to 10 px. There is no second breakpoint and no
+    per-breakpoint component style: only token values change, so the uniformity
+    rule of §4 still holds. At 1280×800 this yields a ~620 px board column with
+    ~107 px cells; the `.dashboard` 1.4fr/1fr ratio, the intermission
+    arrangement and the 72 px ring timer are unchanged.
+19. **The board gap is its own token.** It stops aliasing `--gap-xs`, so chip and
+    panel rhythm can never drag the grid around.
+20. **One source for the drag margin.** The clear-hit margin the gesture wiring
+    uses is read from the board's computed gap when the board renders, instead
+    of being a second literal copy of the same number, so the CSS token is
+    authoritative.
+
+## Amendment (#174, 2026-10-22): the rotation control is one cycling button
+
+§17 described "a labelled control group beside the board" carrying the active
+step in `aria-pressed`. It is now a single button under the board: each press
+turns the board 90° clockwise, wrapping `0 → 90 → 180 → 270 → 0`.
+
+21. **One target, one stable name.** The `role="group"`, the four pressed buttons
+    and the visible `Spielfeld drehen` label are gone. The button's accessible
+    name and its tooltip are one stable German string (`Spielfeld um 90°
+drehen`) that never includes the current angle: with one button the numeral
+    has no fixed original to be read against, and the board itself shows the
+    result. The live angle stays machine-readable as `data-rotation` on
+    `#board`, which is what the drag path reads. Availability to spectators,
+    lifetime across re-renders, the reset on the next board, and the
+    gesture-ending behaviour of §17 are all unchanged. The accessible-name and
+    tooltip policy is [ADR-0022](0022-icon-only-controls-and-tooltips.md).

@@ -113,3 +113,18 @@ test:visual` runs the suite.
 - A fix for #154 enables its two targeted rows and commits their baselines.
 - Extending the matrix is a later ticket; the curated 66 rows are intentionally
   not a full cross-product.
+
+## Amendment (#175, 2026-10-22): a fourth viewport for canonical rows
+
+§6 named three viewports (360×640, 390×844, 1280×800) and §7 counted 66 rows.
+Nothing covered the 600–1024 px band where the 860 px two-column arrangement
+takes effect, so the responsive claim had no pixel evidence behind it. A fourth
+viewport, **768×1024**, is added to canonical scenarios only: outcome and
+targeted rows stay on phones, because they exercise states rather than
+arrangements. The matrix becomes 8 canonical screens × 2 skins × 4 viewports =
+64 rows, plus the unchanged 10 outcome and 20 targeted rows — 94 in total.
+
+The same amendment adds the overflow assertions the responsive pass needs — no
+horizontal document overflow on any screen × viewport × skin, and the board fully
+visible without vertical scrolling at 1280×800 — to this suite rather than to
+`npm test`, so the browser-free layers stay browser-free.

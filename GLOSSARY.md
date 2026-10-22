@@ -42,6 +42,13 @@ emits it once, after the frame reached the store. It replaces the earlier
 on callback order. See
 [ADR-0014](docs/adr/0014-connection-seam-and-field-validation.md).
 
+## Create screen
+
+The screen where a player names themselves and creates a room. It is one of the
+three entry screens (see Home), it sends the connection's first `create-room`
+greeting, and its German heading is `Raum erstellen`. See
+[ADR-0021](docs/adr/0021-create-and-join-screens.md).
+
 ## Cumulative score
 
 A player's running total across a session — the sum of their per-round scores. The
@@ -95,12 +102,26 @@ The first client→server message on a connection: `create-room` or `join`
 travels inside a join greeting's first frame, never in the WebSocket URL. See
 [ADR-0014](docs/adr/0014-connection-seam-and-field-validation.md).
 
+## Home
+
+The app's landing screen and its only entry point: it offers exactly two actions,
+`Raum erstellen` and `Raum beitreten`, beside the skin switcher, and carries no
+form. It leads to the **Create screen** or the **Join screen**; a deep link skips
+it and lands on Join. See [ADR-0021](docs/adr/0021-create-and-join-screens.md).
+
 ## Host
 
 The player who controls the room. The **creator** of a room is its first host; if the
 host disconnects, host transfers to the longest-connected remaining connected player.
 Host powers: start every round, kick a connected player, close the room, and
 transfer host.
+
+## Icon-only control
+
+A secondary control that shows a symbol instead of a word, carrying its meaning
+in an accessible name and a tooltip that are the same German string. Primary
+actions keep visible text. See
+[ADR-0022](docs/adr/0022-icon-only-controls-and-tooltips.md).
 
 ## Intermission
 
@@ -109,6 +130,13 @@ own: it shows the finished board, the reveal and the session standings for as
 long as the host holds it open, and ends only when the host starts the next
 round. A lone host may start that round. See
 [ADR-0016](docs/adr/0016-host-paced-intermission.md).
+
+## Join screen
+
+The screen where a player enters a room code and a name to join a room. It is one
+of the three entry screens (see Home), it sends the connection's first `join`
+greeting, and a deep link to a room lands here with the code pre-filled and
+read-only. See [ADR-0021](docs/adr/0021-create-and-join-screens.md).
 
 ## Live region
 
@@ -134,7 +162,7 @@ full screens. See
 
 The pre-round phase of a room, before the host starts round one. Players join, take a
 nickname and a seat, and wait; the host starts the first round, and a lone host is
-enough.
+enough. The phase's screen is the **Wait room**.
 
 ## Play-time delta
 
@@ -266,6 +294,13 @@ against committed **Screenshot baselines**, with a few ARIA snapshots and wire
 flows for semantics and behavior. It never runs inside `npm test`, the Docker
 build or the issue agent. See
 [ADR-0020](docs/adr/0020-browser-visual-regression-seam.md).
+
+## Wait room
+
+The in-room screen for the **Lobby** phase: the invite card with its QR code and
+deep link, the seated players with their connection state, and the host's
+`Runde starten` — or, for everyone else, the wait for the host. Its exit is
+`Raum verlassen`, which leaves the room rather than merely changing screens.
 
 ## Wire protocol
 
