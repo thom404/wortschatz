@@ -119,6 +119,9 @@ interface App {
   /** The live board drag, or `null` between drags. The pure gesture module
    *  owns its rules; the app only holds the state and paints it. */
   gesture: GestureState | null;
+  /** How far (px) inside a tile a movement sample must land to count as a
+   *  clear hit, measured from the board's computed gap when it renders. */
+  clearHitMargin: number;
   /** The live regions the current screen declares beside its template
    *  (ADR-0009). The play-time updater walks exactly these. */
   liveRegions: readonly LiveRegion[];
@@ -184,6 +187,23 @@ function boardSpanStyle(board: readonly string[]): string {
   return `--tile-span:${tileSpan}`;
 }
 
+/**
+ * Measures the board's gap once, after a board has rendered (ADR-0002 §20).
+ * The CSS `--board-gap` token is the single source of the drag clear-hit
+ * margin, so the board's computed gap is authoritative and no second
+ * literal copies it into this file.
+ */
+function measureBoardGap(app: App): void {
+  const board = app.root.querySelector<HTMLElement>("#board");
+  if (!board) {
+    app.clearHitMargin = 0;
+    return;
+  }
+  const computed = getComputedStyle(board);
+  const gap = computed.gap || computed.columnGap || computed.getPropertyValue("--board-gap");
+  app.clearHitMargin = Number.parseFloat(gap) || 0;
+}
+
 /** The labelled rotation control (issue #151), following the reveal-sort
  *  group: one button per quarter turn, the active step carried by
  *  `aria-pressed` so assistive technology announces the current state. */
@@ -235,6 +255,7 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
     },
     stopDrag: () => {},
     gesture: null,
+    clearHitMargin: 0,
     liveRegions: [],
   };
   window.addEventListener("popstate", app.onPopState);
@@ -724,6 +745,7 @@ function renderGame(app: App): void {
       </div>
       <button id="leave-btn">Raum verlassen</button>
     </div>`;
+  measureBoardGap(app);
   app.liveRegions = GAME_LIVE_REGIONS;
   wireBoardRotation(app);
   app.root.querySelector<HTMLButtonElement>("#leave-btn")!.onclick = () => leaveRoom(app);
@@ -771,6 +793,7 @@ function renderIntermission(app: App): void {
       }
       <button id="leave-btn">Raum verlassen</button>
     </div>`;
+  measureBoardGap(app);
   app.liveRegions = INTERMISSION_LIVE_REGIONS;
   wireRevealSort(app);
   wireBoardRotation(app);
@@ -995,33 +1018,22 @@ function pointerKind(ev: PointerEvent): PointerKind {
 
 /**
  * How far (px) inside every edge of a tile a movement sample must land to
- * count as a clear hit. It is the gap between adjacent board tiles
- * (`--board-gap` in `style.css`): a sample in that gap, or clipping a tile's
- * edge or corner, rounds unpredictably to whichever neighbour the browser's
- * sub-pixel arithmetic picks, so it must not move the trace. Kept well below
- * half a cell, so a genuinely crossed tile still offers clear ground.
- */
-const CLEAR_HIT_MARGIN = 6;
-
-/**
- * Whether a sample resolved to `tile` is clearly inside it: farther than the
- * board-gap margin from every edge. `hitTileIndex` resolves a sample to
- * exactly one tile — the browser's sub-pixel rounding decides which — and
- * this filters out every resolution the finger is not well inside. Ignoring
- * those samples lets a stair-step bridge to the next clear sample cover the
- * ground, so no crossed tile is lost while a corner clip neither adds nor
- * unwinds a tile. The opening press stays lenient and uses `hitTileIndex`
- * directly.
+ * count as a clear hit. `measureBoardGap` reads it from the board's computed
+ * gap (the `--board-gap` token) when the board renders: a sample in that gap,
+ * or clipping a tile's edge or corner, rounds unpredictably to whichever
+ * neighbour the browser's sub-pixel arithmetic picks, so it must not move
+ * the trace. The gap stays well below half a cell, so a genuinely crossed
+ * tile still offers clear ground.
  */
 function clearHit(app: App, tile: number, x: number, y: number): boolean {
   const el = app.root.querySelector("#board")?.children[tile];
   if (!el) return false;
   const box = el.getBoundingClientRect();
   return !(
-    x - box.left < CLEAR_HIT_MARGIN ||
-    box.right - x < CLEAR_HIT_MARGIN ||
-    y - box.top < CLEAR_HIT_MARGIN ||
-    box.bottom - y < CLEAR_HIT_MARGIN
+    x - box.left < app.clearHitMargin ||
+    box.right - x < app.clearHitMargin ||
+    y - box.top < app.clearHitMargin ||
+    box.bottom - y < app.clearHitMargin
   );
 }
 

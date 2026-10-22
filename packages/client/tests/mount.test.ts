@@ -1676,6 +1676,39 @@ describe("mountable app", () => {
       fireTouchEvent(h, "touchmove", { at: { x: 86, y: 20 } });
       expect(liveTrace()).toBe("H");
     });
+
+    it("derives the clear-hit margin from the board's computed gap", () => {
+      // The happy-dom harness has no layout engine, so widen the token
+      // before the board renders; the app must read it from the board rather
+      // than carry its own literal copy.
+      const style = document.createElement("style");
+      style.textContent = ".board { --board-gap: 12px; }";
+      document.head.append(style);
+      try {
+        driveToRoundOne("LAG4T");
+        const board = tiles();
+        const [h, a] = [board[0]!, board[1]!];
+        const box = a.getBoundingClientRect();
+
+        firePointerEvent(h, "pointerdown", { pointerType: "mouse" });
+        // 8px inside A is exactly the old margin's clear ground, but not
+        // this board's: the widened gap leaves the trace on H.
+        firePointerEvent(h, "pointermove", {
+          pointerType: "mouse",
+          at: { x: box.left + 8, y: box.top + 8 },
+        });
+        expect(liveTrace()).toBe("H");
+
+        // Past the computed 12px margin the sample is clearly inside A.
+        firePointerEvent(h, "pointermove", {
+          pointerType: "mouse",
+          at: { x: box.left + 13, y: box.top + 13 },
+        });
+        expect(liveTrace()).toBe("HA");
+      } finally {
+        style.remove();
+      }
+    });
   });
 
   it("clears the found-word chips when the next round starts", () => {

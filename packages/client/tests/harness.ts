@@ -177,6 +177,20 @@ export class ScriptedConnection implements RoomConn {
 /* Mount                                                              */
 /* ------------------------------------------------------------------ */
 
+/**
+ * The happy-dom harness loads no stylesheet, so the board has no computed
+ * gap for the app's clear-hit margin. Mirror the Standard skin's default
+ * `--board-gap` token on the synthetic board; a test may override it with a
+ * later same-specificity rule or an inline custom property.
+ */
+function installBoardGap(): void {
+  if (document.getElementById("test-board-gap")) return;
+  const style = document.createElement("style");
+  style.id = "test-board-gap";
+  style.textContent = ".board { --board-gap: 6px; gap: var(--board-gap); }";
+  document.head.append(style);
+}
+
 export interface Mounted {
   /** The DOM root the app was mounted into. */
   root: HTMLElement;
@@ -190,6 +204,7 @@ export interface Mounted {
 
 /** Mounts the real app into a fresh root div on `document.body`. */
 export function mountHarness(): Mounted {
+  installBoardGap();
   document.body.textContent = "";
   const root = document.createElement("div");
   document.body.append(root);
