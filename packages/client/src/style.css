@@ -37,7 +37,8 @@
   --gap-s: 8px;
   --gap-xs: 6px;
   --gap-2xs: 4px;
-  --board-gap: 6px; /* tile gap; also the drag clear-hit margin in app.ts */
+  --board-gap: 6px; /* tile gap; the drag clear-hit margin is read from it */
+  --board-width: 320px; /* the board's own cap, step-up in the desktop block */
   --chip-pad-y: 3px;
   --chip-pad-x: 12px;
   --badge-pad-y: 1px;
@@ -201,6 +202,14 @@ h2 {
   gap: var(--gap);
 }
 @media (min-width: 860px) {
+  /* Desktop scale (ADR-0002 amendment #172): token values only — the sheet,
+   * the board cap and the board gap step up, while the arrangement and every
+   * component style stay shared with mobile (uniformity rule). */
+  :root {
+    --sheet-width: 1040px;
+    --board-width: 460px;
+    --board-gap: 10px;
+  }
   .dashboard {
     display: grid;
     grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
@@ -493,7 +502,7 @@ code {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: var(--board-gap);
-  max-width: 320px;
+  max-width: var(--board-width);
   margin: var(--gap-s) auto;
   /* The grid container owns tile font sizing (ADR-0002): one clamp from
    * the widest tile span on the board — never per-tile `em`, whose parent
