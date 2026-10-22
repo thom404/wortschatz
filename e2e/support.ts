@@ -79,17 +79,26 @@ export async function routeWire(page: Page, opts: WireOptions = {}): Promise<Wir
   };
 }
 
-/** Opens the room from the home form, the app's normal connection trigger. */
+/** Opens the room through the split entry screens (ADR-0021), the app's
+ *  normal connection trigger. Entering from Home clicks through the landing;
+ *  a deep link already shows Join with its code pre-filled and read-only. */
 export async function enterRoom(
   page: Page,
   opts: { mode?: "create" | "join"; code?: string; nickname?: string } = {}
 ): Promise<void> {
   const nickname = opts.nickname ?? (opts.mode === "join" ? "Jana" : "Lena");
   if (opts.mode === "join") {
-    if (opts.code) await page.locator("#jn-code").fill(opts.code);
+    if ((await page.locator("#jn-code").count()) === 0) {
+      await page.locator("#join-btn").click();
+    }
+    const code = page.locator("#jn-code");
+    if (opts.code && (await code.isEditable())) await code.fill(opts.code);
     await page.locator("#jn-nick").fill(nickname);
     await page.locator("#jn-btn").click();
     return;
+  }
+  if ((await page.locator("#mk-nick").count()) === 0) {
+    await page.locator("#create-btn").click();
   }
   await page.locator("#mk-nick").fill(nickname);
   await page.locator("#mk-btn").click();

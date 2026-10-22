@@ -5,7 +5,7 @@ import {
   seat,
 } from "../packages/client/tests/fixtures.js";
 import { BOARD_DIGRAM, BOARD_DRAG, REVEAL, ROOM_CODE } from "./scenarios.js";
-import { DESKTOP, FIXED_NOW, expect, openPage, test } from "./support.js";
+import { DESKTOP, FIXED_NOW, enterRoom, expect, openPage, test } from "./support.js";
 
 /**
  * The five core flows (#156): behavior through the real browser UI, asserted
@@ -27,8 +27,7 @@ test("create room → lobby", async ({ page }) => {
     },
   });
 
-  await page.locator("#mk-nick").fill("Lena");
-  await page.locator("#mk-btn").click();
+  await enterRoom(page, { mode: "create", nickname: "Lena" });
 
   await expect(page.locator("#screen h1")).toHaveText(`Raum ${ROOM_CODE}`);
   await expect(page.locator("#start-btn")).toBeVisible();
@@ -61,8 +60,7 @@ test("deep-link join", async ({ page }) => {
     },
   });
 
-  await page.locator("#jn-nick").fill("Jonas");
-  await page.locator("#jn-btn").click();
+  await enterRoom(page, { mode: "join", nickname: "Jonas" });
 
   await expect(page.locator("#screen")).toContainText("Warte auf den Gastgeber");
   expect(wire.received.find((m) => m.type === "join")).toMatchObject({
@@ -104,8 +102,7 @@ test("drag → submit-word", async ({ page }) => {
     },
   });
 
-  await page.locator("#mk-nick").fill("Lena");
-  await page.locator("#mk-btn").click();
+  await enterRoom(page, { mode: "create", nickname: "Lena" });
 
   const tiles = page.locator("#board .tile");
   await expect(tiles).toHaveCount(16);
@@ -150,8 +147,7 @@ test("intermission → start-round", async ({ page }) => {
     },
   });
 
-  await page.locator("#mk-nick").fill("Lena");
-  await page.locator("#mk-btn").click();
+  await enterRoom(page, { mode: "create", nickname: "Lena" });
 
   await expect(page.locator("#start-btn")).toBeVisible();
   await page.locator("#start-btn").click();

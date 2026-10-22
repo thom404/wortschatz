@@ -33,8 +33,10 @@ import "./style.css";
 
 /**
  * Screens of the minimal functional shell (visual language is ticket #8):
- * - Home: create a room / join by code (a stored session auto-reclaims).
- * - Lobby: waiting room; the host starts round one, even alone.
+ * - Home: the landing; two actions and the skin switcher, no form.
+ * - Create screen: name a player and create a room.
+ * - Join screen: room code and name; a deep link lands here pre-filled.
+ * - Wait room (Lobby): waiting room; the host starts round one, even alone.
  * - Game: board, interpolated countdown, scoreboard, typed word input.
  * - Intermission: finished round's board + reveal until the next round.
  * - Ended: kicked / room-ended outcomes, each with a real action.
@@ -73,6 +75,19 @@ type Unsubscribe = () => void;
  *  `length` is the server's grouped default; `points` and `alphabet` are
  *  client-side flat views over the same payload. */
 export type RevealSort = "length" | "points" | "alphabet";
+
+/** The three entry screens (ADR-0021): Home routes to Create or Join, both
+ *  in memory. The history entry carries the screen it names, never a route. */
+type EntryScreen = "home" | "create" | "join";
+
+/** The history state one entry carries. `fromHome` distinguishes an entry
+ *  pushed by Create/Join from the initial Home/deep-link entry, so the
+ *  in-screen Zurück can return to Home without leaving the app. */
+interface EntryState {
+  screen: EntryScreen;
+  code?: string;
+  fromHome?: boolean;
+}
 
 /** The visible label of each quarter turn: the state comes from the module,
  *  only its German/degree presentation lives here. */
@@ -114,7 +129,12 @@ interface App {
    *  (first snapshot). The outcome screens that fire without a snapshot
    *  (room-not-found) still name the code the user typed. */
   roomCode: string;
-  onPopState: () => void;
+  /** The entry screen currently rendered (ADR-0021). */
+  screen: EntryScreen;
+  /** Whether the current Create/Join entry was pushed from Home, which is
+   *  what lets the in-screen Zurück walk history back to Home. */
+  screenFromHome: boolean;
+  onPopState: (ev: PopStateEvent) => void;
   stopDrag: () => void;
   /** The live board drag, or `null` between drags. The pure gesture module
    *  owns its rules; the app only holds the state and paints it. */
@@ -250,8 +270,12 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
     revealSort: "length",
     boardRotation: 0,
     roomCode: "",
-    onPopState: () => {
-      if (!app.inRoom) home(app);
+    screen: "home",
+    screenFromHome: false,
+    onPopState: (ev) => {
+      // A live room owns the screen (ADR-0021): history never competes with
+      // the connection's snapshots and close outcomes.
+      if (!app.inRoom) showEntry(app, ev.state as EntryState | null);
     },
     stopDrag: () => {},
     gesture: null,
@@ -264,7 +288,20 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
   // rides on the root attribute before the first screen renders, so a
   // returning visitor never glimpses the wrong design.
   applySkin(loadSkin());
-  home(app);
+  // The initial entry names its screen too (ADR-0021). A deep link lands on
+  // Join without pushing an entry, so browser Back still leaves the app.
+  const deepCode = deepLinkCode();
+  if (deepCode) {
+    window.history.replaceState(
+      { screen: "join", code: deepCode, fromHome: false } satisfies EntryState,
+      "",
+      location.pathname
+    );
+    renderJoin(app, deepCode);
+  } else {
+    window.history.replaceState({ screen: "home" } satisfies EntryState, "", location.pathname);
+    home(app);
+  }
   return () => {
     teardown(app);
     app.stopDrag();
@@ -282,32 +319,101 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
 /* Home / routes                                                       */
 /* ------------------------------------------------------------------ */
 
+/** The landing (ADR-0021): the app name, the tagline, exactly two actions
+ *  and the skin switcher. It carries no form. */
 function home(app: App): void {
+  app.screen = "home";
+  app.screenFromHome = false;
   document.title = APP_NAME;
   app.liveRegions = [];
   // Returning to home is a screen change: no notice may follow it.
-  app.localError = null;
-  app.store.lastError = null;
-  app.connStatus = null;
-  const deepCode = deepLinkCode();
-  const stored = deepCode ? loadSession(deepCode) : null;
+  resetEntryNotices(app);
   app.root.innerHTML = `
     <div class="sheet">
       <h1>${APP_NAME}</h1>
       <p class="dim">Ein Mehrspieler-Wörterspiel.</p>
+      <div class="home-actions">
+        <button id="create-btn">Raum erstellen</button>
+        <button id="join-btn">Raum beitreten</button>
+      </div>
+      ${skinSwitcherHtml(loadSkin())}
+    </div>`;
+  app.root.querySelector<HTMLButtonElement>("#create-btn")!.onclick = () => openCreate(app);
+  app.root.querySelector<HTMLButtonElement>("#join-btn")!.onclick = () => openJoin(app);
+  wireSkinSwitcher(app.root);
+  renderNotices(app);
+}
+
+/** Enter Create as a new history entry (ADR-0021): Back returns to Home. */
+function openCreate(app: App): void {
+  pushEntry(app, { screen: "create", fromHome: true });
+  renderCreate(app);
+}
+
+/** Enter Join as a new history entry. A deep link skips this: it renders
+ *  Join in place and never pushes, so Back still leaves the app. */
+function openJoin(app: App): void {
+  pushEntry(app, { screen: "join", fromHome: true });
+  renderJoin(app);
+}
+
+function pushEntry(app: App, state: EntryState): void {
+  // The address bar keeps today's rule: entering an entry screen changes no
+  // URL; only a snapshot naming a room claims `/r/<code>`.
+  window.history.pushState(state, "", location.pathname);
+  app.screenFromHome = true;
+}
+
+/** Renders the screen a history entry names. Called on popstate only. */
+function showEntry(app: App, state: EntryState | null): void {
+  if (state?.screen === "create") {
+    app.screenFromHome = state.fromHome ?? false;
+    renderCreate(app);
+    return;
+  }
+  if (state?.screen === "join") {
+    app.screenFromHome = state.fromHome ?? false;
+    renderJoin(app, state.code);
+    return;
+  }
+  home(app);
+}
+
+/** The in-screen Zurück: walk back to Home through history when this screen
+ *  was entered from Home, otherwise (a deep link) replace the entry so the
+ *  app stays here rather than falling out of the page. */
+function backToHome(app: App): void {
+  if (app.screenFromHome) {
+    // Paint Home immediately; the popstate that follows confirms the same
+    // entry, so the click never waits on browser history timing.
+    window.history.back();
+    home(app);
+    return;
+  }
+  window.history.replaceState({ screen: "home" } satisfies EntryState, "", "/");
+  home(app);
+}
+
+function resetEntryNotices(app: App): void {
+  app.localError = null;
+  app.store.lastError = null;
+  app.connStatus = null;
+}
+
+/** The Create screen: one `Name` field and one create button. */
+function renderCreate(app: App): void {
+  app.screen = "create";
+  document.title = APP_NAME;
+  app.liveRegions = [];
+  resetEntryNotices(app);
+  app.root.innerHTML = `
+    <div class="sheet">
+      <h1>Raum erstellen</h1>
       <section class="panel">
-        <h2>Raum erstellen</h2>
         <label>Name <input id="mk-nick" maxlength="24" placeholder="z. B. Anja" /></label>
         <button id="mk-btn">Raum erstellen</button>
       </section>
-      <section class="panel">
-        <h2>Raum beitreten</h2>
-        ${deepCode ? `<p class="note">Du wurdest in Raum ${escapeHtml(deepCode)} eingeladen.</p>` : ""}
-        <label>Raumcode <input id="jn-code" maxlength="8" autocapitalize="characters" placeholder="ABC12" value="${deepCode ?? ""}" /></label>
-        <label>Name <input id="jn-nick" maxlength="24" placeholder="z. B. Jörg" value="${stored?.nickname ?? ""}" /></label>
-        <button id="jn-btn">Beitreten</button>
-      </section>
-      ${skinSwitcherHtml(loadSkin())}
+      <button id="back-btn">Zurück</button>
     </div>`;
   app.root.querySelector<HTMLButtonElement>("#mk-btn")!.onclick = () => {
     const nickname = input(app, "mk-nick");
@@ -317,10 +423,36 @@ function home(app: App): void {
     }
     startRoom(app, nickname, () => ({ type: "create-room", nickname }));
   };
+  app.root.querySelector<HTMLButtonElement>("#back-btn")!.onclick = () => backToHome(app);
+  renderNotices(app);
+}
+
+/** The Join screen. A deep-linked code is pre-filled and read-only, and the
+ *  remembered session nickname pre-fills the name; a code reached from Home
+ *  stays editable. */
+function renderJoin(app: App, deepCode?: string): void {
+  app.screen = "join";
+  document.title = APP_NAME;
+  app.liveRegions = [];
+  resetEntryNotices(app);
+  const deep = typeof deepCode === "string" && deepCode !== "";
+  const code = deep ? deepCode : "";
+  const stored = deep ? loadSession(code) : null;
+  app.root.innerHTML = `
+    <div class="sheet">
+      <h1>Raum beitreten</h1>
+      <section class="panel">
+        ${deep ? `<p class="note">Du wurdest in Raum ${escapeHtml(code)} eingeladen.</p>` : ""}
+        <label>Raumcode <input id="jn-code" maxlength="8" autocapitalize="characters" placeholder="ABC12" value="${escapeHtml(code)}"${deep ? " readonly" : ""} /></label>
+        <label>Name <input id="jn-nick" maxlength="24" placeholder="z. B. Jörg" value="${escapeHtml(stored?.nickname ?? "")}" /></label>
+        <button id="jn-btn">Beitreten</button>
+      </section>
+      <button id="back-btn">Zurück</button>
+    </div>`;
   app.root.querySelector<HTMLButtonElement>("#jn-btn")!.onclick = () => {
-    const code = (input(app, "jn-code") || deepCode || "").trim().toUpperCase();
+    const typedCode = (input(app, "jn-code") || code).trim().toUpperCase();
     const nickname = input(app, "jn-nick");
-    if (!code) {
+    if (!typedCode) {
       setLocalError(app, "Bitte gib einen Raumcode ein.");
       return;
     }
@@ -329,14 +461,14 @@ function home(app: App): void {
       return;
     }
     const greet: GreetFn = () => {
-      const session = loadSession(code);
+      const session = loadSession(typedCode);
       return session
-        ? { type: "join", code, nickname: session.nickname, token: session.token }
-        : { type: "join", code, nickname };
+        ? { type: "join", code: typedCode, nickname: session.nickname, token: session.token }
+        : { type: "join", code: typedCode, nickname };
     };
-    startRoom(app, code, greet);
+    startRoom(app, typedCode, greet);
   };
-  wireSkinSwitcher(app.root);
+  app.root.querySelector<HTMLButtonElement>("#back-btn")!.onclick = () => backToHome(app);
   renderNotices(app);
 }
 
@@ -380,8 +512,9 @@ function startRoom(app: App, code: string, greet: GreetFn): void {
 function onMessage(app: App, msg: ServerMessage): void {
   // A greeting the server rejects before any snapshot is neither an
   // in-room error nor an unexpected close: the connection never became a
-  // room, so the typed German verdict belongs on the home join form.
-  // `room-not-found` keeps its dedicated outcome screen (#21) instead.
+  // room, so the typed German verdict belongs on the Create/Join screen the
+  // attempt was made from. `room-not-found` keeps its dedicated outcome
+  // screen (#21) instead.
   if (isGreetingRejection(app, msg) && msg.code !== "room-not-found") {
     return rejectGreeting(app, msg);
   }
@@ -421,9 +554,9 @@ function isGreetingRejection(app: App, msg: ServerMessage): msg is ServerErrorMs
 }
 
 /** Rejected greeting (join/create): stop the connection so a retry starts
- *  fresh, stay on the home form still on screen — its typed code and
- *  nickname survive — and surface the shared German copy in the floating
- *  error slot. */
+ *  fresh, stay on the entry screen still on screen — its typed values
+ *  survive — and surface the shared German copy in the floating error
+ *  slot. */
 function rejectGreeting(app: App, msg: ServerErrorMsg): void {
   app.store.lastError = msg;
   const errorText = app.store.errorText;
@@ -498,7 +631,8 @@ function teardown(app: App): void {
 
 function render(app: App, kind: DeltaKind = "structural"): void {
   // The notification layer sits outside the screen, so it is refreshed on
-  // every path — including while the home form stays put during a greeting.
+  // every path — including while a Create/Join screen stays put during a
+  // greeting.
   renderNotices(app);
   if (!app.inRoom) return;
   // A play-time delta changes only live, already-rendered game state: it
@@ -695,7 +829,7 @@ function renderLobby(app: App): void {
             : `<p class="dim">Warte auf den Gastgeber …</p>`
         }
       </section>
-      <button id="leave-btn">Zurück zur Startseite</button>
+      <button id="leave-btn">Raum verlassen</button>
     </div>`;
   app.liveRegions = LOBBY_LIVE_REGIONS;
   const start = app.root.querySelector<HTMLButtonElement>("#start-btn");

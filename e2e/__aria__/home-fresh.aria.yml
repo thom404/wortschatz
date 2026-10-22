@@ -1,18 +1,7 @@
 - heading "Wortschatz" [level=1]
 - paragraph: Ein Mehrspieler-Wörterspiel.
-- heading "Raum erstellen" [level=2]
-- text: Name
-- textbox "Name":
-    - /placeholder: z. B. Anja
 - button "Raum erstellen"
-- heading "Raum beitreten" [level=2]
-- text: Raumcode
-- textbox "Raumcode":
-    - /placeholder: ABC12
-- text: Name
-- textbox "Name":
-    - /placeholder: z. B. Jörg
-- button "Beitreten"
+- button "Raum beitreten"
 - heading "Skin" [level=2]
 - combobox:
     - option "Standard (hell)" [selected]

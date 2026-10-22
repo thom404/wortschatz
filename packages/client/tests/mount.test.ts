@@ -62,11 +62,31 @@ afterEach(() => {
   app = null;
 });
 
+/** Enter Create from the Home landing (ADR-0021). */
+function openCreate(): void {
+  if (!app!.root.querySelector("#mk-nick")) click("#create-btn");
+}
+
+/** Enter Join from the Home landing (ADR-0021). */
+function openJoin(): void {
+  if (!app!.root.querySelector("#jn-code")) click("#join-btn");
+}
+
+/** The split entry screens: a form helper walks the landing first when the
+ *  field is not already on screen (a deep link is already on Join). */
+function ensureEntryScreen(sel: string): void {
+  if (app!.root.querySelector(sel)) return;
+  if (sel === "#mk-nick" || sel === "#mk-btn") openCreate();
+  else if (sel.startsWith("#jn-")) openJoin();
+}
+
 function click(sel: string): void {
+  ensureEntryScreen(sel);
   app!.root.querySelector<HTMLButtonElement>(sel)!.click();
 }
 
 function typeInto(sel: string, value: string): void {
+  ensureEntryScreen(sel);
   app!.root.querySelector<HTMLInputElement>(sel)!.value = value;
 }
 
@@ -876,8 +896,8 @@ describe("mountable app", () => {
     expect(app!.connections()).toHaveLength(1);
     expect(app!.conn().sent()).toEqual([{ type: "create-room", nickname: "Lena", reqId: 1 }]);
     expect(app!.conn().statuses).toEqual(["connecting"]);
-    // Nothing but the home screen until the server's first word.
-    expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+    // Nothing but the Create screen until the server's first word.
+    expect(app!.root.querySelector("h1")!.textContent).toBe("Raum erstellen");
 
     // The lobby arrives via a full snapshot; it is what flips the
     // boundary to `open`.
@@ -935,6 +955,10 @@ describe("mountable app", () => {
     const deep = mountHarness();
     try {
       expect(deep.root.querySelector<HTMLInputElement>("#jn-code")!.value).toBe("ABC12");
+      expect(deep.root.querySelector<HTMLInputElement>("#jn-code")!.readOnly).toBe(true);
+      expect(deep.root.querySelector(".panel .note")!.textContent).toBe(
+        "Du wurdest in Raum ABC12 eingeladen."
+      );
       expect(deep.root.querySelector<HTMLInputElement>("#jn-nick")!.value).toBe("");
       deep.root.querySelector<HTMLInputElement>("#jn-nick")!.value = "Ben";
       deep.root.querySelector<HTMLButtonElement>("#jn-btn")!.click();
@@ -1029,7 +1053,7 @@ describe("mountable app", () => {
     // the greet would reclaim a leftover seat instead of the typed name.
     beforeEach(() => localStorage.clear());
 
-    it("a taken nickname returns to the home form with the German copy and the typed inputs intact", () => {
+    it("a taken nickname returns to the join screen with the German copy and the typed inputs intact", () => {
       typeInto("#jn-code", "ABC12");
       typeInto("#jn-nick", "Anja");
       click("#jn-btn");
@@ -1037,16 +1061,16 @@ describe("mountable app", () => {
 
       app!.conn().feed({ type: "error", code: "nickname-taken" });
 
-      // A usable home screen — never the connection-lost outcome or any
+      // A usable Join screen — never the connection-lost outcome or any
       // room screen, even though the join was answered.
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum beitreten");
       expect(app!.root.querySelector("#jn-btn")).toBeTruthy();
       expect(app!.root.querySelector("#board")).toBeNull();
       expect(app!.root.querySelector("#players")).toBeNull();
       expect(app!.root.textContent).not.toContain("Verbindung beendet.");
 
-      // The shared German copy lands in the floating error slot; the old
-      // inline home paragraph is gone.
+      // The shared German copy lands in the floating error slot; no inline
+      // error paragraph competes with it.
       expect(noticeText(app!.root, "error")).toBe("Dieser Name ist bereits vergeben. Wähle einen anderen.");
       expect(app!.root.querySelector("#home-errors")).toBeNull();
 
@@ -1061,23 +1085,23 @@ describe("mountable app", () => {
       expect(app!.conn().statuses).toEqual(["connecting"]);
     });
 
-    it("a full room surfaces its German copy on the home screen", () => {
+    it("a full room surfaces its German copy on the join screen", () => {
       typeInto("#jn-code", "ABC12");
       typeInto("#jn-nick", "Anja");
       click("#jn-btn");
       app!.conn().feed({ type: "error", code: "room-full" });
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum beitreten");
       expect(noticeText(app!.root, "error")).toBe("Der Raum ist voll (max. 8 Spieler).");
       expect(app!.root.querySelector("#board")).toBeNull();
       expect(app!.conn().stopped).toBe(true);
     });
 
-    it("a malformed greeting surfaces its German copy on the home screen", () => {
+    it("a malformed greeting surfaces its German copy on the join screen", () => {
       typeInto("#jn-code", "ABC12");
       typeInto("#jn-nick", "Anja");
       click("#jn-btn");
       app!.conn().feed({ type: "error", code: "invalid-message" });
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum beitreten");
       expect(noticeText(app!.root, "error")).toBe("Ungültige Nachricht.");
       expect(app!.root.querySelector("#board")).toBeNull();
       expect(app!.conn().stopped).toBe(true);
@@ -1138,9 +1162,9 @@ describe("mountable app", () => {
       typeInto("#mk-nick", "Lena");
       click("#mk-btn");
 
-      // The home screen stays put, and the status is visible exactly where
+      // The Create screen stays put, and the status is visible exactly where
       // the player first waits for the connection.
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum erstellen");
       expect(noticeText(app!.root, "status")).toBe("Verbinde …");
 
       app!.conn().feed(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
@@ -1894,31 +1918,94 @@ describe("mountable app", () => {
     expect(tileEls(app!.root).map((t) => t.firstChild?.textContent)).toEqual(BOARD);
   });
 
-  describe("home copy (#53)", () => {
-    it("shows the new tagline, create button, Name labels and example placeholders", () => {
+  describe("entry screens (#53, #173)", () => {
+    it("Home is the landing: tagline, exactly two actions and the skin switcher, no form", () => {
       expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
       expect(app!.root.querySelector(".sheet > p.dim")!.textContent).toBe("Ein Mehrspieler-Wörterspiel.");
-      expect(app!.root.querySelector("#mk-btn")!.textContent).toBe("Raum erstellen");
 
-      // Both name inputs are labelled `Name` in the agreed voice, not `Spitzname`.
-      const labels = [...app!.root.querySelectorAll<HTMLLabelElement>("label")];
-      expect(labels.map((l) => l.textContent!.trim())).toEqual(["Name", "Raumcode", "Name"]);
-
-      // The worked-example names are deliberate Easter eggs.
-      expect(app!.root.querySelector<HTMLInputElement>("#mk-nick")!.placeholder).toBe("z. B. Anja");
-      expect(app!.root.querySelector<HTMLInputElement>("#jn-nick")!.placeholder).toBe("z. B. Jörg");
+      const actions = [...app!.root.querySelectorAll<HTMLButtonElement>(".home-actions button")];
+      expect(actions.map((b) => b.textContent)).toEqual(["Raum erstellen", "Raum beitreten"]);
+      expect(app!.root.querySelector("#skin-select")).toBeTruthy();
+      expect(app!.root.querySelectorAll("input")).toHaveLength(0);
     });
 
-    it("asks for a name in plain German when create or join is submitted empty", () => {
+    it("Create has one Name field and sends create-room", () => {
+      openCreate();
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum erstellen");
+      const labels = [...app!.root.querySelectorAll<HTMLLabelElement>("label")];
+      expect(labels.map((l) => l.textContent!.trim())).toEqual(["Name"]);
+      expect(app!.root.querySelector<HTMLInputElement>("#mk-nick")!.placeholder).toBe("z. B. Anja");
+      expect(app!.root.querySelector("#mk-btn")!.textContent).toBe("Raum erstellen");
+
+      typeInto("#mk-nick", "Lena");
+      click("#mk-btn");
+      expect(app!.conn().sent()).toEqual([{ type: "create-room", nickname: "Lena", reqId: 1 }]);
+    });
+
+    it("Join has Raumcode and Name fields and sends join with code and nickname", () => {
+      // No remembered seat may replace the typed name in this assertion.
+      localStorage.clear();
+      openJoin();
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum beitreten");
+      const labels = [...app!.root.querySelectorAll<HTMLLabelElement>("label")];
+      expect(labels.map((l) => l.textContent!.trim())).toEqual(["Raumcode", "Name"]);
+      expect(app!.root.querySelector<HTMLInputElement>("#jn-nick")!.placeholder).toBe("z. B. Jörg");
+      expect(app!.root.querySelector<HTMLInputElement>("#jn-code")!.readOnly).toBe(false);
+
+      typeInto("#jn-code", "ABC12");
+      typeInto("#jn-nick", "Anja");
+      click("#jn-btn");
+      expect(app!.conn().sent()).toEqual([{ type: "join", code: "ABC12", nickname: "Anja", reqId: 1 }]);
+    });
+
+    it("keeps the local validation copy on the screen that owns the field", () => {
+      openCreate();
       click("#mk-btn");
       expect(noticeText(app!.root, "error")).toBe("Bitte gib einen Namen ein.");
-      expect(app!.root.querySelector("#home-errors")).toBeNull();
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum erstellen");
       expect(app!.connections()).toHaveLength(0);
+
+      click("#back-btn");
+      openJoin();
+      click("#jn-btn");
+      expect(noticeText(app!.root, "error")).toBe("Bitte gib einen Raumcode ein.");
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum beitreten");
 
       typeInto("#jn-code", "ABC12");
       click("#jn-btn");
       expect(noticeText(app!.root, "error")).toBe("Bitte gib einen Namen ein.");
       expect(app!.connections()).toHaveLength(0);
+    });
+
+    it("Zurück from Create or Join returns Home without a connection attempt", () => {
+      openCreate();
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum erstellen");
+      click("#back-btn");
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+      expect(window.location.pathname).toBe("/");
+      expect(app!.connections()).toHaveLength(0);
+
+      openJoin();
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum beitreten");
+      click("#back-btn");
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+      expect(app!.connections()).toHaveLength(0);
+      expect(noticeText(app!.root, "error")).toBe("");
+    });
+
+    it("popstate renders the entry it names, and stays ignored while in a room", () => {
+      openCreate();
+      window.dispatchEvent(new PopStateEvent("popstate", { state: { screen: "home" } }));
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+      expect(app!.connections()).toHaveLength(0);
+
+      window.dispatchEvent(new PopStateEvent("popstate", { state: { screen: "join" } }));
+      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum beitreten");
+      window.dispatchEvent(new PopStateEvent("popstate", { state: { screen: "home" } }));
+
+      driveToRoundOne("LAG4T");
+      window.dispatchEvent(new PopStateEvent("popstate", { state: { screen: "home" } }));
+      expect(app!.root.querySelector("h1")!.textContent).toContain("Runde 1");
     });
   });
 
