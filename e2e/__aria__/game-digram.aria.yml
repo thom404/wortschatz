@@ -2,12 +2,7 @@
 - text: /1:\d+ \d+ P/
 - heading "Spielfeld" [level=2]
 - text: Wische über die Felder, um ein Wort zu bilden. sch e i n ch r t a er u g l st o m en
-- group "Spielfeld drehen":
-    - text: ""
-    - button "0°" [pressed]
-    - button /\d+°/
-    - button /\d+°/
-    - button /\d+°/
+- button "Spielfeld um 90° drehen"
 - heading "Deine Wörter" [level=2]
 - list:
     - listitem: —

@@ -12,11 +12,18 @@ import { displayTile, displayWord } from "./display.js";
 import {
   BOARD_ROTATIONS,
   boardIdentityKey,
-  isBoardRotation,
   rotateBoard,
   serverBoardIndex,
   type BoardRotation,
 } from "./board-rotation.js";
+import {
+  homeIcon,
+  leaveIcon,
+  rotateIcon,
+  sortAlphabetIcon,
+  sortLengthIcon,
+  sortPointsIcon,
+} from "./icons.js";
 import { qrSvg } from "./qr.js";
 import { applySkin, loadSkin, skinSwitcherHtml, wireSkinSwitcher } from "./skins.js";
 import type {
@@ -87,12 +94,6 @@ interface EntryState {
   screen: EntryScreen;
   code?: string;
   fromHome?: boolean;
-}
-
-/** The visible label of each quarter turn: the state comes from the module,
- *  only its German/degree presentation lives here. */
-function rotationLabel(rotation: BoardRotation): string {
-  return `${rotation}°`;
 }
 
 interface App {
@@ -224,17 +225,47 @@ function measureBoardGap(app: App): void {
   app.clearHitMargin = Number.parseFloat(gap) || 0;
 }
 
-/** The labelled rotation control (issue #151), following the reveal-sort
- *  group: one button per quarter turn, the active step carried by
- *  `aria-pressed` so assistive technology announces the current state. */
-function boardRotationHtml(active: BoardRotation): string {
-  return `<div id="board-rotation" class="board-rotation" role="group" aria-label="Spielfeld drehen">
-    <span class="rotate-label">Spielfeld drehen</span>
-    ${BOARD_ROTATIONS.map(
-      (rotation) =>
-        `<button type="button" class="rotate-btn${rotation === active ? " active" : ""}" data-rotation="${rotation}" aria-pressed="${rotation === active}">${rotationLabel(rotation)}</button>`
-    ).join("")}
-  </div>`;
+/** The one German string of an icon-only control, used for both its
+ *  accessible name and its tooltip, so the two can never drift (ADR-0022). */
+const ROTATE_LABEL = "Spielfeld um 90° drehen";
+const LEAVE_LABEL = "Raum verlassen";
+
+/** One icon-only control: the glyph is hidden from assistive technology,
+ *  the `aria-label` carries the name, and `data-tip` is the same string for
+ *  the CSS-only tooltip. There is deliberately no `aria-describedby`. */
+function iconButtonHtml(opts: {
+  id?: string;
+  className: string;
+  icon: string;
+  label: string;
+  data?: string;
+  pressed?: boolean;
+}): string {
+  const id = opts.id ? ` id="${opts.id}"` : "";
+  const data = opts.data ? ` ${opts.data}` : "";
+  const pressed = opts.pressed === undefined ? "" : ` aria-pressed="${opts.pressed}"`;
+  return `<button type="button"${id} class="${opts.className}" aria-label="${escapeHtml(opts.label)}" data-tip="${escapeHtml(opts.label)}"${data}${pressed}>${opts.icon}</button>`;
+}
+
+/** The single cycling rotation control (ADR-0002 #174): each press turns
+ *  the board 90° clockwise. The name never changes with the angle; the
+ *  board's `data-rotation` is the machine-readable live value. */
+function boardRotationHtml(): string {
+  return iconButtonHtml({
+    id: "board-rotation",
+    className: "icon-btn board-rotation",
+    icon: rotateIcon,
+    label: ROTATE_LABEL,
+  });
+}
+
+function leaveButtonHtml(): string {
+  return iconButtonHtml({
+    id: "leave-btn",
+    className: "icon-btn leave-btn",
+    icon: leaveIcon,
+    label: LEAVE_LABEL,
+  });
 }
 
 /**
@@ -829,7 +860,7 @@ function renderLobby(app: App): void {
             : `<p class="dim">Warte auf den Gastgeber …</p>`
         }
       </section>
-      <button id="leave-btn">Raum verlassen</button>
+      ${leaveButtonHtml()}
     </div>`;
   app.liveRegions = LOBBY_LIVE_REGIONS;
   const start = app.root.querySelector<HTMLButtonElement>("#start-btn");
@@ -859,7 +890,7 @@ function renderGame(app: App): void {
           <h2>Spielfeld</h2>
           ${spectating ? "" : `<div id="trace" class="trace hint">${TRACE_HINT}</div>`}
           ${boardHtml(board, app.boardRotation)}
-          ${boardRotationHtml(app.boardRotation)}
+          ${boardRotationHtml()}
         </section>
         ${
           spectating
@@ -877,7 +908,7 @@ function renderGame(app: App): void {
           <ul id="players" class="chips">${scoreboardHtml(app.store)}</ul>
         </section>
       </div>
-      <button id="leave-btn">Raum verlassen</button>
+      ${leaveButtonHtml()}
     </div>`;
   measureBoardGap(app);
   app.liveRegions = GAME_LIVE_REGIONS;
@@ -907,7 +938,7 @@ function renderIntermission(app: App): void {
         <section class="panel area-board">
           <h2>Runde ${finishedRoundNumber}</h2>
           ${boardHtml(board, app.boardRotation)}
-          ${boardRotationHtml(app.boardRotation)}
+          ${boardRotationHtml()}
         </section>
         <section class="panel area-reveal">
           <h2>Gefundene Wörter</h2>
@@ -925,7 +956,7 @@ function renderIntermission(app: App): void {
           ? `<button id="start-btn">Nächste Runde starten</button>`
           : `<p class="dim next-round-hint">Der Gastgeber startet die nächste Runde.</p>`
       }
-      <button id="leave-btn">Raum verlassen</button>
+      ${leaveButtonHtml()}
     </div>`;
   measureBoardGap(app);
   app.liveRegions = INTERMISSION_LIVE_REGIONS;
@@ -973,7 +1004,7 @@ function renderOutcome(app: App, outcome: OutcomeScreen): void {
       <h1>${outcome.titleHtml}</h1>
       <section class="panel">
         <p class="note">${outcome.noteHtml}</p>
-        <button id="home-btn">Zur Startseite</button>
+        <button id="home-btn" class="icon-text-btn">${homeIcon}<span>Zur Startseite</span></button>
       </section>
     </div>`;
   app.root.querySelector<HTMLButtonElement>("#home-btn")!.onclick = () => exitToHome(app);
@@ -1404,21 +1435,27 @@ function revealWordCount(reveal: RevealPayload): number {
   return reveal.groups.reduce((count, group) => count + group.words.length, 0);
 }
 
-/** The reveal's three local sort modes, in display order. */
-const REVEAL_SORTS: readonly { mode: RevealSort; label: string }[] = [
-  { mode: "length", label: "Länge" },
-  { mode: "points", label: "Punkte" },
-  { mode: "alphabet", label: "Alphabet" },
+/** The reveal's three local sort modes, in display order. Each label is
+ *  the one string used as both the accessible name and the tooltip. */
+const REVEAL_SORTS: readonly { mode: RevealSort; icon: string; label: string }[] = [
+  { mode: "length", icon: sortLengthIcon, label: "Nach Länge sortieren" },
+  { mode: "points", icon: sortPointsIcon, label: "Nach Punkten sortieren" },
+  { mode: "alphabet", icon: sortAlphabetIcon, label: "Alphabetisch sortieren" },
 ];
 
-/** The labelled, pressed-state button group. Selection is announced by
- *  `aria-pressed` and shown by an underline/weight, never colour alone. */
+/** The pressed-state button group. Selection is announced by
+ *  `aria-pressed` and shown by a filled target plus an underline, never by
+ *  colour alone. The group label itself is gone (ADR-0022). */
 function revealSortHtml(active: RevealSort): string {
-  return `<div id="reveal-sort" class="reveal-sort" role="group" aria-label="Sortieren nach">
-    <span class="sort-label">Sortieren nach</span>
-    ${REVEAL_SORTS.map(
-      ({ mode, label }) =>
-        `<button type="button" class="sort-btn${mode === active ? " active" : ""}" data-sort="${mode}" aria-pressed="${mode === active}">${label}</button>`
+  return `<div id="reveal-sort" class="reveal-sort">
+    ${REVEAL_SORTS.map(({ mode, icon, label }) =>
+      iconButtonHtml({
+        className: `icon-btn sort-btn${mode === active ? " active" : ""}`,
+        icon,
+        label,
+        data: `data-sort="${mode}"`,
+        pressed: mode === active,
+      })
     ).join("")}
   </div>`;
 }
@@ -1443,26 +1480,29 @@ function wireRevealSort(app: App): void {
   }
 }
 
-/** Wires the rotation buttons to an arrangement-only repaint: no store
+/** The next quarter turn in the clockwise cycle `0 → 90 → 180 → 270 → 0`. */
+function nextBoardRotation(current: BoardRotation): BoardRotation {
+  return BOARD_ROTATIONS[(BOARD_ROTATIONS.indexOf(current) + 1) % BOARD_ROTATIONS.length]!;
+}
+
+/** Wires the one rotation button to an arrangement-only repaint: no store
  *  notification and no wire message, so the board data, score and timer
  *  identity stay untouched. Rotation ends any live gesture first, so a
  *  trace can never span two arrangements (issue #151). */
 function wireBoardRotation(app: App): void {
-  for (const button of app.root.querySelectorAll<HTMLButtonElement>("#board-rotation button")) {
-    button.onclick = () => {
-      const rotation = Number(button.dataset.rotation);
-      if (!isBoardRotation(rotation) || rotation === app.boardRotation) return;
-      app.boardRotation = rotation;
-      if (app.gesture) app.gesture = null;
-      repaintBoard(app);
-      paintTrace(app);
-    };
-  }
+  const button = app.root.querySelector<HTMLButtonElement>("#board-rotation");
+  if (!button) return;
+  button.onclick = () => {
+    app.boardRotation = nextBoardRotation(app.boardRotation);
+    if (app.gesture) app.gesture = null;
+    repaintBoard(app);
+    paintTrace(app);
+  };
 }
 
-/** Re-renders only the board tiles and the control's pressed state, in
- *  place: the board element survives, as do the timer, scoreboard and
- *  found-word chips around it. */
+/** Re-renders only the board tiles in place: the board element survives, as
+ *  do the timer, scoreboard and found-word chips around it. The stable
+ *  control needs no pressed-state repaint. */
 function repaintBoard(app: App): void {
   const board = app.store.round?.board ?? [];
   const el = app.root.querySelector<HTMLElement>("#board");
@@ -1470,11 +1510,6 @@ function repaintBoard(app: App): void {
     el.dataset.rotation = String(app.boardRotation);
     el.setAttribute("style", boardSpanStyle(board));
     el.innerHTML = boardTilesHtml(board, app.boardRotation);
-  }
-  for (const button of app.root.querySelectorAll<HTMLButtonElement>("#board-rotation button")) {
-    const pressed = button.dataset.rotation === String(app.boardRotation);
-    button.setAttribute("aria-pressed", String(pressed));
-    button.classList.toggle("active", pressed);
   }
 }
 

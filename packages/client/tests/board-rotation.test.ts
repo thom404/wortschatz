@@ -84,13 +84,18 @@ function driveToRoundOne(code = "LAG4T"): void {
   app!.conn().feed(roundStarted(BOARD));
 }
 
-function rotationButton(rotation: 0 | 90 | 180 | 270): HTMLButtonElement {
-  return app!.root.querySelector<HTMLButtonElement>(`#board-rotation button[data-rotation="${rotation}"]`)!;
+function rotationButton(): HTMLButtonElement {
+  return app!.root.querySelector<HTMLButtonElement>("#board-rotation")!;
 }
 
-function pressed(): Record<string, string | null> {
-  const steps = [0, 90, 180, 270] as const;
-  return Object.fromEntries(steps.map((step) => [step, rotationButton(step).getAttribute("aria-pressed")]));
+/** The board's live, machine-readable quarter turn (never the control name). */
+function rotation(): string {
+  return app!.root.querySelector<HTMLElement>("#board")!.dataset.rotation ?? "";
+}
+
+/** One press per quarter turn, in the control's clockwise cycle. */
+function turn(times: number): void {
+  for (let press = 0; press < times; press += 1) rotationButton().click();
 }
 
 /** Each rendered tile's visible letters (the text before its corner value). */
@@ -111,34 +116,41 @@ function traceText(): string {
 }
 
 describe("board rotation (#151)", () => {
-  it("offers a labelled group whose active quarter turn is aria-pressed and cycles 0→90→180→270→0", () => {
+  it("offers one icon-only button whose stable name is its tooltip and cycles 0→90→180→270→0", () => {
     driveToRoundOne();
-    const group = app!.root.querySelector<HTMLElement>("#board-rotation")!;
-    expect(group.getAttribute("role")).toBe("group");
-    expect(group.getAttribute("aria-label")).toBe("Spielfeld drehen");
-    expect([...group.querySelectorAll("button")].map((b) => b.textContent)).toEqual([
-      "0°",
-      "90°",
-      "180°",
-      "270°",
-    ]);
-    expect(pressed()).toEqual({ 0: "true", 90: "false", 180: "false", 270: "false" });
+    const button = rotationButton();
+    expect(button.tagName).toBe("BUTTON");
+    expect(button.getAttribute("aria-label")).toBe("Spielfeld um 90° drehen");
+    expect(button.getAttribute("data-tip")).toBe("Spielfeld um 90° drehen");
+    expect(button.hasAttribute("aria-describedby")).toBe(false);
+    expect(button.textContent).toBe("");
+    expect(app!.root.querySelector("#board-rotation [role='group']")).toBeNull();
+    expect(app!.root.querySelector("#board-rotation .rotate-label")).toBeNull();
+
+    const svg = button.querySelector("svg")!;
+    expect(svg.getAttribute("viewBox")).toBe("0 0 24 24");
+    expect(svg.getAttribute("fill")).toBe("none");
+    expect(svg.getAttribute("stroke")).toBe("currentColor");
+    expect(svg.getAttribute("stroke-width")).toBe("2");
+    expect(svg.getAttribute("aria-hidden")).toBe("true");
+
+    expect(rotation()).toBe("0");
     expect(letters()).toEqual(BOARD);
 
-    rotationButton(90).click();
-    expect(pressed()).toEqual({ 0: "false", 90: "true", 180: "false", 270: "false" });
+    button.click();
+    expect(rotation()).toBe("90");
     expect(letters()).toEqual(CLOCKWISE_90);
 
-    rotationButton(180).click();
-    expect(pressed()).toEqual({ 0: "false", 90: "false", 180: "true", 270: "false" });
+    button.click();
+    expect(rotation()).toBe("180");
     expect(letters()).toEqual(CLOCKWISE_180);
 
-    rotationButton(270).click();
-    expect(pressed()).toEqual({ 0: "false", 90: "false", 180: "false", 270: "true" });
+    button.click();
+    expect(rotation()).toBe("270");
     expect(letters()).toEqual(CLOCKWISE_270);
 
-    rotationButton(0).click();
-    expect(pressed()).toEqual({ 0: "true", 90: "false", 180: "false", 270: "false" });
+    button.click();
+    expect(rotation()).toBe("0");
     expect(letters()).toEqual(BOARD);
   });
 
@@ -147,12 +159,12 @@ describe("board rotation (#151)", () => {
     const base = tiles();
     expect(base).toHaveLength(16);
 
-    for (const [rotation, expected] of [
+    for (const [step, expected] of [
       [90, CLOCKWISE_90],
       [180, CLOCKWISE_180],
       [270, CLOCKWISE_270],
     ] as const) {
-      rotationButton(rotation).click();
+      turn(1);
       const rendered = tiles();
       expect(rendered.map((t) => t.letters)).toEqual(expected);
       // The same tile/painter pair moves as one: letters and points never
@@ -163,13 +175,13 @@ describe("board rotation (#151)", () => {
       );
       // No rigid board rotation: the rendered tiles are plain, upright cells.
       expect(app!.root.querySelector<HTMLElement>("#board")!.style.transform).toBe("");
-      expect(app!.root.querySelector<HTMLElement>("#board")!.dataset.rotation).toBe(String(rotation));
+      expect(rotation()).toBe(String(step));
     }
   });
 
   it("resolves a point to the rotated cell and submits the word those tiles spell", () => {
     driveToRoundOne();
-    rotationButton(90).click();
+    turn(1);
 
     const rotated = tileEls(app!.root);
     // Clockwise 90°: cell 3 = H, cell 7 = A, cell 2 = T — one 8-way path.
@@ -195,40 +207,41 @@ describe("board rotation (#151)", () => {
 
   it("keeps the chosen arrangement through live updates and structural re-renders, and shows it on that round's intermission", () => {
     driveToRoundOne();
-    rotationButton(180).click();
+    turn(2);
 
     // A play-time delta updates live regions in place.
     app!.conn().feed(tick(100_000));
     expect(letters()).toEqual(CLOCKWISE_180);
-    expect(pressed()[180]).toBe("true");
+    expect(rotation()).toBe("180");
 
     // A structural delta rebuilds the screen from the same app state.
     app!.conn().feed(playerJoined(2, "Ben"));
     expect(letters()).toEqual(CLOCKWISE_180);
-    expect(pressed()[180]).toBe("true");
+    expect(rotation()).toBe("180");
 
     // The pause shows the board exactly as the round was played.
     app!.conn().feed(roundEnded(1, NO_WORDS));
     expect(app!.root.querySelector("h1")!.textContent).toBe("Pause");
     expect(letters()).toEqual(CLOCKWISE_180);
-    expect(pressed()[180]).toBe("true");
+    expect(rotation()).toBe("180");
   });
 
   it("resets to 0° when the next board starts", () => {
     driveToRoundOne();
-    rotationButton(90).click();
+    turn(1);
     app!.conn().feed(roundEnded(1, NO_WORDS));
     expect(letters()).toEqual(CLOCKWISE_90);
+    expect(rotation()).toBe("90");
 
     app!.conn().feed(roundStarted(BOARD, 2));
     expect(letters()).toEqual(BOARD);
-    expect(pressed()).toEqual({ 0: "true", 90: "false", 180: "false", 270: "false" });
+    expect(rotation()).toBe("0");
   });
 
   it("starts a fresh mount at 0°", () => {
     driveToRoundOne();
-    rotationButton(270).click();
-    expect(pressed()[270]).toBe("true");
+    turn(3);
+    expect(rotation()).toBe("270");
 
     app!.unmount();
     app = mountHarness();
@@ -246,12 +259,12 @@ describe("board rotation (#151)", () => {
     );
 
     expect(letters()).toEqual(BOARD);
-    expect(pressed()).toEqual({ 0: "true", 90: "false", 180: "false", 270: "false" });
+    expect(rotation()).toBe("0");
   });
 
   it("keeps the step across a reconnect snapshot for the same board and resets it for a different board", () => {
     driveToRoundOne();
-    rotationButton(90).click();
+    turn(1);
 
     app!.conn().feed(
       playingSnapshot({
@@ -262,7 +275,7 @@ describe("board rotation (#151)", () => {
         board: BOARD,
       })
     );
-    expect(pressed()[90]).toBe("true");
+    expect(rotation()).toBe("90");
     expect(letters()).toEqual(CLOCKWISE_90);
 
     const NEXT = ["Z", "U", "R", "F", "E", "L", "D", "A", "M", "I", "S", "T", "K", "O", "N", "G"];
@@ -276,7 +289,7 @@ describe("board rotation (#151)", () => {
         roundNumber: 2,
       })
     );
-    expect(pressed()[0]).toBe("true");
+    expect(rotation()).toBe("0");
     expect(letters()).toEqual(NEXT);
   });
 
@@ -291,7 +304,7 @@ describe("board rotation (#151)", () => {
     const score = app!.root.querySelector("#round-score")!.textContent;
     const board = app!.root.querySelector("#board");
 
-    rotationButton(270).click();
+    turn(3);
 
     expect(app!.conn().sent()).toHaveLength(sentBefore);
     expect(app!.root.querySelector("#round-score")!.textContent).toBe(score);
@@ -315,9 +328,9 @@ describe("board rotation (#151)", () => {
     );
 
     expect(app!.root.querySelector("#board-rotation")).toBeTruthy();
-    rotationButton(180).click();
+    turn(2);
     expect(letters()).toEqual(CLOCKWISE_180);
-    expect(pressed()[180]).toBe("true");
+    expect(rotation()).toBe("180");
   });
 
   it("ends an in-progress drag without submitting it", () => {
@@ -327,7 +340,7 @@ describe("board rotation (#151)", () => {
     firePointerEvent(tilesNow[1]!, "pointermove");
     expect(traceText()).toBe("HA");
 
-    rotationButton(90).click();
+    turn(1);
     expect(traceText()).toBe("Wische über die Felder, um ein Wort zu bilden.");
     expect(letters()).toEqual(CLOCKWISE_90);
 
@@ -357,9 +370,11 @@ describe("board rotation (#151)", () => {
       })
     );
 
-    expect(app!.root.querySelector<HTMLElement>("#board-rotation")!.getAttribute("role")).toBe("group");
-    rotationButton(90).click();
+    expect(app!.root.querySelector<HTMLElement>("#board-rotation")!.getAttribute("aria-label")).toBe(
+      "Spielfeld um 90° drehen"
+    );
+    turn(1);
     expect(letters()).toEqual(CLOCKWISE_90);
-    expect(pressed()[90]).toBe("true");
+    expect(rotation()).toBe("90");
   });
 });

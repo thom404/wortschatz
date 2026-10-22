@@ -1,18 +1,11 @@
 - heading "Pause" [level=1]
 - heading "Runde 1" [level=2]
 - text: sch e i n ch r t a er u g l st o m en
-- group "Spielfeld drehen":
-    - text: ""
-    - button "0°" [pressed]
-    - button /\d+°/
-    - button /\d+°/
-    - button /\d+°/
+- button "Spielfeld um 90° drehen"
 - heading "Gefundene Wörter" [level=2]
-- group "Sortieren nach":
-    - text: ""
-    - button "Länge" [pressed]
-    - button "Punkte"
-    - button "Alphabet"
+- button "Nach Länge sortieren" [pressed]
+- button "Nach Punkten sortieren"
+- button "Alphabetisch sortieren"
 - term: 3 Buchstaben
 - definition: ast +3 Lena eis +3 rot +2 Jonas
 - term: 4 Buchstaben

@@ -135,12 +135,31 @@ describe("intermission reveal sorting (#140)", () => {
     app!.conn().feed(roundEnded(1, GROUPED));
 
     const group = app!.root.querySelector<HTMLElement>("#reveal-sort")!;
-    expect(group.getAttribute("role")).toBe("group");
-    expect(group.getAttribute("aria-label")).toBe("Sortieren nach");
-    expect(group.textContent).toContain("Sortieren nach");
+    expect(group.getAttribute("role")).toBeNull();
+    expect(group.getAttribute("aria-label")).toBeNull();
+    expect(group.querySelector(".sort-label")).toBeNull();
     const buttons = [...group.querySelectorAll<HTMLButtonElement>("button")];
     expect(buttons.map((b) => b.tagName)).toEqual(["BUTTON", "BUTTON", "BUTTON"]);
-    expect(buttons.map((b) => b.textContent)).toEqual(["Länge", "Punkte", "Alphabet"]);
+    expect(buttons.map((b) => b.textContent)).toEqual(["", "", ""]);
+    expect(buttons.map((b) => b.getAttribute("aria-label"))).toEqual([
+      "Nach Länge sortieren",
+      "Nach Punkten sortieren",
+      "Alphabetisch sortieren",
+    ]);
+    expect(buttons.map((b) => b.getAttribute("data-tip"))).toEqual([
+      "Nach Länge sortieren",
+      "Nach Punkten sortieren",
+      "Alphabetisch sortieren",
+    ]);
+    expect(buttons.some((b) => b.hasAttribute("aria-describedby"))).toBe(false);
+    for (const button of buttons) {
+      const svg = button.querySelector("svg")!;
+      expect(svg.getAttribute("viewBox")).toBe("0 0 24 24");
+      expect(svg.getAttribute("fill")).toBe("none");
+      expect(svg.getAttribute("stroke")).toBe("currentColor");
+      expect(svg.getAttribute("stroke-width")).toBe("2");
+      expect(svg.getAttribute("aria-hidden")).toBe("true");
+    }
     expect(pressed()).toEqual({ length: "true", points: "false", alphabet: "false" });
 
     // Same headings, same server word order inside each group.
