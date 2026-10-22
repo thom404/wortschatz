@@ -532,7 +532,7 @@ const lobbyGuest: ScreenshotScenario = {
   },
 };
 
-/** 8 canonical screens × 2 skins × 3 viewports = 48. */
+/** 8 canonical screens × 2 skins × 4 viewports (phones, tablet, desktop) = 64. */
 export const CANONICAL_SCENARIOS: readonly ScreenshotScenario[] = [
   home,
   createFresh,

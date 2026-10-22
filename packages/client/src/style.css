@@ -32,7 +32,8 @@
   --glow-spread: 3px; /* focus ring */
   --halo-spread: 2px; /* self-chip halo */
 
-  /* Spacing */
+  /* Spacing: one rhythm scale, never a second literal. The 320 px audit row
+   * proves these values (and the chip padding below) fit without overflow. */
   --gap: 14px; /* block/panel rhythm */
   --gap-s: 8px;
   --gap-xs: 6px;
@@ -47,6 +48,10 @@
   --code-pad-y: 2px;
   --code-pad-x: 6px;
   --btn-pad-x: 14px;
+  --target-min: 44px; /* every button/input target (ADR-0022 §6) */
+  --sheet-pad: var(--gap); /* the one sheet inset */
+  --qr-size: 200px; /* the invite card; max-width keeps it inside 320 px */
+  --timer-size: 72px; /* the ring timer's square footprint */
   --timer-inset: 6px;
   --pts-top: 2px;
   --pts-left: 4px;
@@ -123,7 +128,7 @@ h2 {
 .sheet {
   max-width: var(--sheet-width);
   margin: 0 auto;
-  padding: var(--gap);
+  padding: var(--sheet-pad);
 }
 
 /* ------------------------------------------------------------------
@@ -273,7 +278,7 @@ h2 {
  * under every skin. This rule only sizes/centres it and touches no colour. */
 .qr {
   display: block;
-  width: 200px;
+  width: var(--qr-size);
   max-width: 100%;
   height: auto;
   margin: var(--gap-s) auto;
@@ -281,6 +286,11 @@ h2 {
 .invite-link {
   margin: 0;
   text-align: center;
+}
+/* The origin can outgrow a 320 px phone before the `/r/<code>` break; the
+ * code text wraps anywhere rather than widening the document. */
+.invite-link code {
+  overflow-wrap: anywhere;
 }
 
 /* ------------------------------------------------------------------ */
@@ -290,8 +300,8 @@ h2 {
   --p: 1;
   --ring: var(--accent);
   position: relative;
-  width: 72px;
-  height: 72px;
+  width: var(--timer-size);
+  height: var(--timer-size);
   border-radius: 50%;
   /* Conic-gradient progress ring over a solid inner disc (ADR-0002). */
   background: conic-gradient(var(--ring) calc(var(--p) * 360deg), var(--border) 0);
@@ -467,6 +477,7 @@ select,
 input {
   display: block;
   width: 100%;
+  min-height: var(--target-min);
   box-sizing: border-box;
   margin-top: var(--gap-2xs);
   padding: var(--gap-s);
@@ -477,6 +488,7 @@ input {
   color: var(--ink);
 }
 button {
+  min-height: var(--target-min);
   margin-top: var(--gap-s);
   padding: var(--gap-s) var(--btn-pad-x);
   border: 1px solid var(--accent);
@@ -486,6 +498,8 @@ button {
   font: inherit;
   cursor: pointer;
 }
+/* The 3 px ring fits inside the tightest rhythm (--gap-xs, 6 px), so no
+ * neighbouring control paints over it or clips it. */
 button:focus-visible,
 input:focus-visible {
   outline: none;
