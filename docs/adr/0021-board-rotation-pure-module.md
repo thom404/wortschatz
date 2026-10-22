@@ -13,7 +13,10 @@ inside the client's app module, the rotation type and guard sat beside it, and
 the "same board" identity key was rebuilt from store state in two helpers.
 Nothing forced the forward and inverse mappings to stay consistent, so a future
 change could silently submit a different word than the tiles under the finger
-spell.
+spell. This is the continuation of
+[ADR-0015](0015-architecture-review-one-home-per-rule.md)'s **one home per rule
+at each seam** at the board seam, following the pure
+[Gesture](0011-gesture-pure-module.md) module precedent.
 
 ## Decision
 
@@ -66,3 +69,12 @@ key for its reset rule. The inline permutation table, guard and identity
 helpers are gone; the rotation state, labels, templates and wiring still live in
 the app. Observable behaviour is unchanged, and the existing board-rotation
 mount test remains the end-to-end seam.
+
+## Amendment (#161, 2026-10-22): the deepening is delivered
+
+The parent deepening is delivered in full by the pure module (#167) and its use
+in the app (#168). One module now owns the rotation type, the four valid values,
+the guard, the forward and inverse permutations and the board-identity key; the
+render path, the submit boundary and the reset rule consume it; the unit test
+pins the permutation invariant and the unchanged mount test remains the
+end-to-end seam. No wire, visual or copy change.
