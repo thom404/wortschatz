@@ -1,0 +1,9 @@
+- heading "Raum beitreten" [level=1]
+- text: Raumcode
+- textbox "Raumcode":
+    - /placeholder: ABC12
+- text: Name
+- textbox "Name":
+    - /placeholder: z. B. Jörg
+- button "Beitreten"
+- button "Zurück"

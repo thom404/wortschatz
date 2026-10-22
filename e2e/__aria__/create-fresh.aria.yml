@@ -1,0 +1,6 @@
+- heading "Raum erstellen" [level=1]
+- text: Name
+- textbox "Name":
+    - /placeholder: z. B. Anja
+- button "Raum erstellen"
+- button "Zurück"

@@ -48,11 +48,30 @@ afterEach(() => {
   app = null;
 });
 
+/** Enter Create from the Home landing (ADR-0021). */
+function openCreate(): void {
+  if (!app!.root.querySelector("#mk-nick")) click("#create-btn");
+}
+
+/** Enter Join from the Home landing (ADR-0021). */
+function openJoin(): void {
+  if (!app!.root.querySelector("#jn-code")) click("#join-btn");
+}
+
+/** A form helper walks the landing first when its field is not on screen. */
+function ensureEntryScreen(sel: string): void {
+  if (app!.root.querySelector(sel)) return;
+  if (sel === "#mk-nick" || sel === "#mk-btn") openCreate();
+  else if (sel.startsWith("#jn-")) openJoin();
+}
+
 function click(sel: string): void {
+  ensureEntryScreen(sel);
   app!.root.querySelector<HTMLButtonElement>(sel)!.click();
 }
 
 function typeInto(sel: string, value: string): void {
+  ensureEntryScreen(sel);
   app!.root.querySelector<HTMLInputElement>(sel)!.value = value;
 }
 

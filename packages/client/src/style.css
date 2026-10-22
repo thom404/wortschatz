@@ -441,6 +441,22 @@ h2 {
 /* ------------------------------------------------------------------ */
 /* Forms / buttons                                                     */
 /* ------------------------------------------------------------------ */
+
+/* The landing's two actions (ADR-0021): the app's primary choices, stacked
+ * on a phone and side by side once there is room. Tokens only. */
+.home-actions {
+  display: grid;
+  gap: var(--gap-s);
+  margin-bottom: var(--gap-s);
+}
+.home-actions button {
+  margin-top: 0;
+}
+@media (min-width: 600px) {
+  .home-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+}
 label {
   display: block;
   margin: var(--gap-s) 0;
@@ -475,7 +491,8 @@ input:focus-visible {
   box-shadow: 0 0 0 var(--glow-spread) var(--glow);
 }
 button#leave-btn,
-button#home-btn {
+button#home-btn,
+button#back-btn {
   background: transparent;
   color: var(--ink);
   border-color: var(--border);

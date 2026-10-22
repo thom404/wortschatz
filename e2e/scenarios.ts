@@ -167,7 +167,8 @@ async function revealSorted(page: Page, sort: "points" | "alphabet"): Promise<vo
   );
 }
 
-async function submitLocalHomeError(page: Page): Promise<void> {
+async function submitCreateLocalError(page: Page): Promise<void> {
+  await page.locator("#create-btn").click();
   await page.locator("#mk-btn").click();
   await expect(page.locator("#notice-error")).toHaveText("Bitte gib einen Namen ein.");
 }
@@ -193,6 +194,33 @@ const home: ScreenshotScenario = {
   viewports: VIEWPORTS,
   ready: async (page) => {
     await expect(page.locator("#screen h1")).toHaveText("Wortschatz");
+    await expect(page.locator(".home-actions button")).toHaveCount(2);
+  },
+};
+
+const createFresh: ScreenshotScenario = {
+  id: "create-fresh",
+  skins: SKINS,
+  viewports: VIEWPORTS,
+  afterOpen: async (page) => {
+    await page.locator("#create-btn").click();
+  },
+  ready: async (page) => {
+    await expect(page.locator("#screen h1")).toHaveText("Raum erstellen");
+    await expect(page.locator("#mk-nick")).toBeVisible();
+  },
+};
+
+const joinFresh: ScreenshotScenario = {
+  id: "join-fresh",
+  skins: SKINS,
+  viewports: VIEWPORTS,
+  afterOpen: async (page) => {
+    await page.locator("#join-btn").click();
+  },
+  ready: async (page) => {
+    await expect(page.locator("#screen h1")).toHaveText("Raum beitreten");
+    await expect(page.locator("#jn-code")).toBeVisible();
   },
 };
 
@@ -455,24 +483,25 @@ const fullLobby: ScreenshotScenario = {
   },
 };
 
-const homeLocalError: ScreenshotScenario = {
-  id: "targeted-home-local-error",
+const createLocalError: ScreenshotScenario = {
+  id: "targeted-create-local-error",
   skins: SKINS,
   viewports: [PHONE_SMALL],
-  afterOpen: submitLocalHomeError,
+  afterOpen: submitCreateLocalError,
   ready: async (page) => {
     await expect(page.locator("#notice-error")).toHaveText("Bitte gib einen Namen ein.");
   },
 };
 
-const homeDeepLink: ScreenshotScenario = {
-  id: "targeted-home-deep-link",
+const joinDeepLink: ScreenshotScenario = {
+  id: "targeted-join-deep-link",
   skins: SKINS,
   viewports: [PHONE_SMALL],
   path: `/r/${ROOM_CODE}`,
   ready: async (page) => {
     await expect(page.locator("#screen")).toContainText(`Du wurdest in Raum ${ROOM_CODE} eingeladen.`);
     await expect(page.locator("#jn-code")).toHaveValue(ROOM_CODE);
+    await expect(page.locator("#jn-code")).toHaveAttribute("readonly", "");
   },
 };
 
@@ -487,9 +516,11 @@ const lobbyGuest: ScreenshotScenario = {
   },
 };
 
-/** 6 canonical screens × 2 skins × 3 viewports = 36. */
+/** 8 canonical screens × 2 skins × 3 viewports = 48. */
 export const CANONICAL_SCENARIOS: readonly ScreenshotScenario[] = [
   home,
+  createFresh,
+  joinFresh,
   lobbyHostAlone,
   lobbyHostWithGuests,
   game,
@@ -515,8 +546,8 @@ export const TARGETED_SCENARIOS: readonly ScreenshotScenario[] = [
   revealByPoints,
   revealAlphabetical,
   fullLobby,
-  homeLocalError,
-  homeDeepLink,
+  createLocalError,
+  joinDeepLink,
   lobbyGuest,
 ];
 
