@@ -18,10 +18,13 @@ export interface Viewport {
 
 export const PHONE_SMALL: Viewport = { width: 360, height: 640 };
 export const PHONE_LARGE: Viewport = { width: 390, height: 844 };
+export const TABLET: Viewport = { width: 768, height: 1024 };
 export const DESKTOP: Viewport = { width: 1280, height: 800 };
 
-/** The curated matrix's three viewports (mobile stack and desktop two-column). */
-export const VIEWPORTS: readonly Viewport[] = [PHONE_SMALL, PHONE_LARGE, DESKTOP];
+/** The curated matrix's four viewports (mobile stack, tablet and desktop
+ *  two-column). The tablet row covers the 600–1024 px band the 860 px
+ *  arrangement was previously invisible in (ADR-0020 amendment #175). */
+export const VIEWPORTS: readonly Viewport[] = [PHONE_SMALL, PHONE_LARGE, TABLET, DESKTOP];
 
 export const SKINS: readonly SkinId[] = ["standard", "arcade"];
 
