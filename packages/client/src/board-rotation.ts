@@ -7,8 +7,8 @@
  *
  * The forward permutation and its inverse are defined here together, so a
  * rendered cell and the server index it shows can never drift apart. The
- * client's render and wiring consume this module; the rotation state and its
- * reset rules still live in the app (issue #168).
+ * client's render, drag submission and reset rule consume this module
+ * (issue #168); the rotation state and its wiring still live in the app.
  */
 
 /** The client-only arrangement of the shared board: a clockwise quarter turn. */

@@ -56,3 +56,13 @@ spell.
 - **Change the trace to hold server board indices.** Rejected: the gesture
   module's cell-space contract stays as it is; the inverse is applied at the
   submit boundary.
+
+## Amendment (#168, 2026-10-22): the app consumes the module
+
+The migration promised in decision 4 is complete. The app now renders through
+the module's forward permutation, resolves a traced cell through the module's
+inverse permutation before submitting, and compares the module's board-identity
+key for its reset rule. The inline permutation table, guard and identity
+helpers are gone; the rotation state, labels, templates and wiring still live in
+the app. Observable behaviour is unchanged, and the existing board-rotation
+mount test remains the end-to-end seam.
