@@ -9,6 +9,14 @@ import {
   type PointerKind,
 } from "./gesture.js";
 import { displayTile, displayWord } from "./display.js";
+import {
+  BOARD_ROTATIONS,
+  boardIdentityKey,
+  isBoardRotation,
+  rotateBoard,
+  serverBoardIndex,
+  type BoardRotation,
+} from "./board-rotation.js";
 import { qrSvg } from "./qr.js";
 import { applySkin, loadSkin, skinSwitcherHtml, wireSkinSwitcher } from "./skins.js";
 import type {
@@ -19,7 +27,6 @@ import type {
   RoomEndReason,
   ServerErrorMsg,
   ServerMessage,
-  SnapshotMsg,
 } from "@wortschatz/shared";
 import { PROTOCOL, tileSpellingLength, tileStrings, tileValues } from "@wortschatz/shared";
 import "./style.css";
@@ -67,42 +74,10 @@ type Unsubscribe = () => void;
  *  client-side flat views over the same payload. */
 export type RevealSort = "length" | "points" | "alphabet";
 
-/** The client-only arrangement of the shared board (issue #151): a
- *  clockwise quarter-turn count. The board data never changes; only which
- *  cell each tile renders in. */
-export type BoardRotation = 0 | 90 | 180 | 270;
-
-/** The four rotation steps, in cycle order, with their visible labels. */
-const BOARD_ROTATIONS: readonly { rotation: BoardRotation; label: string }[] = [
-  { rotation: 0, label: "0°" },
-  { rotation: 90, label: "90°" },
-  { rotation: 180, label: "180°" },
-  { rotation: 270, label: "270°" },
-];
-
-/** For each rendered grid cell, the server board index whose tile it shows.
- *  Precomputed once: a clockwise turn maps source (row, col) to destination
- *  (col, 3 − row), so the inverse walks each cell counter-clockwise. */
-const BOARD_CELL_SOURCES: Readonly<Record<BoardRotation, readonly number[]>> = {
-  0: cellSources(0),
-  90: cellSources(1),
-  180: cellSources(2),
-  270: cellSources(3),
-};
-
-function cellSources(quarterTurns: number): readonly number[] {
-  const sources: number[] = [];
-  for (let cell = 0; cell < 16; cell += 1) {
-    let row = Math.floor(cell / 4);
-    let col = cell % 4;
-    for (let turn = 0; turn < quarterTurns; turn += 1) {
-      const nextRow = 3 - col;
-      col = row;
-      row = nextRow;
-    }
-    sources.push(row * 4 + col);
-  }
-  return sources;
+/** The visible label of each quarter turn: the state comes from the module,
+ *  only its German/degree presentation lives here. */
+function rotationLabel(rotation: BoardRotation): string {
+  return `${rotation}°`;
 }
 
 interface App {
@@ -194,12 +169,12 @@ function boardHtml(board: readonly string[], rotation: BoardRotation): string {
   return `<div id="board" class="board" data-rotation="${rotation}" style="${boardSpanStyle(board)}">${boardTilesHtml(board, rotation)}</div>`;
 }
 
-/** The tiles in rotated render order: each cell shows the tile its server
- *  board index names, so the arrangement turns while every glyph, corner
- *  value and tile identity stays as authored. */
+/** The tiles in rotated render order: each cell shows the tile the module's
+ *  forward permutation places there, so the arrangement turns while every
+ *  glyph, corner value and tile identity stays as authored. */
 function boardTilesHtml(board: readonly string[], rotation: BoardRotation): string {
   if (board.length === 0) return "";
-  return BOARD_CELL_SOURCES[rotation].map((source) => tileHtml(board[source] ?? "")).join("");
+  return rotateBoard(board, rotation).map(tileHtml).join("");
 }
 
 /** The grid container's one font-size knob: the widest tile span on the
@@ -216,8 +191,8 @@ function boardRotationHtml(active: BoardRotation): string {
   return `<div id="board-rotation" class="board-rotation" role="group" aria-label="Spielfeld drehen">
     <span class="rotate-label">Spielfeld drehen</span>
     ${BOARD_ROTATIONS.map(
-      ({ rotation, label }) =>
-        `<button type="button" class="rotate-btn${rotation === active ? " active" : ""}" data-rotation="${rotation}" aria-pressed="${rotation === active}">${label}</button>`
+      (rotation) =>
+        `<button type="button" class="rotate-btn${rotation === active ? " active" : ""}" data-rotation="${rotation}" aria-pressed="${rotation === active}">${rotationLabel(rotation)}</button>`
     ).join("")}
   </div>`;
 }
@@ -397,7 +372,12 @@ function onMessage(app: App, msg: ServerMessage): void {
     // Board rotation is per board, not per connection (issue #151): a
     // reconnect snapshot for the same board keeps the chosen arrangement,
     // while a snapshot that names a different board (or none) resets it.
-    if (snapshotBoardKey(msg) !== currentBoardKey(app.store)) app.boardRotation = 0;
+    // The module's identity key names that same puzzle (issue #168).
+    const snapshotRound = msg.round ?? msg.finishedRound;
+    const snapshotKey = snapshotRound ? boardIdentityKey(snapshotRound.roundNumber, snapshotRound.board) : "";
+    const currentRound = app.store.round;
+    const currentKey = currentRound ? boardIdentityKey(currentRound.roundNumber, currentRound.board) : "";
+    if (snapshotKey !== currentKey) app.boardRotation = 0;
   }
   // Every round start is a new board, so the next puzzle opens at 0°.
   if (msg.type === "round-start") app.boardRotation = 0;
@@ -409,21 +389,6 @@ function onMessage(app: App, msg: ServerMessage): void {
   // mid-game verdict.
   if (msg.type === "error" && msg.code === "room-not-found")
     return renderOutcome(app, roomNotFoundOutcome(app));
-}
-
-/** A snapshot's board identity: round number plus the server's board array.
- *  Two snapshots naming the same board are the same puzzle for the local
- *  rotation's lifetime (issue #151). */
-function snapshotBoardKey(msg: SnapshotMsg): string {
-  const round = msg.round ?? msg.finishedRound;
-  return round ? `${round.roundNumber}:${round.board.join("/")}` : "";
-}
-
-/** The board identity currently rendered (the finished board during the
- *  intermission), or empty before any round. */
-function currentBoardKey(store: GameStore): string {
-  const round = store.round;
-  return round ? `${round.roundNumber}:${round.board.join("/")}` : "";
 }
 
 /** A greeting rejection: an `error` frame that arrives while the join is
@@ -1082,8 +1047,9 @@ function submitTrace(app: App, trace: number[]): void {
  *  variants — later tickets own special-tile input). */
 function traceWord(app: App, trace: readonly number[]): string {
   const board = app.store.round?.board ?? [];
-  const sources = BOARD_CELL_SOURCES[app.boardRotation];
-  return trace.map((cell) => tileStrings(board[sources[cell] ?? cell] ?? "")[0] ?? "").join("");
+  return trace
+    .map((cell) => tileStrings(board[serverBoardIndex(cell, app.boardRotation)] ?? "")[0] ?? "")
+    .join("");
 }
 
 /** Point → tile resolution, the same for mouse and finger. Real browsers
@@ -1346,10 +1312,6 @@ function wireBoardRotation(app: App): void {
       paintTrace(app);
     };
   }
-}
-
-function isBoardRotation(value: number): value is BoardRotation {
-  return BOARD_ROTATIONS.some((step) => step.rotation === value);
 }
 
 /** Re-renders only the board tiles and the control's pressed state, in
