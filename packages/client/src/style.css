@@ -54,6 +54,7 @@
   /* Floating notification layer (ADR-0018) */
   --sheet-width: 640px; /* the sheet and the notice cap share one width */
   --z-notice: 30;
+  --z-tip: 20; /* tooltips sit above surfaces, below the notice layer */
   --notice-inset: var(--gap); /* clear of the viewport edge */
   --notice-gap: var(--gap-xs);
   --notice-pad-y: var(--gap-s);
@@ -497,6 +498,17 @@ button#back-btn {
   color: var(--ink);
   border-color: var(--border);
 }
+/* The outcome's one action keeps an icon plus its visible text (ADR-0022):
+ * a lone icon would be worse than the word on a screen with no context. */
+.icon-text-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-xs);
+}
+.icon-text-btn .icon {
+  width: 18px;
+  height: 18px;
+}
 
 .dim {
   color: var(--dim);
@@ -578,33 +590,83 @@ code {
   text-transform: none;
 }
 
-/* Board rotation (#151): the reveal-sort control pattern beside the board.
- * The active quarter turn is `aria-pressed` plus weight/underline, never
- * colour alone. The control changes the view only; it never touches data. */
-.board-rotation {
-  display: flex;
-  flex-wrap: wrap;
+/* Icon-only secondary controls (ADR-0022): a 24 px currentColor glyph in a
+ * 44 px target, so a small symbol never shrinks the tappable box. Every
+ * colour is a skin token; no component rule branches on a skin. */
+.icon-btn {
+  position: relative;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--gap-xs);
-  margin-top: var(--gap-s);
-}
-.board-rotation .rotate-label {
-  color: var(--dim);
-  font-size: 0.85rem;
-}
-.board-rotation .rotate-btn {
+  width: 44px;
+  height: 44px;
+  padding: 0;
   margin-top: 0;
-  padding: var(--gap-2xs) var(--gap-s);
   background: transparent;
   color: var(--ink);
   border-color: var(--border);
+  border-radius: var(--radius-s);
 }
-.board-rotation .rotate-btn.active {
-  border-color: var(--accent);
-  font-weight: 700;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+.icon-btn .icon {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+/* The tooltip is CSS-only and deterministic: one data-tip string, no
+ * floating layer. The `/ ""` alternative text keeps the generated copy out
+ * of the accessibility tree; the aria-label carries the name. */
+.icon-btn[data-tip]::after {
+  content: attr(data-tip) / "";
+  position: absolute;
+  z-index: var(--z-tip);
+  bottom: calc(100% + var(--gap-2xs));
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(240px, 70vw);
+  padding: var(--gap-2xs) var(--gap-s);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--panel-inset);
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 400;
+  line-height: 1.2;
+  white-space: nowrap;
+  box-shadow: var(--notice-shadow);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 0.12s ease 0s,
+    visibility 0s linear 0s;
+}
+.icon-btn[data-tip]:hover::after,
+.icon-btn[data-tip]:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 0.12s ease 300ms,
+    visibility 0s linear 300ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .icon-btn[data-tip]::after {
+    transition: none;
+  }
+}
+
+/* The rotation control sits centred under the board; its one stable name
+ * never includes the live angle (ADR-0002 #174). */
+.board-rotation {
+  display: flex;
+  margin: var(--gap-s) auto 0;
+}
+/* Left-anchored controls sit near the panel edge, so their tooltip grows
+ * rightwards instead of centring off-screen. Still CSS-only: no measuring
+ * and no floating layer. */
+.reveal-sort .icon-btn[data-tip]::after,
+.leave-btn[data-tip]::after {
+  left: 0;
+  transform: none;
 }
 
 /* ------------------------------------------------------------------ */
@@ -619,24 +681,22 @@ code {
   gap: var(--gap-xs);
   margin-bottom: var(--gap-s);
 }
-.reveal-sort .sort-label {
-  color: var(--dim);
-  font-size: 0.85rem;
-}
-.reveal-sort .sort-btn {
-  margin-top: 0;
-  padding: var(--gap-2xs) var(--gap-s);
-  background: transparent;
-  color: var(--ink);
-  border-color: var(--border);
-}
-/* The selected mode is more than a colour: aria-pressed plus an underline
- * and heavier weight keep it legible without relying on hue. */
+/* The selected mode is more than a colour: aria-pressed plus a filled
+ * target and an underline keep it legible without relying on hue. */
 .reveal-sort .sort-btn.active {
+  background: var(--accent);
+  color: var(--accent-ink);
   border-color: var(--accent);
-  font-weight: 700;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+}
+.reveal-sort .sort-btn.active::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 6px;
+  height: 3px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
 }
 .reveal dl,
 dl#reveal {

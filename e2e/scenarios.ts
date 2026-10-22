@@ -402,6 +402,22 @@ const lowTimer: ScreenshotScenario = {
   },
 };
 
+const tooltip: ScreenshotScenario = {
+  id: "targeted-tooltip",
+  skins: SKINS,
+  viewports: [PHONE_SMALL],
+  wire: { messages: gameWire() },
+  afterOpen: async (page) => {
+    await page.locator("#board-rotation").hover();
+  },
+  ready: async (page) => {
+    await expect(page.locator("#board-rotation")).toHaveAttribute("aria-label", "Spielfeld um 90° drehen");
+    await expect
+      .poll(() => page.locator("#board-rotation").evaluate((el) => getComputedStyle(el, "::after").opacity))
+      .toBe("1");
+  },
+};
+
 const errorNotice: ScreenshotScenario = {
   id: "targeted-error-notice",
   skins: SKINS,
@@ -537,10 +553,11 @@ export const OUTCOME_SCENARIOS: readonly ScreenshotScenario[] = [
   connectionLost,
 ];
 
-/** 10 targeted states × 2 skins × 360 = 20. */
+/** 11 targeted states × 2 skins × 360 = 22. */
 export const TARGETED_SCENARIOS: readonly ScreenshotScenario[] = [
   overflowChip,
   lowTimer,
+  tooltip,
   errorNotice,
   spectatorGame,
   revealByPoints,
