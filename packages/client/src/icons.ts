@@ -30,6 +30,9 @@ export const sortAlphabetIcon = icon(
   `<path d="M3 18 7 6l4 12" /><path d="M4.4 14h5.2" /><path d="M14 6h7l-7 12h7" />`
 );
 
+/** Three equal lines: the app-global Menü (ADR-0023). */
+export const menuIcon = icon(`<path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h16" />`);
+
 /** Left arrow: leave the room. */
 export const leaveIcon = icon(`<path d="M19 12H5" /><path d="m11 6-6 6 6 6" />`);
 

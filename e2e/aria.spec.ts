@@ -19,6 +19,12 @@ for (const scenario of CANONICAL_SCENARIOS) {
     }
     if (scenario.afterOpen) await scenario.afterOpen(page);
     await scenario.ready(page);
-    await expect(page.locator("#screen")).toMatchAriaSnapshot({ name: `${scenario.id}.aria.yml` });
+    await expect(page.locator("#app")).toMatchAriaSnapshot({ name: `${scenario.id}.aria.yml` });
   });
 }
+
+test("Menü open semantics", async ({ page }) => {
+  await openPage(page, { viewport: DESKTOP, skin: "standard" });
+  await page.locator("#menu-trigger").click();
+  await expect(page.locator("#menu")).toMatchAriaSnapshot({ name: "menu-open.aria.yml" });
+});

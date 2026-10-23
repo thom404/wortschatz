@@ -25,7 +25,8 @@ import {
   sortPointsIcon,
 } from "./icons.js";
 import { qrSvg } from "./qr.js";
-import { applySkin, loadSkin, skinSwitcherHtml, wireSkinSwitcher } from "./skins.js";
+import { applySkin, loadSkin } from "./skins.js";
+import { menuHtml, wireMenu, type MenuSurface } from "./menu.js";
 import type {
   ClientMessage,
   PlayerInfo,
@@ -40,7 +41,8 @@ import "./style.css";
 
 /**
  * Screens of the minimal functional shell (visual language is ticket #8):
- * - Home: the landing; two actions and the skin switcher, no form.
+ * - Home: the landing; two actions, no form (the skin switcher moved to the
+ *   app-owned Menü, ADR-0023).
  * - Create screen: name a player and create a room.
  * - Join screen: room code and name; a deep link lands here pre-filled.
  * - Wait room (Lobby): waiting room; the host starts round one, even alone.
@@ -116,6 +118,9 @@ interface App {
   /** The two app-owned notice slots (ADR-0018), in DOM order. */
   noticeStatus: HTMLElement;
   noticeError: HTMLElement;
+  /** The app-owned Menü surface (ADR-0023), created once outside the screen
+   *  markup so a rebuild can neither remove it nor lose its wiring. */
+  menu: MenuSurface;
   unsub: Unsubscribe | null;
   /** Room-scoped view state: the intermission's chosen reveal order. It
    *  survives consecutive intermissions in one room but resets on a fresh
@@ -277,10 +282,12 @@ function leaveButtonHtml(): string {
  */
 export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
   // The app root is a shell (ADR-0018): one screen container that every
-  // render replaces, beside one notification layer created here once. The
-  // layer survives re-renders and screen transitions; unmount removes both.
+  // render replaces, beside the app-owned Menü (ADR-0023) and the one
+  // notification layer created here once. Neither surface is inside markup a
+  // screen rebuild replaces; unmount removes all three.
   rootEl.innerHTML = `
     <div id="screen"></div>
+    ${menuHtml()}
     <div id="notifications" class="notifications">
       <p id="notice-status" class="notice status" role="status" aria-live="polite"></p>
       <p id="notice-error" class="notice error" role="alert" aria-live="assertive"></p>
@@ -297,6 +304,7 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
     localError: null,
     noticeStatus: rootEl.querySelector<HTMLElement>("#notice-status")!,
     noticeError: rootEl.querySelector<HTMLElement>("#notice-error")!,
+    menu: wireMenu(rootEl),
     unsub: null,
     revealSort: "length",
     boardRotation: 0,
@@ -336,6 +344,7 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
   return () => {
     teardown(app);
     app.stopDrag();
+    app.menu.dispose();
     if (app.conn) {
       app.conn.stop();
       app.conn = null;
@@ -350,11 +359,13 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
 /* Home / routes                                                       */
 /* ------------------------------------------------------------------ */
 
-/** The landing (ADR-0021): the app name, the tagline, exactly two actions
- *  and the skin switcher. It carries no form. */
+/** The landing (ADR-0021): the app name, the tagline and exactly two
+ *  actions. It carries no form and no skin switcher — that moved into the
+ *  app-owned Menü (ADR-0023). */
 function home(app: App): void {
   app.screen = "home";
   app.screenFromHome = false;
+  app.menu.screenChanged("home");
   document.title = APP_NAME;
   app.liveRegions = [];
   // Returning to home is a screen change: no notice may follow it.
@@ -367,11 +378,9 @@ function home(app: App): void {
         <button id="create-btn">Raum erstellen</button>
         <button id="join-btn">Raum beitreten</button>
       </div>
-      ${skinSwitcherHtml(loadSkin())}
     </div>`;
   app.root.querySelector<HTMLButtonElement>("#create-btn")!.onclick = () => openCreate(app);
   app.root.querySelector<HTMLButtonElement>("#join-btn")!.onclick = () => openJoin(app);
-  wireSkinSwitcher(app.root);
   renderNotices(app);
 }
 
@@ -434,6 +443,7 @@ function resetEntryNotices(app: App): void {
 /** The Create screen: one `Name` field and one create button. */
 function renderCreate(app: App): void {
   app.screen = "create";
+  app.menu.screenChanged("create");
   document.title = APP_NAME;
   app.liveRegions = [];
   resetEntryNotices(app);
@@ -463,6 +473,7 @@ function renderCreate(app: App): void {
  *  stays editable. */
 function renderJoin(app: App, deepCode?: string): void {
   app.screen = "join";
+  app.menu.screenChanged("join");
   document.title = APP_NAME;
   app.liveRegions = [];
   resetEntryNotices(app);
@@ -836,6 +847,7 @@ function updateFound(app: App): void {
 const LOBBY_LIVE_REGIONS: readonly LiveRegion[] = [SCOREBOARD_REGION];
 
 function renderLobby(app: App): void {
+  app.menu.screenChanged(`lobby:${app.store.code}`);
   document.title = `${APP_NAME} — Raum ${app.store.code}`;
   // One source of truth for the join target (#48): the QR payload and the
   // plain-text fallback are the same absolute deep link, code uppercased.
@@ -878,6 +890,7 @@ function renderLobby(app: App): void {
 const GAME_LIVE_REGIONS: readonly LiveRegion[] = [TIMER_REGION, SCOREBOARD_REGION, FOUND_REGION];
 
 function renderGame(app: App): void {
+  app.menu.screenChanged(`game:${app.store.roundNumber}`);
   document.title = `${APP_NAME} — Runde ${app.store.roundNumber}`;
   const board = app.store.round?.board ?? [];
   const spectating = app.store.self.role === "spectator";
@@ -924,6 +937,7 @@ function renderGame(app: App): void {
 const INTERMISSION_LIVE_REGIONS: readonly LiveRegion[] = [SCOREBOARD_REGION];
 
 function renderIntermission(app: App): void {
+  app.menu.screenChanged(`intermission:${app.store.finishedRound?.roundNumber ?? app.store.roundNumber}`);
   document.title = `${APP_NAME} — Pause`;
   const finishedRoundNumber = app.store.finishedRound?.roundNumber ?? app.store.roundNumber;
   const reveal = app.store.finishedRound?.reveal;
@@ -985,6 +999,7 @@ interface OutcomeScreen {
 }
 
 function renderOutcome(app: App, outcome: OutcomeScreen): void {
+  app.menu.screenChanged(`outcome:${outcome.titleHtml}`);
   if (app.conn) {
     app.conn.stop();
     app.conn = null;

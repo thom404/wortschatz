@@ -21,3 +21,6 @@
 - paragraph: Es zählt das Gesamtergebnis der Sitzung.
 - button "Nächste Runde starten"
 - button "Raum verlassen"
+- button "Menü"
+- status
+- alert

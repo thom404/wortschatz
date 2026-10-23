@@ -107,6 +107,13 @@ export async function enterRoom(
   await page.locator("#mk-btn").click();
 }
 
+/** Opens the app-owned Menü (ADR-0023): one trigger and an anchored panel
+ *  outside every screen's markup. */
+export async function openMenu(page: Page): Promise<void> {
+  await page.locator("#menu-trigger").click();
+  await expect(page.locator("#menu-panel")).toBeVisible();
+}
+
 export interface OpenOptions {
   viewport: Viewport;
   skin?: SkinId;

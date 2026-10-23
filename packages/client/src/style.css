@@ -59,6 +59,7 @@
   /* Floating notification layer (ADR-0018) */
   --sheet-width: 640px; /* the sheet and the notice cap share one width */
   --z-notice: 30;
+  --z-menu: 25; /* above the screen, below the notification layer */
   --z-tip: 20; /* tooltips sit above surfaces, below the notice layer */
   --notice-inset: var(--gap); /* clear of the viewport edge */
   --notice-gap: var(--gap-xs);
@@ -71,6 +72,10 @@
   --notice-ease: ease-out;
   --notice-enter-ms: 160ms;
   --notice-leave-ms: 100ms;
+
+  /* App-owned Menü (ADR-0023) */
+  --menu-inset: var(--gap); /* clear of the viewport and its safe area */
+  --menu-width: 280px;
 }
 
 /* ==================================================================
@@ -119,6 +124,11 @@ body {
 h1 {
   font-size: 1.4rem;
   margin: 0 0 var(--gap);
+}
+/* The fixed Menü trigger sits over the sheet's top-right corner: reserve its
+ * width on every screen heading so a long title never runs under it. */
+.sheet h1 {
+  padding-right: calc(var(--target-min) + var(--gap-s));
 }
 h2 {
   font-size: 1rem;
@@ -194,6 +204,63 @@ h2 {
     animation: none;
     transition: none;
   }
+}
+
+/* ------------------------------------------------------------------
+ * App-owned Menü (ADR-0023): one fixed trigger plus an anchored panel,
+ * outside every screen's markup. The container is transparent to pointer
+ * input so only the trigger (and the open panel) takes a press; the panel
+ * is hidden while closed. Every value is a skin token.
+ * ------------------------------------------------------------------ */
+.menu {
+  position: fixed;
+  top: calc(var(--menu-inset) + env(safe-area-inset-top, 0px));
+  right: calc(var(--menu-inset) + env(safe-area-inset-right, 0px));
+  z-index: var(--z-menu);
+  pointer-events: none;
+}
+.menu-trigger {
+  pointer-events: auto;
+  background: var(--panel);
+  box-shadow: var(--notice-shadow);
+}
+.menu-panel {
+  position: absolute;
+  top: calc(100% + var(--gap-s));
+  right: 0;
+  box-sizing: border-box;
+  width: min(var(--menu-width), calc(100vw - 2 * var(--menu-inset)));
+  padding: var(--gap);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--notice-shadow);
+  pointer-events: auto;
+}
+.menu-panel[hidden] {
+  display: none;
+}
+.menu-panel:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 var(--glow-spread) var(--glow),
+    var(--notice-shadow);
+}
+.menu-version {
+  margin: 0 0 var(--gap-s);
+  color: var(--dim);
+  font-size: 0.85rem;
+}
+/* The moved-in skin switcher drops its standalone panel chrome: inside the
+ * Menü the panel is the surface. */
+.menu-panel .panel {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.menu-panel .panel h2 {
+  margin-bottom: var(--gap-2xs);
 }
 
 /* ------------------------------------------------------------------
