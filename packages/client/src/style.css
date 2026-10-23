@@ -230,6 +230,8 @@ h2 {
   right: 0;
   box-sizing: border-box;
   width: min(var(--menu-width), calc(100vw - 2 * var(--menu-inset)));
+  max-height: calc(100vh - var(--target-min) - 2 * var(--menu-inset) - var(--gap-s));
+  overflow-y: auto;
   padding: var(--gap);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -246,10 +248,100 @@ h2 {
     0 0 0 var(--glow-spread) var(--glow),
     var(--notice-shadow);
 }
+/* One disclosure row per entry (ADR-0023): a full-width native button and
+ * the in-place panel it controls. The empty pseudo-element is a chevron, so
+ * no generated text enters the button's accessible name. */
+.menu-entry {
+  border-top: 1px solid var(--border);
+}
+.menu-entry:first-child {
+  border-top: 0;
+}
+.menu-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-s);
+  width: 100%;
+  min-height: var(--target-min);
+  margin: 0;
+  padding: var(--gap-xs) 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+}
+.menu-toggle::after {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-right: 1px solid var(--dim);
+  border-bottom: 1px solid var(--dim);
+  transform: rotate(45deg);
+}
+.menu-toggle[aria-expanded="true"]::after {
+  transform: rotate(-135deg);
+}
 .menu-version {
-  margin: 0 0 var(--gap-s);
   color: var(--dim);
   font-size: 0.85rem;
+}
+.menu-disclosure {
+  padding-bottom: var(--gap-s);
+  font-size: 0.9rem;
+}
+.menu-disclosure[hidden] {
+  display: none;
+}
+.menu-disclosure p {
+  margin: 0 0 var(--gap-xs);
+}
+.menu-disclosure ul {
+  display: grid;
+  gap: var(--gap-2xs);
+  margin: 0;
+  padding-left: 1.1em;
+}
+.menu-disclosure a {
+  color: var(--accent);
+}
+.menu-changelog-entry + .menu-changelog-entry {
+  margin-top: var(--gap-s);
+}
+.menu-changelog-entry h3 {
+  display: flex;
+  align-items: baseline;
+  gap: var(--gap-2xs);
+  margin: 0 0 var(--gap-2xs);
+  color: var(--dim);
+  font-size: 0.85rem;
+}
+.menu-current {
+  padding: var(--badge-pad-y) var(--badge-pad-x);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 400;
+}
+.menu-link {
+  display: flex;
+  align-items: center;
+  min-height: var(--target-min);
+  border-top: 1px solid var(--border);
+  color: var(--accent);
+  text-decoration: none;
+}
+.menu-link:hover,
+.menu-link:focus-visible {
+  text-decoration: underline;
+}
+.menu-link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 var(--glow-spread) var(--glow);
 }
 /* The moved-in skin switcher drops its standalone panel chrome: inside the
  * Menü the panel is the surface. */
@@ -258,6 +350,11 @@ h2 {
   padding: 0;
   border: 0;
   background: none;
+}
+.menu-panel > .panel {
+  margin-top: var(--gap-xs);
+  padding-top: var(--gap-s);
+  border-top: 1px solid var(--border);
 }
 .menu-panel .panel h2 {
   margin-bottom: var(--gap-2xs);

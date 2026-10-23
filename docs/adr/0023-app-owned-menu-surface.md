@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-23
-- Tickets: spec [#187](https://github.com/thom404/wortschatz/issues/187), [#181](https://github.com/thom404/wortschatz/issues/181) (version source), [#182](https://github.com/thom404/wortschatz/issues/182) (the surface); queued entries: [#183](https://github.com/thom404/wortschatz/issues/183), [#184](https://github.com/thom404/wortschatz/issues/184), [#185](https://github.com/thom404/wortschatz/issues/185)
+- Tickets: spec [#187](https://github.com/thom404/wortschatz/issues/187), [#181](https://github.com/thom404/wortschatz/issues/181) (version source), [#182](https://github.com/thom404/wortschatz/issues/182) (the surface); entries: [#159](https://github.com/thom404/wortschatz/issues/159) (changelog), [#183](https://github.com/thom404/wortschatz/issues/183) (Spielanleitung), [#184](https://github.com/thom404/wortschatz/issues/184) (Quellen), [#185](https://github.com/thom404/wortschatz/issues/185) (Problem melden), under spec [#194](https://github.com/thom404/wortschatz/issues/194)
 - Related: [ADR-0018](0018-floating-notification-layer.md) (the app-owned-surface precedent), [ADR-0021](0021-create-and-join-screens.md) (Home, amended below), [ADR-0022](0022-icon-only-controls-and-tooltips.md) (icon-only controls), [ADR-0002](0002-game-screen-layout-and-skins.md) (token uniformity), [ADR-0007](0007-german-ui-copy-voice.md)
 
 ## Context
@@ -60,3 +60,39 @@ icon-only (ADR-0022).
   ADR-0021 records the handover of the skin switcher.
 - Adding a menu entry later is a registry-style edit in `menu.ts`, bounded by
   decision 3's app-global-only rule.
+
+## Amendment (#194, 2026-10-23): the queued entries land
+
+Decision 4 queued the Spielanleitung, Quellen and the issues link; #159 added the
+changelog as the version row's behaviour. All four are now landed entries in the
+same app-owned panel. Decisions 1–3 are untouched: entries remain app-global,
+register as Menü rows, and no screen markup owns them.
+
+1. **One disclosure pattern.** Every text entry is a native button toggling its
+   panel in place, keyboard-operable and announced by `aria-expanded` /
+   `aria-controls`. Disclosures coexist, the panel scrolls, and there is no
+   second panel state and no nested dialog. The four close paths (Esc, outside
+   click, screen change, trigger) still close the whole Menü.
+2. **The version row is the changelog toggle.** It keeps rendering exactly
+   `Version <APP_VERSION>`, is a toggle rather than a link, and expands the
+   hand-written German changelog beneath it. Entries are one inline
+   version-keyed list, newest first, each a version heading plus short
+   player-facing notes; no markdown, i18n or fetch (ADR-0007). The block whose
+   version equals `APP_VERSION` carries the quiet `aktuell` tag. Exactly one
+   retroactive `0.1.0` entry ships with the feature.
+3. **Release coupling.** A root-manifest version bump and its changelog entry
+   land in the same pull request: no bump without an entry, no entry without a
+   bump. The version field remains an ordinary edit per #181.
+4. **Quellen and Problem melden.** Quellen names the word-list source
+   (`enz/german-wordlist`, CC0-1.0) with one outbound anchor to its upstream
+   repository, the reviewed exclusion list (ADR-0001 amendment) and the reveal's
+   Wiktionary policy (ADR-0017). Problem melden is a plain link to this
+   repository's issues list; it is not a disclosure and adds no in-app form.
+   Every outbound link opens in a new tab with `noopener noreferrer` (ADR-0017).
+   The deploy gate is met because the app is publicly reachable (ADR-0005).
+5. **Documentation and visual seam.** Every entry's copy is hardcoded German
+   inline in the client `menu.ts` (ADR-0007). The open-Menü ARIA baseline
+   is the one deliberate visual change; the closed-panel screenshot rows stay
+   unchanged. Baseline updates happen only through
+   `npm run test:visual:update` inside the pinned Playwright container
+   (ADR-0020).
