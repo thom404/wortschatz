@@ -1919,13 +1919,14 @@ describe("mountable app", () => {
   });
 
   describe("entry screens (#53, #173)", () => {
-    it("Home is the landing: tagline, exactly two actions and the skin switcher, no form", () => {
+    it("Home is the landing: tagline, exactly two actions and no form — the skin switcher lives in the Menü", () => {
       expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
       expect(app!.root.querySelector(".sheet > p.dim")!.textContent).toBe("Ein Mehrspieler-Wörterspiel.");
 
       const actions = [...app!.root.querySelectorAll<HTMLButtonElement>(".home-actions button")];
       expect(actions.map((b) => b.textContent)).toEqual(["Raum erstellen", "Raum beitreten"]);
-      expect(app!.root.querySelector("#skin-select")).toBeTruthy();
+      expect(app!.root.querySelector("#screen #skin-select")).toBeNull();
+      expect(app!.root.querySelector("#menu-panel #skin-select")).toBeTruthy();
       expect(app!.root.querySelectorAll("input")).toHaveLength(0);
     });
 

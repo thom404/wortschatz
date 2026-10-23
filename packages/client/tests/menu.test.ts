@@ -144,6 +144,7 @@ describe("Menü (ADR-0023)", () => {
     app!.conn().feed(roundEnded(1, REVEAL));
     expect(app!.root.querySelector("#screen h1")!.textContent).toBe("Pause");
     expect(panel().hidden).toBe(true);
+    expect(document.activeElement).toBe(trigger());
   });
 
   it("moves focus into the panel on open and back to the trigger on close", () => {
