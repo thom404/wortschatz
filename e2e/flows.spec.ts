@@ -5,10 +5,10 @@ import {
   seat,
 } from "../packages/client/tests/fixtures.js";
 import { BOARD_DIGRAM, BOARD_DRAG, REVEAL, ROOM_CODE } from "./scenarios.js";
-import { DESKTOP, FIXED_NOW, enterRoom, expect, openPage, test } from "./support.js";
+import { DESKTOP, FIXED_NOW, enterRoom, expect, openMenu, openPage, test } from "./support.js";
 
 /**
- * The five core flows (#156): behavior through the real browser UI, asserted
+ * The core flows (#156), now including the app-owned Menü (ADR-0023): behavior through the real browser UI, asserted
  * on the wire rather than on pixels, so the visual layer never replaces the
  * fast behavior layer.
  */
@@ -70,17 +70,73 @@ test("deep-link join", async ({ page }) => {
   });
 });
 
-test("skin switch survives reload", async ({ page }) => {
+test("skin switch through the Menü survives reload", async ({ page }) => {
   await openPage(page, { viewport: DESKTOP });
 
   await expect(page.locator("body")).toHaveAttribute("data-skin", "standard");
+  await expect(page.locator("#menu-panel")).toBeHidden();
+  await openMenu(page);
+  await expect(page.locator("#menu-panel .menu-version")).toHaveText("Version 0.1.0");
   await page.locator("#skin-select").selectOption("arcade");
   await expect(page.locator("body")).toHaveAttribute("data-skin", "arcade");
 
   await page.reload();
 
   await expect(page.locator("body")).toHaveAttribute("data-skin", "arcade");
+  await openMenu(page);
   await expect(page.locator("#skin-select")).toHaveValue("arcade");
+});
+
+test("menu over a running round closes on Esc and leaves the board usable", async ({ page }) => {
+  const wire = await openPage(page, {
+    viewport: DESKTOP,
+    skin: "standard",
+    wire: {
+      messages: [
+        playingSnapshot({
+          code: ROOM_CODE,
+          selfSeatId: 1,
+          nickname: "Lena",
+          role: "player",
+          board: BOARD_DRAG,
+          deadline: FIXED_NOW + 100_000,
+          players: [seat({ seatId: 1, nickname: "Lena" })],
+        }),
+      ],
+    },
+  });
+
+  await enterRoom(page, { mode: "create", nickname: "Lena" });
+  // Closed, the floating surface intercepts no pointer input: only the
+  // 44 px trigger is interactive.
+  await expect(page.locator("#menu")).toHaveCSS("pointer-events", "none");
+  await expect(page.locator("#menu-trigger")).toHaveCSS("pointer-events", "auto");
+  await openMenu(page);
+  await expect(page.locator("#menu-panel")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#menu-panel")).toBeHidden();
+  await expect(page.locator("#menu-trigger")).toBeFocused();
+
+  const tiles = page.locator("#board .tile");
+  const boxes = await Promise.all([0, 1, 2].map(async (i) => tiles.nth(i).boundingBox()));
+  const points = boxes.map((box) => {
+    if (!box) throw new Error("board tile has no layout box");
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  });
+  const [first, second, third] = points as [
+    { x: number; y: number },
+    { x: number; y: number },
+    { x: number; y: number },
+  ];
+  await page.mouse.move(first.x, first.y);
+  await page.mouse.down();
+  await page.mouse.move(second.x, second.y, { steps: 3 });
+  await page.mouse.move(third.x, third.y, { steps: 3 });
+  await page.mouse.up();
+
+  await expect
+    .poll(() => wire.received.find((m) => m.type === "submit-word"))
+    .toMatchObject({ type: "submit-word", word: "hau" });
 });
 
 test("drag → submit-word", async ({ page }) => {

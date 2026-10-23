@@ -2,7 +2,6 @@
 - paragraph: Ein Mehrspieler-Wörterspiel.
 - button "Raum erstellen"
 - button "Raum beitreten"
-- heading "Skin" [level=2]
-- combobox:
-    - option "Standard (hell)" [selected]
-    - option "Arcade (dunkel)"
+- button "Menü"
+- status
+- alert

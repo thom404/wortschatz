@@ -10,3 +10,6 @@
 - paragraph: 1 von 8 verbunden
 - button "Runde starten"
 - button "Raum verlassen"
+- button "Menü"
+- status
+- alert

@@ -21,3 +21,6 @@
 - paragraph: Es zählt das Gesamtergebnis der Sitzung.
 - paragraph: Der Gastgeber startet die nächste Runde.
 - button "Raum verlassen"
+- button "Menü"
+- status
+- alert

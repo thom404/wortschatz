@@ -1,0 +1,7 @@
+- button "Menü" [expanded]
+- dialog "Menü":
+    - paragraph: Version 0.1.0
+    - heading "Skin" [level=2]
+    - combobox:
+        - option "Standard (hell)" [selected]
+        - option "Arcade (dunkel)"

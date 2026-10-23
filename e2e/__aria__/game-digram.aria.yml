@@ -13,3 +13,6 @@
     - listitem: /3 Aylin \d+ P unterbrochen/
     - listitem: 4 Mehmet 7 P
 - button "Raum verlassen"
+- button "Menü"
+- status
+- alert
