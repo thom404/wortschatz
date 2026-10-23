@@ -7,7 +7,7 @@ WORKDIR /app
 # Build identity (default "dev" locally): surfaced by GET /healthz so the
 # auto-deploy (#29) can verify the running container is this exact image.
 ARG GIT_SHA="dev"
-COPY package.json package-lock.json tsconfig.base.json ./
+COPY package.json package-lock.json tsconfig.base.json vitest.config.ts ./
 COPY packages/shared packages/shared
 COPY packages/server packages/server
 COPY packages/client packages/client
