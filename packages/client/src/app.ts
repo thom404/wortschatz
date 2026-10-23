@@ -4,18 +4,11 @@ import {
   applyGestureSample,
   type GesturePhase,
   type GestureSample,
-  type GestureState,
   type GestureStream,
   type PointerKind,
 } from "./gesture.js";
 import { displayTile, displayWord } from "./display.js";
-import {
-  BOARD_ROTATIONS,
-  boardIdentityKey,
-  rotateBoard,
-  serverBoardIndex,
-  type BoardRotation,
-} from "./board-rotation.js";
+import { rotateBoard, serverBoardIndex, type BoardRotation } from "./board-rotation.js";
 import {
   homeIcon,
   leaveIcon,
@@ -27,6 +20,7 @@ import {
 import { qrSvg } from "./qr.js";
 import { applySkin, loadSkin } from "./skins.js";
 import { menuHtml, wireMenu, type MenuSurface } from "./menu.js";
+import { ViewState, type RevealOrder } from "./view-state.js";
 import type {
   ClientMessage,
   PlayerInfo,
@@ -80,11 +74,6 @@ export type ConnFactory = (opts: {
 
 type Unsubscribe = () => void;
 
-/** How the intermission reveal is ordered for this viewer (issue #140).
- *  `length` is the server's grouped default; `points` and `alphabet` are
- *  client-side flat views over the same payload. */
-export type RevealSort = "length" | "points" | "alphabet";
-
 /** The three entry screens (ADR-0021): Home routes to Create or Join, both
  *  in memory. The history entry carries the screen it names, never a route. */
 type EntryScreen = "home" | "create" | "join";
@@ -122,14 +111,9 @@ interface App {
    *  markup so a rebuild can neither remove it nor lose its wiring. */
   menu: MenuSurface;
   unsub: Unsubscribe | null;
-  /** Room-scoped view state: the intermission's chosen reveal order. It
-   *  survives consecutive intermissions in one room but resets on a fresh
-   *  mount, reconnect snapshot, or a different room. Never wire state. */
-  revealSort: RevealSort;
-  /** The player-local board arrangement (issue #151), in memory and per
-   *  board: it survives re-renders within a round, rides into that round's
-   *  intermission, and resets when the next board starts. Never wire state. */
-  boardRotation: BoardRotation;
+  /** Client-only view state (ADR-0024): the reveal order, the Board
+   *  rotation and the live Gesture, together with their reset rules. */
+  view: ViewState;
   /** The room code this mount's connection was built for — creating a
    *  room greets with the nickname, and the server names the room later
    *  (first snapshot). The outcome screens that fire without a snapshot
@@ -142,9 +126,6 @@ interface App {
   screenFromHome: boolean;
   onPopState: (ev: PopStateEvent) => void;
   stopDrag: () => void;
-  /** The live board drag, or `null` between drags. The pure gesture module
-   *  owns its rules; the app only holds the state and paints it. */
-  gesture: GestureState | null;
   /** How far (px) inside a tile a movement sample must land to count as a
    *  clear hit, measured from the board's computed gap when it renders. */
   clearHitMargin: number;
@@ -306,8 +287,7 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
     noticeError: rootEl.querySelector<HTMLElement>("#notice-error")!,
     menu: wireMenu(rootEl),
     unsub: null,
-    revealSort: "length",
-    boardRotation: 0,
+    view: new ViewState(),
     roomCode: "",
     screen: "home",
     screenFromHome: false,
@@ -317,7 +297,6 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
       if (!app.inRoom) showEntry(app, ev.state as EntryState | null);
     },
     stopDrag: () => {},
-    gesture: null,
     clearHitMargin: 0,
     liveRegions: [],
   };
@@ -526,11 +505,9 @@ function deepLinkCode(): string | null {
 function startRoom(app: App, code: string, greet: GreetFn): void {
   app.inRoom = true;
   app.roomCode = code;
-  // A sort choice is local to one room visit (issue #140): joining another
-  // room starts again at the grouped default. A board rotation is local to
-  // one board (issue #151), so a fresh room visit starts at 0° too.
-  app.revealSort = "length";
-  app.boardRotation = 0;
+  // View state is local to one room visit: a new room starts at the grouped
+  // reveal order and 0° rotation (ADR-0024).
+  app.view.reset();
   app.conn = app.connect({
     code,
     greet,
@@ -560,23 +537,9 @@ function onMessage(app: App, msg: ServerMessage): void {
   if (isGreetingRejection(app, msg) && msg.code !== "room-not-found") {
     return rejectGreeting(app, msg);
   }
-  // A snapshot is the reconnect/resync channel (and a fresh join): the
-  // viewer's local sort choice starts over at the grouped default. Ordinary
-  // round-end deltas between intermissions keep it (issue #140).
-  if (msg.type === "snapshot") {
-    app.revealSort = "length";
-    // Board rotation is per board, not per connection (issue #151): a
-    // reconnect snapshot for the same board keeps the chosen arrangement,
-    // while a snapshot that names a different board (or none) resets it.
-    // The module's identity key names that same puzzle (issue #168).
-    const snapshotRound = msg.round ?? msg.finishedRound;
-    const snapshotKey = snapshotRound ? boardIdentityKey(snapshotRound.roundNumber, snapshotRound.board) : "";
-    const currentRound = app.store.round;
-    const currentKey = currentRound ? boardIdentityKey(currentRound.roundNumber, currentRound.board) : "";
-    if (snapshotKey !== currentKey) app.boardRotation = 0;
-  }
-  // Every round start is a new board, so the next puzzle opens at 0°.
-  if (msg.type === "round-start") app.boardRotation = 0;
+  // The view state must be current before the store notifies subscribers and
+  // renders the screen (ADR-0024).
+  app.view.apply(msg);
   app.store.apply(msg);
   // Room end and kick are close outcomes, reported once by the connection
   // after this frame reached the store (see `onClose`). `room-not-found`
@@ -813,7 +776,7 @@ const FOUND_REGION: LiveRegion = { selector: "#found", update: updateFound };
  *  identity. */
 function updateRevealLinks(app: App): void {
   const el = app.root.querySelector<HTMLElement>("#reveal");
-  if (el) el.innerHTML = revealHtml(app.store, app.revealSort);
+  if (el) el.innerHTML = revealHtml(app.store, app.view.revealOrder);
 }
 
 /** The in-place refresh of every live region the current screen declares
@@ -902,7 +865,7 @@ function renderGame(app: App): void {
         <section class="panel area-board">
           <h2>Spielfeld</h2>
           ${spectating ? "" : `<div id="trace" class="trace hint">${TRACE_HINT}</div>`}
-          ${boardHtml(board, app.boardRotation)}
+          ${boardHtml(board, app.view.boardRotation)}
           ${boardRotationHtml()}
         </section>
         ${
@@ -951,13 +914,13 @@ function renderIntermission(app: App): void {
         <h1 class="area-title">Pause</h1>
         <section class="panel area-board">
           <h2>Runde ${finishedRoundNumber}</h2>
-          ${boardHtml(board, app.boardRotation)}
+          ${boardHtml(board, app.view.boardRotation)}
           ${boardRotationHtml()}
         </section>
         <section class="panel area-reveal">
           <h2>Gefundene Wörter</h2>
-          ${hasRevealWords ? revealSortHtml(app.revealSort) : ""}
-          <dl id="reveal">${revealHtml(app.store, app.revealSort)}</dl>
+          ${hasRevealWords ? revealSortHtml(app.view.revealOrder) : ""}
+          <dl id="reveal">${revealHtml(app.store, app.view.revealOrder)}</dl>
         </section>
         <section class="panel area-score">
           <h2>Punkte</h2>
@@ -974,7 +937,7 @@ function renderIntermission(app: App): void {
     </div>`;
   measureBoardGap(app);
   app.liveRegions = INTERMISSION_LIVE_REGIONS;
-  wireRevealSort(app);
+  wireRevealOrder(app);
   wireBoardRotation(app);
   const start = app.root.querySelector<HTMLButtonElement>("#start-btn");
   if (start)
@@ -1122,8 +1085,8 @@ function wireDrag(app: App): () => void {
    *  Returns whether the sample was claimed, so a touch handler can stop
    *  the page from scrolling or zooming under the finger. */
   const feed = (sample: GestureSample): boolean => {
-    const outcome = applyGestureSample(app.gesture, sample);
-    app.gesture = outcome.state;
+    const outcome = applyGestureSample(app.view.gesture, sample);
+    app.view.gesture = outcome.state;
     if (outcome.submit) submitTrace(app, outcome.submit);
     else if (outcome.traceChanged) paintTrace(app);
     return outcome.claimed;
@@ -1134,7 +1097,7 @@ function wireDrag(app: App): () => void {
   const mayBegin = () => app.store.phase === "playing" && app.store.self.role !== "spectator";
 
   const onPointerDown = (ev: PointerEvent) => {
-    if (!app.gesture && !mayBegin()) return;
+    if (!app.view.gesture && !mayBegin()) return;
     feed(sampleFor("down", "pointer", ev.pointerId, ev.clientX, ev.clientY, ev.target, pointerKind(ev)));
   };
   const onPointerMove = (ev: PointerEvent) => {
@@ -1150,7 +1113,7 @@ function wireDrag(app: App): () => void {
   const onTouchStart = (ev: TouchEvent) => {
     const t = ev.changedTouches[0];
     if (!t) return;
-    if (!app.gesture && !mayBegin()) return;
+    if (!app.view.gesture && !mayBegin()) return;
     if (feed(sampleFor("down", "touch", t.identifier, t.clientX, t.clientY, t.target))) ev.preventDefault();
   };
   const onTouchMove = (ev: TouchEvent) => {
@@ -1160,13 +1123,13 @@ function wireDrag(app: App): () => void {
   };
   const onTouchEnd = (ev: TouchEvent) => {
     const t = ev.changedTouches[0];
-    const id = t ? t.identifier : app.gesture?.touchId;
+    const id = t ? t.identifier : app.view.gesture?.touchId;
     if (id === null || id === undefined) return;
     feed(sampleFor("up", "touch", id, t?.clientX ?? 0, t?.clientY ?? 0, t?.target ?? null));
   };
   const onTouchCancel = (ev: TouchEvent) => {
     const t = ev.changedTouches[0];
-    const id = t ? t.identifier : app.gesture?.touchId;
+    const id = t ? t.identifier : app.view.gesture?.touchId;
     if (id === null || id === undefined) return;
     feed(sampleFor("cancel", "touch", id, t?.clientX ?? 0, t?.clientY ?? 0, t?.target ?? null));
   };
@@ -1240,7 +1203,7 @@ function submitTrace(app: App, trace: number[]): void {
 function traceWord(app: App, trace: readonly number[]): string {
   const board = app.store.round?.board ?? [];
   return trace
-    .map((cell) => tileStrings(board[serverBoardIndex(cell, app.boardRotation)] ?? "")[0] ?? "")
+    .map((cell) => tileStrings(board[serverBoardIndex(cell, app.view.boardRotation)] ?? "")[0] ?? "")
     .join("");
 }
 
@@ -1263,7 +1226,7 @@ function hitTileIndex(app: App, x: number, y: number, target: EventTarget | null
 /** Paints the trace onto the live DOM: `.sel` on selected tiles, the
  *  would-be word (or the idle hint) in the trace line. */
 function paintTrace(app: App): void {
-  const trace = app.gesture?.trace ?? [];
+  const trace = app.view.gesture?.trace ?? [];
   const board = app.root.querySelector("#board");
   if (board) {
     for (const el of board.children) el.classList.remove("sel");
@@ -1401,7 +1364,7 @@ function playerChipsHtml(store: GameStore, mode: "seats" | "ranked" | "session" 
  * visible — dimmed, without invented credit. No tile paths, no first-finder
  * marks.
  */
-function revealHtml(store: GameStore, mode: RevealSort): string {
+function revealHtml(store: GameStore, mode: RevealOrder): string {
   const reveal = store.finishedRound?.reveal;
   if (!reveal || revealWordCount(reveal) === 0) return "<dt>Ergebnisse</dt><dd>—</dd>";
   if (mode === "length") {
@@ -1452,7 +1415,7 @@ function revealWordCount(reveal: RevealPayload): number {
 
 /** The reveal's three local sort modes, in display order. Each label is
  *  the one string used as both the accessible name and the tooltip. */
-const REVEAL_SORTS: readonly { mode: RevealSort; icon: string; label: string }[] = [
+const REVEAL_SORTS: readonly { mode: RevealOrder; icon: string; label: string }[] = [
   { mode: "length", icon: sortLengthIcon, label: "Nach Länge sortieren" },
   { mode: "points", icon: sortPointsIcon, label: "Nach Punkten sortieren" },
   { mode: "alphabet", icon: sortAlphabetIcon, label: "Alphabetisch sortieren" },
@@ -1461,7 +1424,7 @@ const REVEAL_SORTS: readonly { mode: RevealSort; icon: string; label: string }[]
 /** The pressed-state button group. Selection is announced by
  *  `aria-pressed` and shown by a filled target plus an underline, never by
  *  colour alone. The group label itself is gone (ADR-0022). */
-function revealSortHtml(active: RevealSort): string {
+function revealSortHtml(active: RevealOrder): string {
   return `<div id="reveal-sort" class="reveal-sort">
     ${REVEAL_SORTS.map(({ mode, icon, label }) =>
       iconButtonHtml({
@@ -1478,16 +1441,16 @@ function revealSortHtml(active: RevealSort): string {
 /** Wires the sort buttons to a reveal-only repaint: no store notification,
  *  no rebuild, no wire message, so the finished board keeps its identity and
  *  the hidden intermission timer (if any) is never touched. */
-function wireRevealSort(app: App): void {
+function wireRevealOrder(app: App): void {
   for (const button of app.root.querySelectorAll<HTMLButtonElement>("#reveal-sort button")) {
     button.onclick = () => {
-      const mode = button.dataset.sort as RevealSort | undefined;
-      if (!mode || mode === app.revealSort) return;
-      app.revealSort = mode;
+      const mode = button.dataset.sort as RevealOrder | undefined;
+      if (!mode || mode === app.view.revealOrder) return;
+      app.view.revealOrder = mode;
       const reveal = app.root.querySelector<HTMLElement>("#reveal");
-      if (reveal) reveal.innerHTML = revealHtml(app.store, app.revealSort);
+      if (reveal) reveal.innerHTML = revealHtml(app.store, app.view.revealOrder);
       for (const other of app.root.querySelectorAll<HTMLButtonElement>("#reveal-sort button")) {
-        const pressed = other.dataset.sort === app.revealSort;
+        const pressed = other.dataset.sort === app.view.revealOrder;
         other.setAttribute("aria-pressed", String(pressed));
         other.classList.toggle("active", pressed);
       }
@@ -1495,21 +1458,16 @@ function wireRevealSort(app: App): void {
   }
 }
 
-/** The next quarter turn in the clockwise cycle `0 → 90 → 180 → 270 → 0`. */
-function nextBoardRotation(current: BoardRotation): BoardRotation {
-  return BOARD_ROTATIONS[(BOARD_ROTATIONS.indexOf(current) + 1) % BOARD_ROTATIONS.length]!;
-}
-
 /** Wires the one rotation button to an arrangement-only repaint: no store
  *  notification and no wire message, so the board data, score and timer
- *  identity stay untouched. Rotation ends any live gesture first, so a
- *  trace can never span two arrangements (issue #151). */
+ *  identity stay untouched. View state owns the quarter turn and ends any
+ *  live gesture first, so a trace can never span two arrangements
+ *  (issue #151). */
 function wireBoardRotation(app: App): void {
   const button = app.root.querySelector<HTMLButtonElement>("#board-rotation");
   if (!button) return;
   button.onclick = () => {
-    app.boardRotation = nextBoardRotation(app.boardRotation);
-    if (app.gesture) app.gesture = null;
+    app.view.rotate();
     repaintBoard(app);
     paintTrace(app);
   };
@@ -1522,9 +1480,9 @@ function repaintBoard(app: App): void {
   const board = app.store.round?.board ?? [];
   const el = app.root.querySelector<HTMLElement>("#board");
   if (el) {
-    el.dataset.rotation = String(app.boardRotation);
+    el.dataset.rotation = String(app.view.boardRotation);
     el.setAttribute("style", boardSpanStyle(board));
-    el.innerHTML = boardTilesHtml(board, app.boardRotation);
+    el.innerHTML = boardTilesHtml(board, app.view.boardRotation);
   }
 }
 

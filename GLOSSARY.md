@@ -304,6 +304,23 @@ word list. Matching is case-insensitive and NFC-normalized; `ä/ö/ü/ß` are ma
 real characters (no `ae/oe/ue/ss` aliasing). Validity is **strict list membership** —
 there is no algorithmic compound validation.
 
+## View state
+
+The client-only state a player owns beside the server-derived store: the
+chosen **Intermission** reveal order (`length`, `points` or `alphabet`), the
+**Board rotation** and the live **Gesture**. One `ViewState` module owns all
+three and their reset rules; it reads the same server messages as the store but
+needs no store handle, DOM, timer or wire access. Defaults are the grouped
+(`length`) reveal order, 0° rotation, no Gesture and an empty board identity.
+A Snapshot always returns the reveal order to the grouped default and resets
+the rotation and ends the Gesture when it names a different board (or none); a
+Round start resets the rotation, ends the Gesture and records the new board; a
+Round end ends the Gesture and keeps the rotation, reveal order and board key;
+`reset()` returns every value to its default once per **Room** visit; rotating
+the board advances one quarter turn and ends the live Gesture. The **Live
+regions** stay with the screens and are not view state. See
+[ADR-0024](docs/adr/0024-view-state-beside-the-store.md).
+
 ## Visual regression seam
 
 The real-browser layer beside the happy-dom mount tests: Playwright renders the
