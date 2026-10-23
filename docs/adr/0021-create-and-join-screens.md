@@ -78,3 +78,12 @@ the phase nor the screens precisely.
 - The create and join screens become canonical matrix rows: +12 PNGs and +2 ARIA
   snapshots at the current three viewports.
 - Home is the only screen carrying the skin switcher, which is unchanged.
+
+## Amendment (#182, 2026-10-23): the skin switcher left Home for the menu
+
+[ADR-0023](0023-app-owned-menu-surface.md) moves skin switching into the
+app-owned **Menü**, so this ADR's decision item 1 ("…and the skin switcher") and
+the final consequence bullet above no longer hold. Home remains the landing with
+exactly two actions and no form; skin switching is app-global and reachable from
+every screen. The GLOSSARY.md **Home** and **Skin** entries were updated with
+it.

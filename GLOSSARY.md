@@ -105,9 +105,11 @@ travels inside a join greeting's first frame, never in the WebSocket URL. See
 ## Home
 
 The app's landing screen and its only entry point: it offers exactly two actions,
-`Raum erstellen` and `Raum beitreten`, beside the skin switcher, and carries no
-form. It leads to the **Create screen** or the **Join screen**; a deep link skips
-it and lands on Join. See [ADR-0021](docs/adr/0021-create-and-join-screens.md).
+`Raum erstellen` and `Raum beitreten`, and carries no form. The skin switcher
+lives in the **Menu**, not here. It leads to the **Create screen** or the
+**Join screen**; a deep link skips it and lands on Join. See
+[ADR-0021](docs/adr/0021-create-and-join-screens.md) and
+[ADR-0023](docs/adr/0023-app-owned-menu-surface.md).
 
 ## Host
 
@@ -163,6 +165,14 @@ full screens. See
 The pre-round phase of a room, before the host starts round one. Players join, take a
 nickname and a seat, and wait; the host starts the first round, and a lone host is
 enough. The phase's screen is the **Wait room**.
+
+## Menu
+
+The app-owned floating surface — one icon-only trigger (`Menü`) plus an anchored
+panel — carrying app-global entries outside the screen markup, beside the
+**Notification layer**. Its entries are the version row and the skin switcher; it
+never holds room- or phase-scoped actions, is not a screen, and never pauses a
+running round. See [ADR-0023](docs/adr/0023-app-owned-menu-surface.md).
 
 ## Play-time delta
 
@@ -223,7 +233,7 @@ A user-facing visual design of the whole app: one CSS custom-property token bloc
 (palette, surface, border, glow, radius — plus a per-skin `--ping` low-time colour)
 consumed by every component, plus one registry entry. Standard (light) is the
 default; Arcade (dark neon) is the second. The choice renders as `data-skin` on the
-root, can be switched from the home screen, applies app-wide instantly, and
+root, can be switched from the **Menu** (ADR-0023), applies app-wide instantly, and
 persists in localStorage. No component style branches on a skin beyond tokens, and
 adding one cannot break layout. See [ADR-0002](docs/adr/0002-game-screen-layout-and-skins.md).
 
