@@ -23,6 +23,11 @@ for (const scenario of CANONICAL_SCENARIOS) {
   });
 }
 
+test("Menü closed semantics", async ({ page }) => {
+  await openPage(page, { viewport: DESKTOP, skin: "standard" });
+  await expect(page.locator("#menu")).toMatchAriaSnapshot({ name: "menu-closed.aria.yml" });
+});
+
 test("Menü open semantics", async ({ page }) => {
   await openPage(page, { viewport: DESKTOP, skin: "standard" });
   await page.locator("#menu-trigger").click();
