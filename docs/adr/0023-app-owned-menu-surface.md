@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-23
-- Tickets: [#181](https://github.com/thom404/wortschatz/issues/181) (version source), [#182](https://github.com/thom404/wortschatz/issues/182) (the surface); queued entries: [#183](https://github.com/thom404/wortschatz/issues/183), [#184](https://github.com/thom404/wortschatz/issues/184), [#185](https://github.com/thom404/wortschatz/issues/185)
+- Tickets: spec [#187](https://github.com/thom404/wortschatz/issues/187), [#181](https://github.com/thom404/wortschatz/issues/181) (version source), [#182](https://github.com/thom404/wortschatz/issues/182) (the surface); queued entries: [#183](https://github.com/thom404/wortschatz/issues/183), [#184](https://github.com/thom404/wortschatz/issues/184), [#185](https://github.com/thom404/wortschatz/issues/185)
 - Related: [ADR-0018](0018-floating-notification-layer.md) (the app-owned-surface precedent), [ADR-0021](0021-create-and-join-screens.md) (Home, amended below), [ADR-0022](0022-icon-only-controls-and-tooltips.md) (icon-only controls), [ADR-0002](0002-game-screen-layout-and-skins.md) (token uniformity), [ADR-0007](0007-german-ui-copy-voice.md)
 
 ## Context
