@@ -1,6 +1,10 @@
 - button "Menü" [expanded]
 - dialog "Menü":
-    - paragraph: Version 0.1.0
+    - button "Version 0.1.0"
+    - button "Spielanleitung"
+    - button "Quellen"
+    - link "Problem melden":
+        - /url: https://github.com/thom404/wortschatz/issues
     - heading "Skin" [level=2]
     - combobox:
         - option "Standard (hell)" [selected]

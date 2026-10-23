@@ -32,6 +32,14 @@ tile**, and no two identical tiles 8-way adjacent. Letters contributed by a
 special do not count toward the single-letter cap, so an `e` cell next to an `er`
 cell is allowed. See [ADR-0003](docs/adr/0003-board-generation-and-tile-inventory.md).
 
+## Changelog
+
+The player-facing history of shipped versions, reached by expanding the version
+row in the **Menu**: one hand-written German inline list, newest entry first,
+each headed by its version and tagged `aktuell` when it equals `APP_VERSION`. A
+version bump and its changelog entry land in the same pull request. See
+[ADR-0023](docs/adr/0023-app-owned-menu-surface.md).
+
 ## Close outcome
 
 The single client-seam event that ends a room connection: `kicked`, `room-ended`
@@ -170,7 +178,8 @@ enough. The phase's screen is the **Wait room**.
 
 The app-owned floating surface — one icon-only trigger (`Menü`) plus an anchored
 panel — carrying app-global entries outside the screen markup, beside the
-**Notification layer**. Its entries are the version row and the skin switcher; it
+**Notification layer**. Its entries are the version row (which expands the
+**Changelog**), Spielanleitung, Quellen, Problem melden and the skin switcher; it
 never holds room- or phase-scoped actions, is not a screen, and never pauses a
 running round. See [ADR-0023](docs/adr/0023-app-owned-menu-surface.md).
 
