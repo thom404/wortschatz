@@ -10,6 +10,6 @@
   },
   "references": [{ "path": "../shared" }],
   "include": ["src", "tests"],
-  "files": ["vite.config.ts"],
+  "files": ["vite.config.ts", "app-version.ts"],
   "exclude": ["node_modules", "dist_test"]
 }

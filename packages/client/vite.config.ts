@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import { readAppVersion } from "./app-version.js";
 
 export default defineConfig({
   server: {
@@ -10,5 +11,8 @@ export default defineConfig({
     port: 5173,
   },
   build: { outDir: "dist" },
-  define: { global: "globalThis" },
+  define: {
+    global: "globalThis",
+    __APP_VERSION__: JSON.stringify(readAppVersion()),
+  },
 });
