@@ -350,6 +350,28 @@ describe("board rotation (#151)", () => {
     expect(traceText()).toBe("Wische über die Felder, um ein Wort zu bilden.");
   });
 
+  it("ends a held gesture at the Round boundary and releases it without submitting", () => {
+    driveToRoundOne();
+    const tilesNow = tileEls(app!.root);
+    firePointerEvent(tilesNow[0]!, "pointerdown");
+    firePointerEvent(tilesNow[1]!, "pointermove");
+    expect(traceText()).toBe("HA");
+
+    app!.conn().feed(roundEnded(1, NO_WORDS));
+    expect(app!.root.querySelector("h1")!.textContent).toBe("Pause");
+
+    // The pause shows the same board, but the drag that began in the round
+    // is gone: a release now submits nothing.
+    firePointerEvent(tileEls(app!.root)[0]!, "pointerup");
+    expect(app!.conn().sentTypes()).toEqual(["create-room", "start-round"]);
+    expect(
+      app!
+        .conn()
+        .sent()
+        .some((msg) => msg.type === "submit-word")
+    ).toBe(false);
+  });
+
   it("shows the control on an intermission snapshot too", () => {
     typeInto("#jn-code", "LATE5");
     typeInto("#jn-nick", "Ben");
