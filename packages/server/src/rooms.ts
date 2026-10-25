@@ -1,7 +1,6 @@
 import { WebSocket } from "ws";
 import type {
   ClientMessage,
-  PlayerInfo,
   RoomEndReason,
   ScoreEntry,
   ServerMessage,
@@ -10,7 +9,7 @@ import type {
 import type { ServerConfigResolved } from "./config.js";
 import { Connection } from "./connection.js";
 import { Pinger } from "./hardening.js";
-import { makeRoom, makeRoomCode, makeToken, type Room, type Seat } from "./state.js";
+import { makeRoom, makeRoomCode, makeToken, seatInfo, type Room, type Seat } from "./state.js";
 import { isFormable } from "./boardgen/index.js";
 import { RoomLogic, systemClock, type Clock } from "./room-logic.js";
 interface ConnState {
@@ -526,13 +525,4 @@ export function normalizeWord(w: string): string {
 }
 export function normalizeCode(code: string): string {
   return code.trim().toUpperCase();
-}
-function seatInfo(s: Seat): PlayerInfo {
-  return {
-    seatId: s.seatId,
-    nickname: s.nickname,
-    role: s.role,
-    cumulativeScore: s.cumulativeScore,
-    connected: s.present,
-  };
 }
