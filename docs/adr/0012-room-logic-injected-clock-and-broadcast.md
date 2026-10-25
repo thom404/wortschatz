@@ -19,7 +19,9 @@ sends.
 1. **A `RoomLogic` module.** `packages/server/src/room-logic.ts` owns the phase
    machine and roster rules: round start/end, skip, auto-advance, the tick
    loop, host succession, seat release and auto-release, empty grace and idle
-   expiry.
+   expiry. Join and submission joined that module later, with the same clock
+   and broadcast seams; see
+   [ADR-0025](0025-room-rules-own-join-and-submission.md).
 2. **Two injected seams.** `RoomLogic` receives a `Clock` (`now`, `setTimeout`,
    `clearTimeout`, `setInterval`, `clearInterval`) and a broadcast function.
    Production passes `systemClock` and the room's socket fan-out; tests pass a
