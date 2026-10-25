@@ -1,3 +1,5 @@
+import { escapeHtml } from "./escape.js";
+
 /**
  * The skin registry (ADR-0002, #23): a skin is one CSS custom-property
  * token block in style.css plus one entry here — no component code path
@@ -49,7 +51,8 @@ export function skinSwitcherHtml(current: SkinId): string {
     <section class="panel">
       <h2>Skin</h2>
       <select id="skin-select">${SKINS.map(
-        (s) => `<option value="${s.id}"${s.id === current ? " selected" : ""}>${s.label}</option>`
+        (s) =>
+          `<option value="${escapeHtml(s.id)}"${s.id === current ? " selected" : ""}>${escapeHtml(s.label)}</option>`
       ).join("")}</select>
     </section>`;
 }

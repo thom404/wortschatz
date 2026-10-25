@@ -8,6 +8,7 @@ import {
   type PointerKind,
 } from "./gesture.js";
 import { displayTile, displayWord } from "./display.js";
+import { escapeHtml } from "./escape.js";
 import { rotateBoard, serverBoardIndex, type BoardRotation } from "./board-rotation.js";
 import {
   homeIcon,
@@ -1501,10 +1502,4 @@ function foundHtml(store: GameStore): string {
 function input(app: App, id: string): string {
   const el = app.root.querySelector<HTMLInputElement>(`#${id}`);
   return el ? el.value.trim() : "";
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
-    c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;"
-  );
 }

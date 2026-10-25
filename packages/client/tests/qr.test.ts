@@ -62,6 +62,13 @@ describe("QR encoder (#48)", () => {
     expect(encodeQr(URL)).not.toEqual(encodeQr("https://wortschatz.example/r/LAG4U"));
   });
 
+  it("escapes an injection-shaped payload in the data-payload attribute", () => {
+    const payload = 'https://wortschatz.example/r/X"<&Y';
+    const svg = qrSvg(payload);
+    expect(svg).toContain('data-payload="https://wortschatz.example/r/X&quot;&lt;&amp;Y"');
+    expect(svg).not.toContain(`data-payload="${payload}"`);
+  });
+
   it("renders a fixed dark-on-light SVG with the standard quiet zone and no skin tokens", () => {
     const svg = qrSvg(URL);
     expect(svg).toContain('fill="#ffffff"');

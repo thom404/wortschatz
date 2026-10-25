@@ -1,3 +1,4 @@
+import { escapeHtml } from "./escape.js";
 import { menuIcon } from "./icons.js";
 import { loadSkin, skinSwitcherHtml, wireSkinSwitcher } from "./skins.js";
 import { APP_VERSION } from "./version.js";
@@ -211,10 +212,4 @@ function wireDisclosures(panel: HTMLElement): void {
       body.hidden = expanded;
     };
   }
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
-    c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;"
-  );
 }
