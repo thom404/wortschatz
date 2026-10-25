@@ -353,6 +353,7 @@ describe("join", () => {
 
     // The nickname is invalid on purpose: the reclaim is checked before any name rule.
     const verdict = h.logic.join(h.room, { token: "live-token", nickname: " " });
+    h.logic.announceJoin(h.room, verdict);
 
     expect(verdict.kind).toBe("reconnected");
     if (verdict.kind !== "reconnected") throw new Error("expected a reconnect");
@@ -454,12 +455,41 @@ describe("join", () => {
     h.sent.length = 0;
 
     const verdict = h.logic.join(h.room, { nickname: "Drei" });
+    h.logic.announceJoin(h.room, verdict);
 
     expect(verdict.kind).toBe("joined");
     if (verdict.kind !== "joined") throw new Error("expected a new join");
     expect(verdict.seat.role).toBe("spectator");
     expect(verdict.announceScores).toBe(false);
     expect(types(h.sent)).toEqual(["player-joined"]);
+  });
+
+  test("the join role table: lobby and intermission joiners are players, only a mid-round joiner is a Spectator", () => {
+    for (const phase of ["lobby", "intermission"] as const) {
+      const h = makeHarness();
+      const host = h.addSeat("Hansi");
+      h.room.hostSeatId = host.seatId;
+      h.room.phase = phase;
+      h.room.roundNumber = phase === "intermission" ? 1 : 0;
+
+      const verdict = h.logic.join(h.room, { nickname: "Neu" });
+
+      expect(verdict.kind).toBe("joined");
+      if (verdict.kind !== "joined") throw new Error("expected a new join");
+      expect(verdict.seat.role).toBe("player");
+    }
+
+    const h = makeHarness();
+    const host = h.addSeat("Hansi");
+    h.room.hostSeatId = host.seatId;
+    h.room.phase = "playing";
+    h.room.roundNumber = 1;
+
+    const verdict = h.logic.join(h.room, { nickname: "Neu" });
+
+    expect(verdict.kind).toBe("joined");
+    if (verdict.kind !== "joined") throw new Error("expected a new join");
+    expect(verdict.seat.role).toBe("spectator");
   });
 
   test("a lobby join announces player-joined exactly once and asks for no scoreboard", () => {
@@ -469,6 +499,7 @@ describe("join", () => {
     h.sent.length = 0;
 
     const verdict = h.logic.join(h.room, { nickname: "Gretl" });
+    h.logic.announceJoin(h.room, verdict);
 
     expect(verdict.kind).toBe("joined");
     if (verdict.kind !== "joined") throw new Error("expected a new join");
@@ -497,6 +528,7 @@ describe("join", () => {
     h.sent.length = 0;
 
     const verdict = h.logic.join(h.room, { nickname: "Spät" });
+    h.logic.announceJoin(h.room, verdict);
 
     expect(verdict).toMatchObject({ kind: "joined", announceScores: true });
     expect(types(h.sent)).toEqual(["player-joined"]);
@@ -508,6 +540,7 @@ describe("join", () => {
     h.sent.length = 0;
 
     const verdict = h.logic.join(h.room, { nickname: "Gretl" });
+    h.logic.announceJoin(h.room, verdict);
 
     expect(verdict.kind).toBe("joined");
     if (verdict.kind !== "joined") throw new Error("expected a new join");
@@ -524,6 +557,7 @@ describe("join", () => {
     h.sent.length = 0;
 
     const verdict = h.logic.join(h.room, { token: "live-token", nickname: "Hansi" });
+    h.logic.announceJoin(h.room, verdict);
 
     expect(verdict).toMatchObject({ kind: "reconnected", announceScores: true });
     expect(h.room.hostSeatId).toBe(returning.seatId);
