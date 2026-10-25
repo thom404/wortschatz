@@ -1,18 +1,12 @@
 import { WebSocket } from "ws";
-import type {
-  ClientMessage,
-  RoomEndReason,
-  ScoreEntry,
-  ServerMessage,
-  SnapshotMsg,
-} from "@wortschatz/shared";
+import type { ClientMessage, RoomEndReason, ServerMessage, SnapshotMsg } from "@wortschatz/shared";
 import type { ServerConfigResolved } from "./config.js";
-import { Connection } from "./connection.js";
+import { Connection, errorReply } from "./connection.js";
 import { Pinger } from "./hardening.js";
 import { makeRoom, makeRoomCode, makeToken, seatInfo, type Room, type Seat } from "./state.js";
 import { isFormable } from "./boardgen/index.js";
 import { RoomLogic, systemClock, type Clock } from "./room-logic.js";
-import { fold, normalizeCode, normalizeNickname, normalizeWord, validNickname } from "./text.js";
+import { normalizeCode, normalizeNickname, normalizeWord, validNickname } from "./text.js";
 
 export { normalizeCode, normalizeWord } from "./text.js";
 interface ConnState {
@@ -98,22 +92,12 @@ export class Rooms {
   }
   private handleCreateRoom(msg: Extract<ClientMessage, { type: "create-room" }>, ws: WebSocket): void {
     if (this.rooms.size >= this.cfg.maxRooms) {
-      this.sendTo(ws, {
-        type: "error",
-        reqId: msg.reqId,
-        code: "server-full",
-        message: "room capacity reached",
-      });
+      this.sendTo(ws, errorReply("server-full", "room capacity reached", msg.reqId));
       return;
     }
     const nickname = normalizeNickname(msg.nickname);
     if (!validNickname(nickname)) {
-      this.sendTo(ws, {
-        type: "error",
-        reqId: msg.reqId,
-        code: "invalid-message",
-        message: "nickname invalid",
-      });
+      this.sendTo(ws, errorReply("invalid-message", "nickname invalid", msg.reqId));
       return;
     }
     const code = this.mintCode();
@@ -133,66 +117,28 @@ export class Rooms {
     const room = this.rooms.get(code);
     // Unresolvable code / expired room: one generic outcome, zero probing.
     if (!room || room.phase === "closed" || room.closing) {
-      this.sendTo(ws, { type: "error", reqId: msg.reqId, code: "room-not-found" });
+      this.sendTo(ws, errorReply("room-not-found", undefined, msg.reqId));
       this.cfg.log.info({ event: "join-rejected", room: code, reason: "room-not-found" });
       return;
     }
-    // Token reclaim first: opaque, room-lifetime; a stale token is never an
-    // error — it silently degrades to new-player semantics.
-    const seat = msg.token ? this.logic.findSeatByToken(room, msg.token) : null;
-    if (seat) {
-      this.bindConn(ws, room, seat);
-      this.logic.markPresent(seat);
-      this.logic.touch(room);
-      this.logic.clearEmptyTimer(room);
-      this.logic.adoptHostIfMissing(room, seat);
-      this.cfg.log.info({ event: "reconnect", room: room.code, seat: seat.seatId });
-      this.sendSnapshot(ws, room, seat, msg.reqId, seat.token);
-      // Reconnect repair: room-wide scoreboard refresh that also carries
-      // the reclaimed seat back into everyone's view.
-      this.broadcastScores(room);
-      return;
-    }
-    const nickname = normalizeNickname(msg.nickname);
-    if (!validNickname(nickname)) {
-      this.sendTo(ws, {
-        type: "error",
-        reqId: msg.reqId,
-        code: "invalid-message",
-        message: "nickname invalid",
-      });
-      return;
-    }
-    const taken = [...room.seats.values()].some((s) => fold(s.nickname) === fold(nickname));
-    if (taken) {
-      this.sendTo(ws, { type: "error", reqId: msg.reqId, code: "nickname-taken" });
-      return;
-    }
-    // Player seats are capped; a mid-round joiner is a spectator and waits
-    // for the next round-start (promotion is capped out in join order there).
-    if (room.phase !== "playing" && room.seats.size >= this.cfg.maxPlayers) {
-      this.sendTo(ws, { type: "error", reqId: msg.reqId, code: "room-full" });
-      return;
-    }
-    const created = this.logic.newSeat(room, nickname);
-    created.token = makeToken();
-    if (room.phase === "playing") created.role = "spectator";
-    this.bindConn(ws, room, created);
-    this.logic.touch(room);
-    this.logic.clearEmptyTimer(room);
-    this.logic.adoptHostIfMissing(room, created);
-    this.cfg.log.info({
-      event: "join",
-      room: room.code,
-      seat: created.seatId,
-      role: created.role,
+    const verdict = this.logic.join(room, {
+      ...(msg.token !== undefined ? { token: msg.token } : {}),
+      nickname: msg.nickname,
     });
-    this.broadcast(room, { type: "player-joined", player: seatInfo(created) });
-    this.sendSnapshot(ws, room, created, msg.reqId, created.token);
-    // The intermission's screen stays the honest mirror for newcomers too:
-    // the finished round never scored the new seat, so a room-wide
-    // score-update re-anchors the standings everyone renders (#22).
-    if (room.phase === "intermission") this.broadcastScores(room);
+    if (verdict.kind === "rejected") {
+      this.sendTo(ws, errorReply(verdict.code, verdict.detail, msg.reqId));
+      return;
+    }
+    const seat = verdict.seat;
+    if (verdict.kind === "joined") seat.token = makeToken();
+    this.bindConn(ws, room, seat);
+    this.cfg.log.info(
+      verdict.kind === "reconnected"
+        ? { event: "reconnect", room: room.code, seat: seat.seatId }
+        : { event: "join", room: room.code, seat: seat.seatId, role: seat.role }
+    );
+    this.sendSnapshot(ws, room, seat, msg.reqId, seat.token);
+    if (verdict.announceScores) this.logic.announceScores(room);
   }
   private mintCode(): string {
     for (let attempt = 0; attempt < 1000; attempt++) {
@@ -208,7 +154,6 @@ export class Rooms {
       state.seatId = seat.seatId;
     }
     seat.sockets.add(ws);
-    seat.present = true;
   }
   /* ------------------------------------------------------------------ */
   /* Dispatch after greeting                                             */
@@ -316,7 +261,7 @@ export class Rooms {
     if (list) list.push(word);
     this.logic.touch(room);
     this.sendToSeat(seat, { type: "word-accepted", reqId: msg.reqId, word, points });
-    this.broadcastScores(room);
+    this.logic.announceScores(room);
   }
   private requireHost(room: Room, seat: Seat, reqId?: number): boolean {
     if (!this.logic.isHost(room, seat)) {
@@ -462,19 +407,6 @@ export class Rooms {
   /** A promoted spectator's fresh full snapshot, to every socket on its seat. */
   private sendSeatSnapshot(room: Room, seat: Seat): void {
     for (const sock of seat.sockets) this.sendSnapshot(sock, room, seat);
-  }
-  private broadcastScores(room: Room): void {
-    const scores: ScoreEntry[] = [...room.seats.values()].map((s) => ({
-      seatId: s.seatId,
-      nickname: s.nickname,
-      roundScore: s.roundScore,
-      cumulativeScore: s.cumulativeScore,
-    }));
-    this.broadcast(room, {
-      type: "score-update",
-      roundNumber: room.roundNumber,
-      scores,
-    });
   }
   /** The one fan-out primitive: one JSON frame per socket, swallowing a send
    *  on a socket that is already gone (the close path cleans up). */
