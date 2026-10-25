@@ -4,14 +4,15 @@
  * `main.ts` (dictionary + boardgen from #7, scoring + reveal from #6/#17).
  */
 import type { DictionaryLike, BoardGenerator } from "./config.js";
+import { normalizeWord } from "./text.js";
 
 export class PlaceholderDictionary implements DictionaryLike {
   private readonly words: Set<string>;
   constructor(words: string[]) {
-    this.words = new Set(words.map((w) => w.normalize("NFC").toLowerCase()));
+    this.words = new Set(words.map(normalizeWord));
   }
   isValid(word: string): boolean {
-    return this.words.has(word.normalize("NFC").toLowerCase());
+    return this.words.has(normalizeWord(word));
   }
 }
 

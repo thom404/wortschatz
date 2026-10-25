@@ -20,11 +20,11 @@
  * fails loudly instead of silently doing nothing.
  */
 import { PROTOCOL, neighbors, tileStrings, type Tile } from "@wortschatz/shared";
+import { normalizeWord } from "../text.js";
 import { buildDawg, walk, type DawgNode } from "./dawg.js";
 
-export function normalizeWord(word: string): string {
-  return word.normalize("NFC").toLowerCase();
-}
+/** The load and lookup paths share the server's one word normalizer. */
+export { normalizeWord } from "../text.js";
 
 /**
  * Exclusion-list lines → normalized, deduped entries. Blank lines and lines
