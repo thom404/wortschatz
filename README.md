@@ -73,8 +73,10 @@ docker compose -f compose.local.yaml up --build
 ## Development
 
 ```sh
-npm test          # fast behavior tests: Vitest in happy-dom
-npm run lint      # prettier --check
+npm ci              # install dependencies once
+npm test            # fast behavior tests: Vitest in happy-dom
+npm run lint        # prettier --check
+npm run typecheck   # TypeScript build check for all workspaces
 ```
 
 The visual suite `npm run test:visual` is separate: it renders the production
