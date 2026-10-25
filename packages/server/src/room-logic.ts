@@ -5,9 +5,10 @@
  * WebSockets. The `Rooms` class owns the sockets, greeting and message
  * dispatch and supplies the two seams.
  */
-import type { RoomEndReason, ServerMessage } from "@wortschatz/shared";
+import type { ErrorCode, RoomEndReason, ScoreEntry, ServerMessage } from "@wortschatz/shared";
 import type { ServerConfigResolved } from "./config.js";
-import type { Room, Seat } from "./state.js";
+import { seatInfo, type Room, type Seat } from "./state.js";
+import { fold, normalizeNickname, validNickname } from "./text.js";
 
 /** Injectable time source. Production uses `Date.now` and the Node timers;
  *  tests drive a manual clock and never wait on a real timer. */
@@ -41,6 +42,22 @@ export interface RoomLogicDeps {
   /** The clock says the room is over; its owner tears down the sockets. */
   expire(room: Room, reason: RoomEndReason): void;
 }
+
+/** A raw join request: the rule normalizes and checks it itself. */
+export interface JoinRequest {
+  token?: string;
+  nickname: string;
+}
+
+/**
+ * What the join rule decided. Only a refusal carries an error code; a
+ * reconnect or join carries the seat and the rule's answer to whether the
+ * room-wide scoreboard must follow the adapter's snapshot.
+ */
+export type JoinVerdict =
+  | { kind: "reconnected"; seat: Seat; announceScores: true }
+  | { kind: "joined"; seat: Seat; announceScores: boolean }
+  | { kind: "rejected"; code: ErrorCode; detail?: string };
 
 /**
  * Phase and roster rules for every room. All timing goes through the injected
@@ -208,6 +225,61 @@ export class RoomLogic {
 
   touch(room: Room): void {
     room.lastActivity = this.deps.clock.now();
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Join                                                                */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * The one decision about entering a live room, in precedence order: reclaim
+   * a seat by token, then validate the nickname, then refuse a folded
+   * duplicate across every seat (reserved absent ones included), then refuse
+   * a full lobby when the room is not playing. A mid-round admission is a
+   * Spectator. The rule marks presence, clears the absence and the empty
+   * grace, adopts a missing host and announces the newcomer; the adapter
+   * mints the token, binds the socket and sends the snapshot.
+   */
+  join(room: Room, request: JoinRequest): JoinVerdict {
+    const returning = request.token ? this.findSeatByToken(room, request.token) : null;
+    if (returning) {
+      this.markPresent(returning);
+      this.touch(room);
+      this.clearEmptyTimer(room);
+      this.adoptHostIfMissing(room, returning);
+      return { kind: "reconnected", seat: returning, announceScores: true };
+    }
+    const nickname = normalizeNickname(request.nickname);
+    if (!validNickname(nickname)) {
+      return { kind: "rejected", code: "invalid-message", detail: "nickname invalid" };
+    }
+    const taken = [...room.seats.values()].some((s) => fold(s.nickname) === fold(nickname));
+    if (taken) {
+      return { kind: "rejected", code: "nickname-taken" };
+    }
+    // Player seats are capped; a mid-round joiner is a spectator and waits for
+    // the next round-start (promotion is capped out in join order there).
+    if (room.phase !== "playing" && room.seats.size >= this.deps.cfg.maxPlayers) {
+      return { kind: "rejected", code: "room-full" };
+    }
+    const seat = this.newSeat(room, nickname);
+    if (room.phase === "playing") seat.role = "spectator";
+    this.touch(room);
+    this.clearEmptyTimer(room);
+    this.adoptHostIfMissing(room, seat);
+    this.deps.broadcast(room, { type: "player-joined", player: seatInfo(seat) });
+    return { kind: "joined", seat, announceScores: room.phase === "intermission" };
+  }
+
+  /** The one room-wide scoreboard projection: the moved `score-update` fan-out. */
+  announceScores(room: Room): void {
+    const scores: ScoreEntry[] = [...room.seats.values()].map((s) => ({
+      seatId: s.seatId,
+      nickname: s.nickname,
+      roundScore: s.roundScore,
+      cumulativeScore: s.cumulativeScore,
+    }));
+    this.deps.broadcast(room, { type: "score-update", roundNumber: room.roundNumber, scores });
   }
 
   /* ------------------------------------------------------------------ */
