@@ -20,6 +20,7 @@ import {
   tileStrings,
   type Tile,
 } from "@wortschatz/shared";
+import { normalizeWord } from "../text.js";
 import { makeRng, type Rng } from "./rng.js";
 
 /** Solvability gate, frozen by simulation (ADR-0003 §7). */
@@ -159,7 +160,7 @@ export function passesCoverage(board: Board, words: string[], threshold = COVERA
  * coverage metric can count a word once per cell.
  */
 function cellsUsedByWord(word: string, board: Board): number[] {
-  const w = word.normalize("NFC").toLowerCase();
+  const w = normalizeWord(word);
   if (w.length < 3) return [];
   const used = new Array<boolean>(PROTOCOL.BOARD_SIZE).fill(false);
   const path: number[] = [];
@@ -326,7 +327,7 @@ function compareRank(a: Rank, b: Rank): number {
  * that stays `Dictionary.isValid` per ADR-0001).
  */
 export function isFormable(word: string, board: Board): boolean {
-  const w = word.normalize("NFC").toLowerCase();
+  const w = normalizeWord(word);
   if (w.length < 3) return false;
   const used = new Array<boolean>(PROTOCOL.BOARD_SIZE).fill(false);
 

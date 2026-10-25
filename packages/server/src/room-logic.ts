@@ -5,9 +5,11 @@
  * WebSockets. The `Rooms` class owns the sockets, greeting and message
  * dispatch and supplies the two seams.
  */
-import type { RoomEndReason, ServerMessage } from "@wortschatz/shared";
+import type { ErrorCode, RoomEndReason, ScoreEntry, ServerMessage } from "@wortschatz/shared";
 import type { ServerConfigResolved } from "./config.js";
-import type { Room, Seat } from "./state.js";
+import { isFormable } from "./boardgen/index.js";
+import { seatInfo, type Room, type Seat } from "./state.js";
+import { fold, normalizeNickname, normalizeWord, validNickname } from "./text.js";
 
 /** Injectable time source. Production uses `Date.now` and the Node timers;
  *  tests drive a manual clock and never wait on a real timer. */
@@ -41,6 +43,26 @@ export interface RoomLogicDeps {
   /** The clock says the room is over; its owner tears down the sockets. */
   expire(room: Room, reason: RoomEndReason): void;
 }
+
+/** A raw join request: the rule normalizes and checks it itself. */
+export interface JoinRequest {
+  token?: string;
+  nickname: string;
+}
+
+/**
+ * What the join rule decided. Only a refusal carries an error code; a
+ * reconnect or join carries the seat and the rule's answer to whether the
+ * room-wide scoreboard must follow the adapter's snapshot.
+ */
+export type JoinVerdict =
+  | { kind: "reconnected"; seat: Seat; announceScores: true }
+  | { kind: "joined"; seat: Seat; announceScores: boolean }
+  | { kind: "rejected"; code: ErrorCode; detail?: string };
+
+/** What the submission rule decided: a priced acceptance or a refusal. */
+export type SubmitVerdict =
+  { kind: "accepted"; word: string; points: number } | { kind: "rejected"; code: ErrorCode; detail?: string };
 
 /**
  * Phase and roster rules for every room. All timing goes through the injected
@@ -208,6 +230,115 @@ export class RoomLogic {
 
   touch(room: Room): void {
     room.lastActivity = this.deps.clock.now();
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Join                                                                */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * The one decision about entering a live room, in precedence order: reclaim
+   * a seat by token, then validate the nickname, then refuse a folded
+   * duplicate across every seat (reserved absent ones included), then refuse
+   * a full lobby when the room is not playing. A mid-round admission is a
+   * Spectator. The rule marks presence and clears the absence and the empty
+   * grace; the adapter mints the token, binds the socket, then calls
+   * `announceJoin` so the newcomer is bound before the room-wide frames.
+   */
+  join(room: Room, request: JoinRequest): JoinVerdict {
+    const returning = request.token ? this.findSeatByToken(room, request.token) : null;
+    if (returning) {
+      this.markPresent(returning);
+      this.enterSeat(room);
+      return { kind: "reconnected", seat: returning, announceScores: true };
+    }
+    const nickname = normalizeNickname(request.nickname);
+    if (!validNickname(nickname)) {
+      return { kind: "rejected", code: "invalid-message", detail: "nickname invalid" };
+    }
+    const taken = [...room.seats.values()].some((s) => fold(s.nickname) === fold(nickname));
+    if (taken) {
+      return { kind: "rejected", code: "nickname-taken" };
+    }
+    // Player seats are capped; a mid-round joiner is a spectator and waits for
+    // the next round-start (promotion is capped out in join order there).
+    if (room.phase !== "playing" && room.seats.size >= this.deps.cfg.maxPlayers) {
+      return { kind: "rejected", code: "room-full" };
+    }
+    const seat = this.newSeat(room, nickname);
+    if (room.phase === "playing") seat.role = "spectator";
+    this.enterSeat(room);
+    return { kind: "joined", seat, announceScores: room.phase === "intermission" };
+  }
+
+  /**
+   * The room-wide half of a join, called after the adapter bound the socket so
+   * the newcomer receives the same frames as everyone else: adopt a missing
+   * host first (`host-changed`), then announce a new seat (`player-joined`).
+   * A reconnect only announces the adoption, because its seat never left the
+   * roster.
+   */
+  announceJoin(room: Room, verdict: JoinVerdict): void {
+    if (verdict.kind === "rejected") return;
+    this.adoptHostIfMissing(room, verdict.seat);
+    if (verdict.kind === "joined") {
+      this.deps.broadcast(room, { type: "player-joined", player: seatInfo(verdict.seat) });
+    }
+  }
+
+  /** The seat-entry sequence shared by a reclaim and a new join. Host adoption
+   *  stays in `announceJoin`, after the adapter has bound the socket. */
+  private enterSeat(room: Room): void {
+    this.touch(room);
+    this.clearEmptyTimer(room);
+  }
+
+  /**
+   * The one decision about a submitted word. The seat's raw input is
+   * normalized and checked here; an acceptance records the word for this
+   * seat, prices it for this seat and adds it to the round and cumulative
+   * scores and the round's word list. The adapter echoes the reply and then
+   * asks for the room-wide scoreboard.
+   */
+  submitWord(room: Room, seat: Seat, rawWord: string): SubmitVerdict {
+    if (!this.acceptsSubmissions(room)) {
+      return { kind: "rejected", code: "round-over" };
+    }
+    if (seat.role === "spectator") {
+      return { kind: "rejected", code: "not-playing" };
+    }
+    const word = normalizeWord(rawWord);
+    if (word.length < 3) {
+      return { kind: "rejected", code: "invalid-word", detail: "too short" };
+    }
+    if (seat.roundWords.has(word)) {
+      return { kind: "rejected", code: "word-duplicate", detail: word };
+    }
+    if (!isFormable(word, room.board)) {
+      return { kind: "rejected", code: "invalid-word", detail: "not placeable" };
+    }
+    if (!this.deps.cfg.dictionary.isValid(word)) {
+      return { kind: "rejected", code: "invalid-word", detail: word };
+    }
+    const points = this.deps.cfg.scoreWord(word, seat.seatId);
+    seat.roundWords.add(word);
+    seat.roundScore += points;
+    seat.cumulativeScore += points;
+    const list = room.wordsBySeat.get(seat.seatId);
+    if (list) list.push(word);
+    this.touch(room);
+    return { kind: "accepted", word, points };
+  }
+
+  /** The one room-wide scoreboard projection: the moved `score-update` fan-out. */
+  announceScores(room: Room): void {
+    const scores: ScoreEntry[] = [...room.seats.values()].map((s) => ({
+      seatId: s.seatId,
+      nickname: s.nickname,
+      roundScore: s.roundScore,
+      cumulativeScore: s.cumulativeScore,
+    }));
+    this.deps.broadcast(room, { type: "score-update", roundNumber: room.roundNumber, scores });
   }
 
   /* ------------------------------------------------------------------ */

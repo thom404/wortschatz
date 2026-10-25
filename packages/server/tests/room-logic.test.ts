@@ -338,6 +338,418 @@ describe("roster", () => {
   });
 });
 
+describe("join", () => {
+  test("a live token reclaims its seat: present, absence cleared, silent, scoreboard refreshed", () => {
+    const h = makeHarness();
+    const returning = h.addSeat("Hansi");
+    h.room.hostSeatId = returning.seatId;
+    returning.token = "live-token";
+    returning.present = false;
+    returning.absentRound = 2;
+    h.room.phase = "playing";
+    h.room.roundNumber = 4;
+    h.clock.advance(25);
+    h.sent.length = 0;
+
+    // The nickname is invalid on purpose: the reclaim is checked before any name rule.
+    const verdict = h.logic.join(h.room, { token: "live-token", nickname: " " });
+    h.logic.announceJoin(h.room, verdict);
+
+    expect(verdict.kind).toBe("reconnected");
+    if (verdict.kind !== "reconnected") throw new Error("expected a reconnect");
+    expect(verdict.seat).toBe(returning);
+    expect(verdict.announceScores).toBe(true);
+    expect(returning.present).toBe(true);
+    expect(returning.absentRound).toBeNull();
+    expect(h.room.seats.size).toBe(1);
+    expect(h.room.lastActivity).toBe(25);
+    expect(types(h.sent)).not.toContain("player-joined");
+  });
+
+  test("a stale token degrades to a new seat instead of refusing", () => {
+    const h = makeHarness();
+    const holder = h.addSeat("Hansi");
+    h.room.hostSeatId = holder.seatId;
+    holder.token = "live-token";
+    h.sent.length = 0;
+
+    const verdict = h.logic.join(h.room, { token: "dead-token", nickname: "Neu" });
+
+    expect(verdict.kind).toBe("joined");
+    if (verdict.kind !== "joined") throw new Error("expected a new join");
+    expect(verdict.seat).not.toBe(holder);
+    expect(verdict.seat.seatId).not.toBe(holder.seatId);
+    expect(verdict.seat.nickname).toBe("Neu");
+    expect(h.room.seats.size).toBe(2);
+  });
+
+  test("a stale token still degrades to new-player rules, so a reserved name is taken", () => {
+    const h = makeHarness();
+    const holder = h.addSeat("Hansi");
+    h.room.hostSeatId = holder.seatId;
+    holder.token = "live-token";
+    holder.present = false;
+
+    const verdict = h.logic.join(h.room, { token: "dead-token", nickname: "hansi" });
+
+    expect(verdict).toMatchObject({ kind: "rejected", code: "nickname-taken" });
+  });
+
+  test("an invalid nickname is refused before a taken one, with its detail", () => {
+    const h = makeHarness();
+    const holder = h.addSeat("Hansi");
+    h.room.hostSeatId = holder.seatId;
+    h.sent.length = 0;
+
+    const verdict = h.logic.join(h.room, { nickname: "   " });
+
+    expect(verdict).toMatchObject({
+      kind: "rejected",
+      code: "invalid-message",
+      detail: "nickname invalid",
+    });
+    expect(h.room.seats.size).toBe(1);
+    expect(h.sent).toEqual([]);
+  });
+
+  test("a taken name is folded across all seats, reserved absent ones included", () => {
+    const h = makeHarness();
+    const host = h.addSeat("Hansi");
+    const reserved = h.addSeat("Änne");
+    h.room.hostSeatId = host.seatId;
+    reserved.present = false;
+    reserved.absentRound = 1;
+    h.room.phase = "intermission";
+    h.room.roundNumber = 1;
+    h.sent.length = 0;
+
+    // Trimmed, case-folded and NFC-normalized: "A" + combining diaeresis is "Ä".
+    const verdict = h.logic.join(h.room, { nickname: "  a\u0308NNE " });
+
+    expect(verdict).toMatchObject({ kind: "rejected", code: "nickname-taken" });
+    expect(h.room.seats.size).toBe(2);
+    expect(h.sent).toEqual([]);
+  });
+
+  test("a full lobby refuses a new join", () => {
+    const h = makeHarness({ maxPlayers: 2 });
+    const host = h.addSeat("Hansi");
+    h.addSeat("Gretl");
+    h.room.hostSeatId = host.seatId;
+    h.sent.length = 0;
+
+    const verdict = h.logic.join(h.room, { nickname: "Drei" });
+
+    expect(verdict).toMatchObject({ kind: "rejected", code: "room-full" });
+    expect(h.room.seats.size).toBe(2);
+    expect(h.sent).toEqual([]);
+  });
+
+  test("a playing room admits a mid-round joiner as an uncapped Spectator", () => {
+    const h = makeHarness({ maxPlayers: 2 });
+    const host = h.addSeat("Hansi");
+    h.addSeat("Gretl");
+    h.room.hostSeatId = host.seatId;
+    h.room.phase = "playing";
+    h.room.roundNumber = 1;
+    h.sent.length = 0;
+
+    const verdict = h.logic.join(h.room, { nickname: "Drei" });
+    h.logic.announceJoin(h.room, verdict);
+
+    expect(verdict.kind).toBe("joined");
+    if (verdict.kind !== "joined") throw new Error("expected a new join");
+    expect(verdict.seat.role).toBe("spectator");
+    expect(verdict.announceScores).toBe(false);
+    expect(types(h.sent)).toEqual(["player-joined"]);
+  });
+
+  test("the join role table: lobby and intermission joiners are players, only a mid-round joiner is a Spectator", () => {
+    for (const phase of ["lobby", "intermission"] as const) {
+      const h = makeHarness();
+      const host = h.addSeat("Hansi");
+      h.room.hostSeatId = host.seatId;
+      h.room.phase = phase;
+      h.room.roundNumber = phase === "intermission" ? 1 : 0;
+
+      const verdict = h.logic.join(h.room, { nickname: "Neu" });
+
+      expect(verdict.kind).toBe("joined");
+      if (verdict.kind !== "joined") throw new Error("expected a new join");
+      expect(verdict.seat.role).toBe("player");
+    }
+
+    const h = makeHarness();
+    const host = h.addSeat("Hansi");
+    h.room.hostSeatId = host.seatId;
+    h.room.phase = "playing";
+    h.room.roundNumber = 1;
+
+    const verdict = h.logic.join(h.room, { nickname: "Neu" });
+
+    expect(verdict.kind).toBe("joined");
+    if (verdict.kind !== "joined") throw new Error("expected a new join");
+    expect(verdict.seat.role).toBe("spectator");
+  });
+
+  test("a lobby join announces player-joined exactly once and asks for no scoreboard", () => {
+    const h = makeHarness();
+    const host = h.addSeat("Hansi");
+    h.room.hostSeatId = host.seatId;
+    h.sent.length = 0;
+
+    const verdict = h.logic.join(h.room, { nickname: "Gretl" });
+    h.logic.announceJoin(h.room, verdict);
+
+    expect(verdict.kind).toBe("joined");
+    if (verdict.kind !== "joined") throw new Error("expected a new join");
+    expect(verdict.seat.role).toBe("player");
+    expect(verdict.announceScores).toBe(false);
+    expect(h.sent).toEqual([
+      {
+        type: "player-joined",
+        player: {
+          seatId: verdict.seat.seatId,
+          nickname: "Gretl",
+          role: "player",
+          cumulativeScore: 0,
+          connected: true,
+        },
+      },
+    ]);
+  });
+
+  test("an intermission join asks for the scoreboard so the newcomer sees the standings", () => {
+    const h = makeHarness();
+    const host = h.addSeat("Hansi");
+    h.room.hostSeatId = host.seatId;
+    h.room.phase = "intermission";
+    h.room.roundNumber = 1;
+    h.sent.length = 0;
+
+    const verdict = h.logic.join(h.room, { nickname: "Spät" });
+    h.logic.announceJoin(h.room, verdict);
+
+    expect(verdict).toMatchObject({ kind: "joined", announceScores: true });
+    expect(types(h.sent)).toEqual(["player-joined"]);
+  });
+
+  test("a new join adopts a missing host before announcing itself", () => {
+    const h = makeHarness();
+    h.room.hostSeatId = -1;
+    h.sent.length = 0;
+
+    const verdict = h.logic.join(h.room, { nickname: "Gretl" });
+    h.logic.announceJoin(h.room, verdict);
+
+    expect(verdict.kind).toBe("joined");
+    if (verdict.kind !== "joined") throw new Error("expected a new join");
+    expect(h.room.hostSeatId).toBe(verdict.seat.seatId);
+    expect(types(h.sent)).toEqual(["host-changed", "player-joined"]);
+  });
+
+  test("a reconnect adopts a missing host without announcing a join", () => {
+    const h = makeHarness();
+    const returning = h.addSeat("Hansi");
+    returning.token = "live-token";
+    returning.present = false;
+    h.room.hostSeatId = -1;
+    h.sent.length = 0;
+
+    const verdict = h.logic.join(h.room, { token: "live-token", nickname: "Hansi" });
+    h.logic.announceJoin(h.room, verdict);
+
+    expect(verdict).toMatchObject({ kind: "reconnected", announceScores: true });
+    expect(h.room.hostSeatId).toBe(returning.seatId);
+    expect(types(h.sent)).toEqual(["host-changed"]);
+  });
+
+  test("a join clears the empty-grace timer that was already running", () => {
+    const h = makeHarness({ roomEmptyGraceMs: 300 });
+    h.logic.touch(h.room);
+    h.logic.maybeScheduleEmptyGrace(h.room); // due at t = 300
+    h.clock.advance(100);
+
+    const verdict = h.logic.join(h.room, { nickname: "Hansi" });
+    if (verdict.kind !== "joined") throw new Error("expected a new join");
+    h.clock.advance(50);
+    h.logic.disconnect(h.room, verdict.seat); // empty again; a fresh grace is due at 450
+
+    h.clock.advance(250); // t = 400: the stale 300ms timer must not fire
+    expect(h.expired).toEqual([]);
+
+    h.clock.advance(50); // t = 450: only the fresh grace fires
+    expect(h.expired).toEqual(["expired"]);
+  });
+});
+
+describe("submission", () => {
+  const BOARD = ["t", "e", "s", "t", "w", "o", "r", "t", "z", "z", "a", "a", "b", "b", "c", "c"];
+
+  function playingHarness(over: Partial<ServerConfig> = {}) {
+    const h = makeHarness({
+      generateBoard: () => ({ board: BOARD, words: [] }),
+      dictionary: { isValid: (w) => ["test", "wort"].includes(w) },
+      scoreWord: (word, seatId) => word.length * 10 + seatId,
+      ...over,
+    });
+    const seat = h.addSeat("Hansi");
+    h.room.hostSeatId = seat.seatId;
+    h.logic.startRound(h.room);
+    h.sent.length = 0;
+    return { h, seat };
+  }
+
+  test("an accepted word records and prices it for this seat, and a repeat is a duplicate", () => {
+    const { h, seat } = playingHarness();
+    h.clock.advance(10);
+
+    const verdict = h.logic.submitWord(h.room, seat, "  WORT ");
+
+    expect(verdict).toEqual({ kind: "accepted", word: "wort", points: 40 + seat.seatId });
+    expect(seat.roundWords).toEqual(new Set(["wort"]));
+    expect(seat.roundScore).toBe(40 + seat.seatId);
+    expect(seat.cumulativeScore).toBe(40 + seat.seatId);
+    expect(h.room.wordsBySeat.get(seat.seatId)).toEqual(["wort"]);
+    expect(h.room.lastActivity).toBe(h.clock.now());
+
+    const again = h.logic.submitWord(h.room, seat, "wort");
+    expect(again).toMatchObject({ kind: "rejected", code: "word-duplicate", detail: "wort" });
+    expect(seat.roundScore).toBe(40 + seat.seatId);
+    expect(h.room.wordsBySeat.get(seat.seatId)).toEqual(["wort"]);
+  });
+
+  test("the duplicate scope is one seat: another seat may submit the same word", () => {
+    const { h, seat } = playingHarness();
+    const other = h.addSeat("Gretl");
+    h.logic.submitWord(h.room, seat, "wort");
+
+    const verdict = h.logic.submitWord(h.room, other, "wort");
+
+    expect(verdict).toMatchObject({ kind: "accepted", word: "wort" });
+  });
+
+  test("round-over wins at the deadline, before not-playing and duplicate", () => {
+    const { h, seat } = playingHarness();
+    h.room.deadline = h.clock.now(); // exactly at the boundary
+    seat.role = "spectator";
+    seat.roundWords.add("wort");
+
+    const verdict = h.logic.submitWord(h.room, seat, "wort");
+
+    expect(verdict).toEqual({ kind: "rejected", code: "round-over" });
+  });
+
+  test("a submission after the round ended is round-over, not a silent drop", () => {
+    const { h, seat } = playingHarness();
+    h.clock.advance(1000);
+    expect(h.room.phase).toBe("intermission");
+
+    expect(h.logic.submitWord(h.room, seat, "wort")).toEqual({
+      kind: "rejected",
+      code: "round-over",
+    });
+  });
+
+  test("a spectator is refused as not playing before the word is inspected", () => {
+    const { h, seat } = playingHarness();
+    seat.role = "spectator";
+
+    expect(h.logic.submitWord(h.room, seat, "x")).toEqual({
+      kind: "rejected",
+      code: "not-playing",
+    });
+  });
+
+  test("a word shorter than three letters is invalid as too short, before duplicate", () => {
+    const { h, seat } = playingHarness();
+    seat.roundWords.add("ab");
+
+    expect(h.logic.submitWord(h.room, seat, "  Ab ")).toEqual({
+      kind: "rejected",
+      code: "invalid-word",
+      detail: "too short",
+    });
+  });
+
+  test("the duplicate check runs before placeability and dictionary lookup", () => {
+    const { h, seat } = playingHarness();
+    seat.roundWords.add("saat"); // neither formable nor known
+
+    expect(h.logic.submitWord(h.room, seat, "saat")).toEqual({
+      kind: "rejected",
+      code: "word-duplicate",
+      detail: "saat",
+    });
+  });
+
+  test("a known word that the board cannot form is not placeable", () => {
+    const { h, seat } = playingHarness({ dictionary: { isValid: () => true } });
+
+    expect(h.logic.submitWord(h.room, seat, "saat")).toEqual({
+      kind: "rejected",
+      code: "invalid-word",
+      detail: "not placeable",
+    });
+  });
+
+  test("a placeable word outside the dictionary is invalid and carries the word", () => {
+    const { h, seat } = playingHarness({ dictionary: { isValid: () => false } });
+
+    expect(h.logic.submitWord(h.room, seat, "TEST")).toEqual({
+      kind: "rejected",
+      code: "invalid-word",
+      detail: "test",
+    });
+  });
+
+  test("acceptance followed by announceScores broadcasts the scored totals", () => {
+    const { h, seat } = playingHarness();
+    const other = h.addSeat("Gretl");
+
+    h.logic.submitWord(h.room, seat, "wort");
+    h.logic.announceScores(h.room);
+
+    expect(h.sent).toEqual([
+      {
+        type: "score-update",
+        roundNumber: 1,
+        scores: [
+          { seatId: seat.seatId, nickname: "Hansi", roundScore: 40, cumulativeScore: 40 },
+          { seatId: other.seatId, nickname: "Gretl", roundScore: 0, cumulativeScore: 0 },
+        ],
+      },
+    ]);
+  });
+});
+
+describe("scoreboard announcement", () => {
+  test("announceScores broadcasts exactly one score-update with every seat's scores", () => {
+    const h = makeHarness();
+    const hansi = h.addSeat("Hansi");
+    const gretl = h.addSeat("Gretl");
+    hansi.roundScore = 5;
+    hansi.cumulativeScore = 12;
+    gretl.roundScore = 0;
+    gretl.cumulativeScore = 3;
+    h.room.roundNumber = 2;
+    h.sent.length = 0;
+
+    h.logic.announceScores(h.room);
+
+    expect(h.sent).toEqual([
+      {
+        type: "score-update",
+        roundNumber: 2,
+        scores: [
+          { seatId: hansi.seatId, nickname: "Hansi", roundScore: 5, cumulativeScore: 12 },
+          { seatId: gretl.seatId, nickname: "Gretl", roundScore: 0, cumulativeScore: 3 },
+        ],
+      },
+    ]);
+  });
+});
+
 describe("room expiry", () => {
   test("an empty room expires through the injected clock, with no real timer", () => {
     const h = makeHarness({ roomEmptyGraceMs: 300 });

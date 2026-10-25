@@ -209,13 +209,13 @@ function readField(rec: Record<string, unknown>, spec: FieldSpec): FieldRead {
   return { value: raw };
 }
 
-/** The one error-reply builder: `type`, echoed `reqId`, code and detail. */
-export function errorReply(code: ErrorCode, message: string, reqId?: number): ServerErrorMsg {
+/** The one error-reply builder: `type`, echoed `reqId`, code and optional detail. */
+export function errorReply(code: ErrorCode, message?: string, reqId?: number): ServerErrorMsg {
   return {
     type: "error",
     ...(reqId !== undefined ? { reqId } : {}),
     code,
-    message,
+    ...(message !== undefined ? { message } : {}),
   };
 }
 
