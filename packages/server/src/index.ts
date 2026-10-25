@@ -23,5 +23,5 @@ export async function startServer(cfg: ServerConfig): Promise<ServerHandle> {
 
 export type { ServerConfig } from "./config.js";
 export { resolveConfig, type ServerConfigResolved } from "./config.js";
-export { normalizeCode, normalizeWord } from "./rooms.js";
+export { normalizeCode, normalizeWord } from "./text.js";
 export { PROTOCOL } from "@wortschatz/shared";

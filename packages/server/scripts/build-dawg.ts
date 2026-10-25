@@ -14,6 +14,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildDawg, serializeDawg, walk } from "../dist/dictionary/dawg-blob.js";
 import { rawLinesToWords } from "../dist/dictionary/index.js";
+import { normalizeWord } from "../dist/text.js";
 
 const here = dirname(fileURLToPath(import.meta.url)); // packages/server/scripts
 const argv = process.argv.slice(2);
@@ -34,7 +35,7 @@ const exclusionLines = readFileSync(exclusionsPath, "utf8").split("\n");
 // Single ingestion seam: the same subtraction the dev fallback uses.
 const words = rawLinesToWords(lines, exclusionLines);
 // Sub-3 trim: the pinned list's known 90 two-letter entries never enter.
-const sub3 = lines.length - lines.filter((l) => l.normalize("NFC").toLowerCase().length >= 3).length;
+const sub3 = lines.length - lines.filter((l) => normalizeWord(l).length >= 3).length;
 console.log(
   `build-dawg: ${lines.length} lines → ${words.length} unique entries ≥3 letters (sub-3 dropped: ${sub3}, exclusions applied: ${exclusionLines.filter((l) => l.trim() && !l.trim().startsWith("#")).length})`
 );

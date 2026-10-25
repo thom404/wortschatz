@@ -12,6 +12,9 @@ import { Pinger } from "./hardening.js";
 import { makeRoom, makeRoomCode, makeToken, seatInfo, type Room, type Seat } from "./state.js";
 import { isFormable } from "./boardgen/index.js";
 import { RoomLogic, systemClock, type Clock } from "./room-logic.js";
+import { fold, normalizeCode, normalizeNickname, normalizeWord, validNickname } from "./text.js";
+
+export { normalizeCode, normalizeWord } from "./text.js";
 interface ConnState {
   conn: Connection;
   roomId: string | null;
@@ -510,19 +513,4 @@ function* roomSockets(room: Room): Generator<WebSocket> {
   for (const seat of room.seats.values()) {
     yield* seat.sockets;
   }
-}
-function fold(s: string): string {
-  return s.normalize("NFC").toLowerCase();
-}
-function normalizeNickname(n: string): string {
-  return n.normalize("NFC").trim().slice(0, 24);
-}
-function validNickname(n: string): boolean {
-  return n.length > 0;
-}
-export function normalizeWord(w: string): string {
-  return w.normalize("NFC").toLowerCase().trim();
-}
-export function normalizeCode(code: string): string {
-  return code.trim().toUpperCase();
 }
