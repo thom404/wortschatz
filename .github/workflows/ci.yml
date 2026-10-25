@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   checks:
@@ -18,3 +19,30 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+
+  # The browser layer (ADR-0020): the screenshot matrix, the ARIA snapshots and
+  # the flows, in the same pinned container a maintainer uses locally. It is
+  # separate from `checks` so neither layer's failure hides the other.
+  visual:
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      options: --ipc=host
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:visual
+      - name: Upload traces and report on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: visual-failure
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
