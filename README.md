@@ -73,9 +73,14 @@ docker compose -f compose.local.yaml up --build
 ## Development
 
 ```sh
-npm test          # fast behavior tests: Vitest in happy-dom
-npm run lint      # prettier --check
+npm ci              # install dependencies once
+npm test            # fast behavior tests: Vitest in happy-dom
+npm run lint        # prettier --check
+npm run typecheck   # TypeScript build check for all workspaces
 ```
+
+`npm test` builds the shared workspace first, so the commands work in any
+order on a clean checkout.
 
 The visual suite `npm run test:visual` is separate: it renders the production
 client in Chromium and compares full-page screenshots against committed
