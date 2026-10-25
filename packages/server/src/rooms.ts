@@ -1,7 +1,6 @@
 import { WebSocket } from "ws";
 import type {
   ClientMessage,
-  PlayerInfo,
   RoomEndReason,
   ScoreEntry,
   ServerMessage,
@@ -10,7 +9,7 @@ import type {
 import type { ServerConfigResolved } from "./config.js";
 import { Connection } from "./connection.js";
 import { Pinger } from "./hardening.js";
-import { makeRoom, makeRoomCode, makeToken, type Room, type Seat } from "./state.js";
+import { makeRoom, makeRoomCode, makeToken, seatInfo, type Room, type Seat } from "./state.js";
 import { isFormable } from "./boardgen/index.js";
 import { RoomLogic, systemClock, type Clock } from "./room-logic.js";
 import { fold, normalizeCode, normalizeNickname, normalizeWord, validNickname } from "./text.js";
@@ -514,13 +513,4 @@ function* roomSockets(room: Room): Generator<WebSocket> {
   for (const seat of room.seats.values()) {
     yield* seat.sockets;
   }
-}
-function seatInfo(s: Seat): PlayerInfo {
-  return {
-    seatId: s.seatId,
-    nickname: s.nickname,
-    role: s.role,
-    cumulativeScore: s.cumulativeScore,
-    connected: s.present,
-  };
 }

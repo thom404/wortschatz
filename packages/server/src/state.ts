@@ -2,7 +2,7 @@
  * Room and seat domain types. Server-internal: the wire tests never inspect
  * them; only the phase/roster unit tests construct a room directly.
  */
-import type { RoomPhase, RevealPayload } from "@wortschatz/shared";
+import type { PlayerInfo, RoomPhase, RevealPayload } from "@wortschatz/shared";
 import { PROTOCOL } from "@wortschatz/shared";
 import type { WebSocket } from "ws";
 
@@ -44,6 +44,21 @@ export interface Room {
   wordsBySeat: Map<number, string[]>;
   lastActivity: number;
   closing: boolean;
+}
+
+/**
+ * The one seat-to-player projection: the wire's `PlayerInfo` for a seat. Both
+ * the full snapshot's roster and the `player-joined` delta consume it, so the
+ * two views of a seat cannot disagree.
+ */
+export function seatInfo(seat: Seat): PlayerInfo {
+  return {
+    seatId: seat.seatId,
+    nickname: seat.nickname,
+    role: seat.role,
+    cumulativeScore: seat.cumulativeScore,
+    connected: seat.present,
+  };
 }
 
 /** A fresh room in the lobby phase, with no seats yet. */
