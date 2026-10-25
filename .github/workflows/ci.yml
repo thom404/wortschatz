@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  # A manual dispatch runs the whole CI: both `checks` and `visual`.
   workflow_dispatch:
 
 jobs:
@@ -45,4 +46,4 @@ jobs:
             test-results/
             playwright-report/
           retention-days: 7
-          if-no-files-found: ignore
+          if-no-files-found: warn

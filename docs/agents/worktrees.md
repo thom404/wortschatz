@@ -51,7 +51,9 @@ readlink -f node_modules/@wortschatz/shared
 ```
 
 The output ends in `<path>/packages/shared`. `node_modules` is ignored, so the
-worktree stays clean.
+worktree stays clean. The links point into the main checkout's install, so after
+the main checkout runs `npm ci` they can go stale and should be recreated — or
+use the isolated install below.
 
 Run `npm ci` in the worktree instead of the links when isolation matters — for
 example when the branch changes a dependency version, or when a run must not
