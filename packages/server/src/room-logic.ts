@@ -7,8 +7,9 @@
  */
 import type { ErrorCode, RoomEndReason, ScoreEntry, ServerMessage } from "@wortschatz/shared";
 import type { ServerConfigResolved } from "./config.js";
+import { isFormable } from "./boardgen/index.js";
 import { seatInfo, type Room, type Seat } from "./state.js";
-import { fold, normalizeNickname, validNickname } from "./text.js";
+import { fold, normalizeNickname, normalizeWord, validNickname } from "./text.js";
 
 /** Injectable time source. Production uses `Date.now` and the Node timers;
  *  tests drive a manual clock and never wait on a real timer. */
@@ -58,6 +59,10 @@ export type JoinVerdict =
   | { kind: "reconnected"; seat: Seat; announceScores: true }
   | { kind: "joined"; seat: Seat; announceScores: boolean }
   | { kind: "rejected"; code: ErrorCode; detail?: string };
+
+/** What the submission rule decided: a priced acceptance or a refusal. */
+export type SubmitVerdict =
+  { kind: "accepted"; word: string; points: number } | { kind: "rejected"; code: ErrorCode; detail?: string };
 
 /**
  * Phase and roster rules for every room. All timing goes through the injected
@@ -269,6 +274,43 @@ export class RoomLogic {
     this.adoptHostIfMissing(room, seat);
     this.deps.broadcast(room, { type: "player-joined", player: seatInfo(seat) });
     return { kind: "joined", seat, announceScores: room.phase === "intermission" };
+  }
+
+  /**
+   * The one decision about a submitted word. The seat's raw input is
+   * normalized and checked here; an acceptance records the word for this
+   * seat, prices it for this seat and adds it to the round and cumulative
+   * scores and the round's word list. The adapter echoes the reply and then
+   * asks for the room-wide scoreboard.
+   */
+  submitWord(room: Room, seat: Seat, rawWord: string): SubmitVerdict {
+    if (!this.acceptsSubmissions(room)) {
+      return { kind: "rejected", code: "round-over" };
+    }
+    if (seat.role === "spectator") {
+      return { kind: "rejected", code: "not-playing" };
+    }
+    const word = normalizeWord(rawWord);
+    if (word.length < 3) {
+      return { kind: "rejected", code: "invalid-word", detail: "too short" };
+    }
+    if (seat.roundWords.has(word)) {
+      return { kind: "rejected", code: "word-duplicate", detail: word };
+    }
+    if (!isFormable(word, room.board)) {
+      return { kind: "rejected", code: "invalid-word", detail: "not placeable" };
+    }
+    if (!this.deps.cfg.dictionary.isValid(word)) {
+      return { kind: "rejected", code: "invalid-word", detail: word };
+    }
+    const points = this.deps.cfg.scoreWord(word, seat.seatId);
+    seat.roundWords.add(word);
+    seat.roundScore += points;
+    seat.cumulativeScore += points;
+    const list = room.wordsBySeat.get(seat.seatId);
+    if (list) list.push(word);
+    this.touch(room);
+    return { kind: "accepted", word, points };
   }
 
   /** The one room-wide scoreboard projection: the moved `score-update` fan-out. */

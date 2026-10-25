@@ -549,6 +549,146 @@ describe("join", () => {
   });
 });
 
+describe("submission", () => {
+  const BOARD = ["t", "e", "s", "t", "w", "o", "r", "t", "z", "z", "a", "a", "b", "b", "c", "c"];
+
+  function playingHarness(over: Partial<ServerConfig> = {}) {
+    const h = makeHarness({
+      generateBoard: () => ({ board: BOARD, words: [] }),
+      dictionary: { isValid: (w) => ["test", "wort"].includes(w) },
+      scoreWord: (word, seatId) => word.length * 10 + seatId,
+      ...over,
+    });
+    const seat = h.addSeat("Hansi");
+    h.room.hostSeatId = seat.seatId;
+    h.logic.startRound(h.room);
+    h.sent.length = 0;
+    return { h, seat };
+  }
+
+  test("an accepted word records and prices it for this seat, and a repeat is a duplicate", () => {
+    const { h, seat } = playingHarness();
+    h.clock.advance(10);
+
+    const verdict = h.logic.submitWord(h.room, seat, "  WORT ");
+
+    expect(verdict).toEqual({ kind: "accepted", word: "wort", points: 40 + seat.seatId });
+    expect(seat.roundWords).toEqual(new Set(["wort"]));
+    expect(seat.roundScore).toBe(40 + seat.seatId);
+    expect(seat.cumulativeScore).toBe(40 + seat.seatId);
+    expect(h.room.wordsBySeat.get(seat.seatId)).toEqual(["wort"]);
+    expect(h.room.lastActivity).toBe(h.clock.now());
+
+    const again = h.logic.submitWord(h.room, seat, "wort");
+    expect(again).toMatchObject({ kind: "rejected", code: "word-duplicate", detail: "wort" });
+    expect(seat.roundScore).toBe(40 + seat.seatId);
+    expect(h.room.wordsBySeat.get(seat.seatId)).toEqual(["wort"]);
+  });
+
+  test("the duplicate scope is one seat: another seat may submit the same word", () => {
+    const { h, seat } = playingHarness();
+    const other = h.addSeat("Gretl");
+    h.logic.submitWord(h.room, seat, "wort");
+
+    const verdict = h.logic.submitWord(h.room, other, "wort");
+
+    expect(verdict).toMatchObject({ kind: "accepted", word: "wort" });
+  });
+
+  test("round-over wins at the deadline, before not-playing and duplicate", () => {
+    const { h, seat } = playingHarness();
+    h.room.deadline = h.clock.now(); // exactly at the boundary
+    seat.role = "spectator";
+    seat.roundWords.add("wort");
+
+    const verdict = h.logic.submitWord(h.room, seat, "wort");
+
+    expect(verdict).toEqual({ kind: "rejected", code: "round-over" });
+  });
+
+  test("a submission after the round ended is round-over, not a silent drop", () => {
+    const { h, seat } = playingHarness();
+    h.clock.advance(1000);
+    expect(h.room.phase).toBe("intermission");
+
+    expect(h.logic.submitWord(h.room, seat, "wort")).toEqual({
+      kind: "rejected",
+      code: "round-over",
+    });
+  });
+
+  test("a spectator is refused as not playing before the word is inspected", () => {
+    const { h, seat } = playingHarness();
+    seat.role = "spectator";
+
+    expect(h.logic.submitWord(h.room, seat, "x")).toEqual({
+      kind: "rejected",
+      code: "not-playing",
+    });
+  });
+
+  test("a word shorter than three letters is invalid as too short, before duplicate", () => {
+    const { h, seat } = playingHarness();
+    seat.roundWords.add("ab");
+
+    expect(h.logic.submitWord(h.room, seat, "  Ab ")).toEqual({
+      kind: "rejected",
+      code: "invalid-word",
+      detail: "too short",
+    });
+  });
+
+  test("the duplicate check runs before placeability and dictionary lookup", () => {
+    const { h, seat } = playingHarness();
+    seat.roundWords.add("saat"); // neither formable nor known
+
+    expect(h.logic.submitWord(h.room, seat, "saat")).toEqual({
+      kind: "rejected",
+      code: "word-duplicate",
+      detail: "saat",
+    });
+  });
+
+  test("a known word that the board cannot form is not placeable", () => {
+    const { h, seat } = playingHarness({ dictionary: { isValid: () => true } });
+
+    expect(h.logic.submitWord(h.room, seat, "saat")).toEqual({
+      kind: "rejected",
+      code: "invalid-word",
+      detail: "not placeable",
+    });
+  });
+
+  test("a placeable word outside the dictionary is invalid and carries the word", () => {
+    const { h, seat } = playingHarness({ dictionary: { isValid: () => false } });
+
+    expect(h.logic.submitWord(h.room, seat, "TEST")).toEqual({
+      kind: "rejected",
+      code: "invalid-word",
+      detail: "test",
+    });
+  });
+
+  test("acceptance followed by announceScores broadcasts the scored totals", () => {
+    const { h, seat } = playingHarness();
+    const other = h.addSeat("Gretl");
+
+    h.logic.submitWord(h.room, seat, "wort");
+    h.logic.announceScores(h.room);
+
+    expect(h.sent).toEqual([
+      {
+        type: "score-update",
+        roundNumber: 1,
+        scores: [
+          { seatId: seat.seatId, nickname: "Hansi", roundScore: 40, cumulativeScore: 40 },
+          { seatId: other.seatId, nickname: "Gretl", roundScore: 0, cumulativeScore: 0 },
+        ],
+      },
+    ]);
+  });
+});
+
 describe("scoreboard announcement", () => {
   test("announceScores broadcasts exactly one score-update with every seat's scores", () => {
     const h = makeHarness();

@@ -4,9 +4,8 @@ import type { ServerConfigResolved } from "./config.js";
 import { Connection, errorReply } from "./connection.js";
 import { Pinger } from "./hardening.js";
 import { makeRoom, makeRoomCode, makeToken, seatInfo, type Room, type Seat } from "./state.js";
-import { isFormable } from "./boardgen/index.js";
 import { RoomLogic, systemClock, type Clock } from "./room-logic.js";
-import { normalizeCode, normalizeNickname, normalizeWord, validNickname } from "./text.js";
+import { normalizeCode, normalizeNickname, validNickname } from "./text.js";
 
 export { normalizeCode, normalizeWord } from "./text.js";
 interface ConnState {
@@ -222,45 +221,17 @@ export class Rooms {
     seat: Seat,
     msg: Extract<ClientMessage, { type: "submit-word" }>
   ): void {
-    // Playing-only; submissions after the boundary are explicitly round-over.
-    if (!this.logic.acceptsSubmissions(room)) {
-      this.sendToSeat(seat, { type: "error", reqId: msg.reqId, code: "round-over" });
+    const verdict = this.logic.submitWord(room, seat, msg.word);
+    if (verdict.kind === "rejected") {
+      this.sendToSeat(seat, errorReply(verdict.code, verdict.detail, msg.reqId));
       return;
     }
-    if (seat.role === "spectator") {
-      this.sendToSeat(seat, { type: "error", reqId: msg.reqId, code: "not-playing" });
-      return;
-    }
-    const word = normalizeWord(msg.word);
-    if (word.length < 3) {
-      this.sendToSeat(seat, { type: "error", reqId: msg.reqId, code: "invalid-word", message: "too short" });
-      return;
-    }
-    if (seat.roundWords.has(word)) {
-      this.sendToSeat(seat, { type: "error", reqId: msg.reqId, code: "word-duplicate", message: word });
-      return;
-    }
-    if (!isFormable(word, room.board)) {
-      this.sendToSeat(seat, {
-        type: "error",
-        reqId: msg.reqId,
-        code: "invalid-word",
-        message: "not placeable",
-      });
-      return;
-    }
-    if (!this.cfg.dictionary.isValid(word)) {
-      this.sendToSeat(seat, { type: "error", reqId: msg.reqId, code: "invalid-word", message: word });
-      return;
-    }
-    seat.roundWords.add(word);
-    const points = this.cfg.scoreWord(word, seat.seatId);
-    seat.roundScore += points;
-    seat.cumulativeScore += points;
-    const list = room.wordsBySeat.get(seat.seatId);
-    if (list) list.push(word);
-    this.logic.touch(room);
-    this.sendToSeat(seat, { type: "word-accepted", reqId: msg.reqId, word, points });
+    this.sendToSeat(seat, {
+      type: "word-accepted",
+      reqId: msg.reqId,
+      word: verdict.word,
+      points: verdict.points,
+    });
     this.logic.announceScores(room);
   }
   private requireHost(room: Room, seat: Seat, reqId?: number): boolean {
