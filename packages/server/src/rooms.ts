@@ -7,7 +7,6 @@ import { makeRoom, makeRoomCode, makeToken, seatInfo, type Room, type Seat } fro
 import { RoomLogic, systemClock, type Clock } from "./room-logic.js";
 import { normalizeCode, normalizeNickname, validNickname } from "./text.js";
 
-export { normalizeCode, normalizeWord } from "./text.js";
 interface ConnState {
   conn: Connection;
   roomId: string | null;
@@ -131,6 +130,7 @@ export class Rooms {
     const seat = verdict.seat;
     if (verdict.kind === "joined") seat.token = makeToken();
     this.bindConn(ws, room, seat);
+    this.logic.announceJoin(room, verdict);
     this.cfg.log.info(
       verdict.kind === "reconnected"
         ? { event: "reconnect", room: room.code, seat: seat.seatId }

@@ -49,19 +49,26 @@ request)`, `submitWord(room, seat, rawWord)` and `announceScores(room)`. The
    duplicate for this seat and Round, then a word not placeable on the Board,
    then a word the Dictionary does not know. The first refusal wins, so the
    error a player sees is the first thing they can fix.
-4. **Announcements split by correlation.** `RoomLogic` owns every room-wide
-   frame, as it already did for host changes, departures, round start and round
-   end: a new join's `player-joined` is announced inside the rule, and
-   `announceScores` broadcasts the moved `score-update` projection. `Rooms` owns
-   every `reqId`-bearing reply, the full snapshot and the token, because those
-   are correlation and wire concerns.
+4. **Announcements split by correlation, and a join's fire after binding.**
+   `RoomLogic` owns every room-wide frame, as it already did for host changes,
+   departures, round start and round end. `join` decides the room state and
+   returns the verdict; `announceJoin(room, verdict)` then adopts a missing
+   host and announces `player-joined` for a new join and the adoption
+   `host-changed` for both kinds. The adapter calls `announceJoin` after minting
+   the token and binding the socket, so the newcomer receives the same frames
+   as everyone else — its own `player-joined`, and `host-changed` first when the
+   room adopted it — before its snapshot. `announceScores` broadcasts the moved
+   `score-update` projection. `Rooms` owns every `reqId`-bearing reply, the full
+   snapshot and the token, because those are correlation and wire concerns.
 5. **The adapter keeps the wire.** `Rooms` resolves and normalizes the room
    code, refuses an unknown or closed room, mints the token, binds and unbinds
    sockets, sends snapshots, logs, and translates a verdict through
    `errorReply`. It does not build join or submission error frames inline, so
-   ADR-0014 has no exception. The server-wide room-count cap stays with the
-   adapter because it reads the server's room map, not a room; Create keeps its
-   shape but reads the shared nickname helpers.
+   ADR-0014 has no exception. A refusal's detail is optional and omitted when
+   absent, so a message-less refusal stays byte-identical to the frame it
+   replaced. The server-wide room-count cap stays with the adapter because it
+   reads the server's room map, not a room; Create keeps its shape but reads the
+   shared nickname helpers.
 6. **Presence has one owner.** The socket binding no longer writes a seat's
    presence; only the rules mark a seat present, so a binding cannot clear an
    absence behind the rule's back.
@@ -69,16 +76,22 @@ request)`, `submitWord(room, seat, rawWord)` and `announceScores(room)`. The
    used by `player-joined` and by snapshots lives beside the room and seat
    types, so the delta and the snapshot cannot disagree. A text module owns the
    nickname normalizer, the case fold, the nickname validity check, the word
-   normalizer and the room-code normalizer; the Dictionary's loader and lookup
-   import the same word normalizer. This is the one intentional correction: the
+   normalizer and the room-code normalizer. Every word-normalizer consumer —
+   the Dictionary's load and lookup paths, board forming, the placeholder
+   dictionary and the DAWG build script — imports that one definition, and
+   `src/index.ts` keeps re-exporting the word and code normalizers so the
+   package ABI does not move. This is the one intentional correction: the
    canonical word normalizer trims surrounding whitespace, matching what
    submission already did.
 
 Order is preserved throughout: for a submission the accepted reply precedes the
 scoreboard; for a new join `player-joined`, then the snapshot, then the
 Intermission scoreboard; for a reconnect the silent seat work, then the
-snapshot, then the scoreboard. Screens, copy, timing, scores, the wire protocol,
-the room lifecycle and deployment are untouched.
+snapshot, then the scoreboard. Because the adapter binds the joining socket
+before `announceJoin`, the newcomer observes the same order as the rest of the
+room — including `host-changed` before `player-joined` when it was adopted as
+host. Screens, copy, timing, scores, the wire protocol, the room lifecycle and
+deployment are untouched.
 
 ## Consequences
 

@@ -241,17 +241,15 @@ export class RoomLogic {
    * a seat by token, then validate the nickname, then refuse a folded
    * duplicate across every seat (reserved absent ones included), then refuse
    * a full lobby when the room is not playing. A mid-round admission is a
-   * Spectator. The rule marks presence, clears the absence and the empty
-   * grace, adopts a missing host and announces the newcomer; the adapter
-   * mints the token, binds the socket and sends the snapshot.
+   * Spectator. The rule marks presence and clears the absence and the empty
+   * grace; the adapter mints the token, binds the socket, then calls
+   * `announceJoin` so the newcomer is bound before the room-wide frames.
    */
   join(room: Room, request: JoinRequest): JoinVerdict {
     const returning = request.token ? this.findSeatByToken(room, request.token) : null;
     if (returning) {
       this.markPresent(returning);
-      this.touch(room);
-      this.clearEmptyTimer(room);
-      this.adoptHostIfMissing(room, returning);
+      this.enterSeat(room);
       return { kind: "reconnected", seat: returning, announceScores: true };
     }
     const nickname = normalizeNickname(request.nickname);
@@ -269,11 +267,30 @@ export class RoomLogic {
     }
     const seat = this.newSeat(room, nickname);
     if (room.phase === "playing") seat.role = "spectator";
+    this.enterSeat(room);
+    return { kind: "joined", seat, announceScores: room.phase === "intermission" };
+  }
+
+  /**
+   * The room-wide half of a join, called after the adapter bound the socket so
+   * the newcomer receives the same frames as everyone else: adopt a missing
+   * host first (`host-changed`), then announce a new seat (`player-joined`).
+   * A reconnect only announces the adoption, because its seat never left the
+   * roster.
+   */
+  announceJoin(room: Room, verdict: JoinVerdict): void {
+    if (verdict.kind === "rejected") return;
+    this.adoptHostIfMissing(room, verdict.seat);
+    if (verdict.kind === "joined") {
+      this.deps.broadcast(room, { type: "player-joined", player: seatInfo(verdict.seat) });
+    }
+  }
+
+  /** The seat-entry sequence shared by a reclaim and a new join. Host adoption
+   *  stays in `announceJoin`, after the adapter has bound the socket. */
+  private enterSeat(room: Room): void {
     this.touch(room);
     this.clearEmptyTimer(room);
-    this.adoptHostIfMissing(room, seat);
-    this.deps.broadcast(room, { type: "player-joined", player: seatInfo(seat) });
-    return { kind: "joined", seat, announceScores: room.phase === "intermission" };
   }
 
   /**
