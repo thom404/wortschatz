@@ -1,3 +1,4 @@
+import { escapeHtml } from "./escape.js";
 import { qrcodegen } from "./vendor/qrcodegen.js";
 
 /**
@@ -62,17 +63,9 @@ export function qrSvg(text: string): string {
   }
   return (
     `<svg id="qr" class="qr" width="200" height="200" viewBox="0 0 ${extent} ${extent}"` +
-    ` role="img" aria-label="QR-Code zum Beitreten" data-payload="${escapeAttr(text)}">` +
+    ` role="img" aria-label="QR-Code zum Beitreten" data-payload="${escapeHtml(text)}">` +
     `<rect width="${extent}" height="${extent}" fill="${QR_LIGHT}"/>` +
     `<path d="${segments.join("")}" fill="${QR_DARK}" shape-rendering="crispEdges"/>` +
     `</svg>`
-  );
-}
-
-/** Escapes the five attribute-significant characters for the `data-payload`
- *  attribute (the URL is normally plain, but the seam must not be injectable). */
-function escapeAttr(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
-    c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;"
   );
 }
