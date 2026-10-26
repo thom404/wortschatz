@@ -233,20 +233,25 @@ describe("Menü entries (spec #194)", () => {
     expect(toggle.textContent).toBe(COPY.menu.version(APP_VERSION));
   });
 
-  it("ships exactly the 0.1.0 changelog entry and tags the running build", () => {
-    expect(CHANGELOG).toHaveLength(1);
-    expect(CHANGELOG[0]!.version).toBe("0.1.0");
+  it("ships the newest-first changelog and tags the running build", () => {
+    expect(CHANGELOG).toHaveLength(2);
+    expect(CHANGELOG[0]!.version).toBe("0.1.1");
+    expect(CHANGELOG[0]!.notes).toEqual([COPY.menu.cspFix]);
+    expect(CHANGELOG[1]!.version).toBe("0.1.0");
     const ranks = CHANGELOG.map((entry) => versionNumber(entry.version));
     expect(ranks).toEqual([...ranks].sort((a, b) => b - a));
 
     openMenu();
     toggleFor("menu-changelog").click();
     const blocks = bodyFor("menu-changelog").querySelectorAll(".menu-changelog-entry");
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0]!.querySelector("h3")!.textContent).toContain(COPY.menu.version("0.1.0"));
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]!.querySelector("h3")!.textContent).toContain(COPY.menu.version("0.1.1"));
     expect(blocks[0]!.querySelector(".menu-current")!.textContent).toBe(COPY.menu.current);
-    expect(blocks[0]!.textContent).toContain(COPY.menu.changelog);
-    expect(blocks[0]!.textContent).toContain(COPY.menu.rotate);
+    expect(blocks[0]!.textContent).toContain(COPY.menu.cspFix);
+    expect(blocks[1]!.querySelector("h3")!.textContent).toContain(COPY.menu.version("0.1.0"));
+    expect(blocks[1]!.querySelector(".menu-current")).toBeNull();
+    expect(blocks[1]!.textContent).toContain(COPY.menu.changelog);
+    expect(blocks[1]!.textContent).toContain(COPY.menu.rotate);
   });
 
   it("keeps the skin switcher working while the changelog is expanded", () => {

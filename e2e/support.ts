@@ -1,4 +1,5 @@
 import { test as base, expect, type Page, type WebSocketRoute } from "@playwright/test";
+import { CONTENT_SECURITY_POLICY } from "@wortschatz/server";
 import type { ClientMessage, GreetingMsg, ServerMessage } from "@wortschatz/shared";
 import type { Scene } from "../packages/client/tests/fixtures.js";
 
@@ -178,7 +179,7 @@ export async function openScene(page: Page, opts: OpenSceneOptions): Promise<Wir
  * preview origin — an unexpected external dependency would make screenshots
  * internet-dependent (a stated determinism requirement of #156).
  */
-export const test = base.extend<{ networkGuard: void }>({
+export const test = base.extend<{ networkGuard: void; cspGuard: void }>({
   networkGuard: [
     async ({ page }, use) => {
       const unexpected: string[] = [];
@@ -188,6 +189,34 @@ export const test = base.extend<{ networkGuard: void }>({
       });
       await use();
       expect(unexpected, "unexpected network requests").toEqual([]);
+    },
+    { auto: true },
+  ],
+  /**
+   * Every document runs under the production CSP, exactly as the server
+   * sends it; a console violation fails the test. Subresources are left
+   * untouched because the document's policy governs the page.
+   */
+  cspGuard: [
+    async ({ page }, use) => {
+      const violations: string[] = [];
+      page.on("console", (message) => {
+        if (message.text().includes("Content Security Policy")) violations.push(message.text());
+      });
+      await page.route("**/*", async (route) => {
+        const request = route.request();
+        if (request.resourceType() !== "document" || !isPreviewUrl(request.url())) {
+          await route.continue();
+          return;
+        }
+        const response = await route.fetch();
+        await route.fulfill({
+          response,
+          headers: { ...response.headers(), "content-security-policy": CONTENT_SECURITY_POLICY },
+        });
+      });
+      await use();
+      expect(violations, "CSP console violations").toEqual([]);
     },
     { auto: true },
   ],

@@ -6,7 +6,7 @@ import viteConfig from "../vite.config.js";
 describe("APP_VERSION (#181)", () => {
   it("is injected from the root manifest's version field", () => {
     expect(APP_VERSION).toBe(readAppVersion());
-    expect(APP_VERSION).toBe("0.1.0");
+    expect(APP_VERSION).toBe("0.1.1");
   });
 
   it("uses the same reader as the client build injection", () => {

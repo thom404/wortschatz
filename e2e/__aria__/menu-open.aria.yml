@@ -1,6 +1,6 @@
 - button "Menü" [expanded]
 - dialog "Menü":
-    - button "Version 0.1.0"
+    - button "Version 0.1.1"
     - button "Spielanleitung"
     - button "Quellen"
     - link "Problem melden":

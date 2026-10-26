@@ -132,6 +132,7 @@ export const COPY = {
     current: "aktuell",
     changelog: "Das Menü: Skin wechseln und Version ansehen, auf jedem Bildschirm.",
     rotate: "Das Spielfeld lässt sich in 90°-Schritten drehen.",
+    cspFix: "Spielfeld und Zeitring werden wieder korrekt dargestellt.",
     rules: "Spielanleitung",
     rulesIntro: "So spielst du:",
     rulesUmlauts: "Ä, ö, ü und ß gelten als echte Buchstaben.",
