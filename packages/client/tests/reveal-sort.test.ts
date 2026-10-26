@@ -1,12 +1,19 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  BOARD,
+  COPY,
+  NO_WORDS,
+  OTHER_ROOM_CODE,
+  ROOM_CODE,
+  click,
+  driveToRoundOne,
   intermissionSnapshot,
-  lobbySnapshot,
   mountHarness,
   roundEnded,
   roundStarted,
   seat,
+  typeInto,
   type Mounted,
   type PlayerInfo,
 } from "./harness.js";
@@ -18,7 +25,8 @@ import type { RevealPayload, RevealWord } from "@wortschatz/shared";
  * live on rendered DOM and boundary messages only.
  */
 
-const BOARD = ["H", "A", "U", "S", "T", "I", "R", "E", "B", "U", "M", "S", "K", "A", "T", "Z"];
+/** The round-one roster the finder chips need. */
+const FINDERS: PlayerInfo[] = [seat({ seatId: 1, nickname: "Lena" }), seat({ seatId: 2, nickname: "Ben" })];
 
 function word(word: string, points: number, foundBy: number[] = []): RevealWord {
   return { word, points, foundBy };
@@ -75,43 +83,6 @@ afterEach(() => {
   app = null;
 });
 
-/** Enter Create from the Home landing (ADR-0021). */
-function openCreate(): void {
-  if (!app!.root.querySelector("#mk-nick")) click("#create-btn");
-}
-
-/** Enter Join from the Home landing (ADR-0021). */
-function openJoin(): void {
-  if (!app!.root.querySelector("#jn-code")) click("#join-btn");
-}
-
-/** A form helper walks the landing first when its field is not on screen. */
-function ensureEntryScreen(sel: string): void {
-  if (app!.root.querySelector(sel)) return;
-  if (sel === "#mk-nick" || sel === "#mk-btn") openCreate();
-  else if (sel.startsWith("#jn-")) openJoin();
-}
-
-function typeInto(sel: string, value: string): void {
-  ensureEntryScreen(sel);
-  app!.root.querySelector<HTMLInputElement>(sel)!.value = value;
-}
-
-function click(sel: string): void {
-  ensureEntryScreen(sel);
-  app!.root.querySelector<HTMLButtonElement>(sel)!.click();
-}
-
-/** Home → lobby → round one, with a two-player roster for finder chips. */
-function driveToRoundOne(code = "LAG4T"): void {
-  const roster: PlayerInfo[] = [seat({ seatId: 1, nickname: "Lena" }), seat({ seatId: 2, nickname: "Ben" })];
-  typeInto("#mk-nick", roster[0]!.nickname);
-  click("#mk-btn");
-  app!.conn().feed(lobbySnapshot({ code, nickname: roster[0]!.nickname, players: roster }));
-  click("#start-btn");
-  app!.conn().feed(roundStarted(BOARD));
-}
-
 function sortButton(mode: "length" | "points" | "alphabet"): HTMLButtonElement {
   return app!.root.querySelector<HTMLButtonElement>(`#reveal-sort button[data-sort="${mode}"]`)!;
 }
@@ -131,7 +102,7 @@ function revealText(): string {
 
 describe("intermission reveal sorting (#140)", () => {
   it("defaults to Länge and renders exactly the server's grouped view", () => {
-    driveToRoundOne();
+    driveToRoundOne(app!, { roster: FINDERS });
     app!.conn().feed(roundEnded(1, GROUPED));
 
     const group = app!.root.querySelector<HTMLElement>("#reveal-sort")!;
@@ -142,14 +113,14 @@ describe("intermission reveal sorting (#140)", () => {
     expect(buttons.map((b) => b.tagName)).toEqual(["BUTTON", "BUTTON", "BUTTON"]);
     expect(buttons.map((b) => b.textContent)).toEqual(["", "", ""]);
     expect(buttons.map((b) => b.getAttribute("aria-label"))).toEqual([
-      "Nach Länge sortieren",
-      "Nach Punkten sortieren",
-      "Alphabetisch sortieren",
+      COPY.intermission.sortLength,
+      COPY.intermission.sortPoints,
+      COPY.intermission.sortAlphabet,
     ]);
     expect(buttons.map((b) => b.getAttribute("data-tip"))).toEqual([
-      "Nach Länge sortieren",
-      "Nach Punkten sortieren",
-      "Alphabetisch sortieren",
+      COPY.intermission.sortLength,
+      COPY.intermission.sortPoints,
+      COPY.intermission.sortAlphabet,
     ]);
     expect(buttons.some((b) => b.hasAttribute("aria-describedby"))).toBe(false);
     for (const button of buttons) {
@@ -164,7 +135,10 @@ describe("intermission reveal sorting (#140)", () => {
 
     // Same headings, same server word order inside each group.
     const headings = [...app!.root.querySelectorAll<HTMLElement>("#reveal dt")];
-    expect(headings.map((dt) => dt.textContent)).toEqual(["3 Buchstaben", "4 Buchstaben"]);
+    expect(headings.map((dt) => dt.textContent)).toEqual([
+      COPY.intermission.length(3),
+      COPY.intermission.length(4),
+    ]);
     expect(words()).toEqual(["zur", "ass", "ärz", "zelt", "ofen"]);
 
     // Points, found-by chips and the dimmed missed treatment survive.
@@ -181,7 +155,7 @@ describe("intermission reveal sorting (#140)", () => {
   });
 
   it("Punkte flattens across lengths, orders points descending, and breaks ties in German order", () => {
-    driveToRoundOne();
+    driveToRoundOne(app!, { roster: FINDERS });
     app!.conn().feed(roundEnded(1, POINTS));
 
     sortButton("points").click();
@@ -211,7 +185,7 @@ describe("intermission reveal sorting (#140)", () => {
   });
 
   it("Alphabet flattens into German A–Z order, including ä, ö, ü and ß", () => {
-    driveToRoundOne();
+    driveToRoundOne(app!, { roster: FINDERS });
     app!.conn().feed(roundEnded(1, ALPHABET));
 
     sortButton("alphabet").click();
@@ -222,7 +196,7 @@ describe("intermission reveal sorting (#140)", () => {
   });
 
   it("keeps the chosen mode across consecutive intermissions in the same room", () => {
-    driveToRoundOne();
+    driveToRoundOne(app!, { roster: FINDERS });
     app!.conn().feed(roundEnded(1, POINTS));
     sortButton("points").click();
     expect(pressed().points).toBe("true");
@@ -237,7 +211,7 @@ describe("intermission reveal sorting (#140)", () => {
   });
 
   it("resets to Länge on a reconnect snapshot and on a fresh mount", () => {
-    driveToRoundOne();
+    driveToRoundOne(app!, { roster: FINDERS });
     app!.conn().feed(roundEnded(1, GROUPED));
     sortButton("alphabet").click();
     expect(pressed().alphabet).toBe("true");
@@ -245,7 +219,7 @@ describe("intermission reveal sorting (#140)", () => {
     // Reconnect/resync snapshot for the same room: back to the grouped view.
     app!.conn().feed(
       intermissionSnapshot({
-        code: "LAG4T",
+        code: ROOM_CODE,
         selfSeatId: 1,
         nickname: "Lena",
         board: BOARD,
@@ -259,12 +233,12 @@ describe("intermission reveal sorting (#140)", () => {
     // A fresh mount starts over too.
     app!.unmount();
     app = mountHarness();
-    typeInto("#jn-code", "LAG4T");
-    typeInto("#jn-nick", "Lena");
-    click("#jn-btn");
+    typeInto(app!.root, "#jn-code", ROOM_CODE);
+    typeInto(app!.root, "#jn-nick", "Lena");
+    click(app!.root, "#jn-btn");
     app!.conn().feed(
       intermissionSnapshot({
-        code: "LAG4T",
+        code: ROOM_CODE,
         selfSeatId: 1,
         nickname: "Lena",
         board: BOARD,
@@ -276,18 +250,18 @@ describe("intermission reveal sorting (#140)", () => {
   });
 
   it("resets to Länge when joining a different room", () => {
-    driveToRoundOne();
+    driveToRoundOne(app!, { roster: FINDERS });
     app!.conn().feed(roundEnded(1, GROUPED));
     sortButton("alphabet").click();
     expect(pressed().alphabet).toBe("true");
 
-    click("#leave-btn");
-    typeInto("#jn-code", "NEU42");
-    typeInto("#jn-nick", "Ben");
-    click("#jn-btn");
+    click(app!.root, "#leave-btn");
+    typeInto(app!.root, "#jn-code", OTHER_ROOM_CODE);
+    typeInto(app!.root, "#jn-nick", "Ben");
+    click(app!.root, "#jn-btn");
     app!.conn().feed(
       intermissionSnapshot({
-        code: "NEU42",
+        code: OTHER_ROOM_CODE,
         selfSeatId: 2,
         nickname: "Ben",
         hostSeatId: 1,
@@ -302,21 +276,21 @@ describe("intermission reveal sorting (#140)", () => {
   });
 
   it("hides the control and keeps the empty state when the reveal has no words", () => {
-    driveToRoundOne();
-    app!.conn().feed(roundEnded(1, { groups: [] }));
+    driveToRoundOne(app!, { roster: FINDERS });
+    app!.conn().feed(roundEnded(1, NO_WORDS));
 
     expect(app!.root.querySelector("#reveal-sort")).toBeNull();
-    expect(revealText()).toContain("Ergebnisse");
-    expect(revealText()).toContain("—");
+    expect(revealText()).toContain(COPY.intermission.results);
+    expect(revealText()).toContain(COPY.intermission.noResults);
 
     // Groups that merely exist but hold no words are empty too.
     app!.conn().feed(roundEnded(2, { groups: [{ length: 3, words: [] }] }));
     expect(app!.root.querySelector("#reveal-sort")).toBeNull();
-    expect(revealText()).toContain("Ergebnisse");
+    expect(revealText()).toContain(COPY.intermission.results);
   });
 
   it("switching modes sends no wire message and leaves the board and reveal element in place", () => {
-    driveToRoundOne();
+    driveToRoundOne(app!, { roster: FINDERS });
     app!.conn().feed(roundEnded(1, POINTS));
 
     const board = app!.root.querySelector("#board");
@@ -339,12 +313,12 @@ describe("intermission reveal sorting (#140)", () => {
   });
 
   it("shows the control to spectators, who can use it", () => {
-    typeInto("#jn-code", "ABC12");
-    typeInto("#jn-nick", "Ben");
-    click("#jn-btn");
+    typeInto(app!.root, "#jn-code", ROOM_CODE);
+    typeInto(app!.root, "#jn-nick", "Ben");
+    click(app!.root, "#jn-btn");
     app!.conn().feed(
       intermissionSnapshot({
-        code: "ABC12",
+        code: ROOM_CODE,
         selfSeatId: 2,
         nickname: "Ben",
         role: "spectator",

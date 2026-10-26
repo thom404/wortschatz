@@ -1,6 +1,11 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  BOARD,
+  COPY,
+  NO_WORDS,
+  ROOM_CODE,
+  driveScene,
   intermissionSnapshot,
   lobbySnapshot,
   mountHarness,
@@ -16,8 +21,6 @@ import {
  * decorative SVG; leaving the room and the outcome action are covered here.
  */
 
-const BOARD = ["H", "A", "U", "S", "T", "I", "R", "E", "B", "U", "M", "S", "K", "A", "T", "Z"];
-
 let app: Mounted | null = null;
 
 beforeEach(() => {
@@ -30,21 +33,10 @@ afterEach(() => {
   app = null;
 });
 
-function click(sel: string): void {
-  app!.root.querySelector<HTMLButtonElement>(sel)!.click();
-}
-
-function enterLobby(): void {
-  click("#create-btn");
-  app!.root.querySelector<HTMLInputElement>("#mk-nick")!.value = "Lena";
-  click("#mk-btn");
-  app!.conn().feed(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
-}
-
 function expectLeaveButton(): void {
   const button = app!.root.querySelector<HTMLButtonElement>("#leave-btn")!;
-  expect(button.getAttribute("aria-label")).toBe("Raum verlassen");
-  expect(button.getAttribute("data-tip")).toBe("Raum verlassen");
+  expect(button.getAttribute("aria-label")).toBe(COPY.lobby.leave);
+  expect(button.getAttribute("data-tip")).toBe(COPY.lobby.leave);
   expect(button.hasAttribute("aria-describedby")).toBe(false);
   expect(button.textContent).toBe("");
   const svg = button.querySelector("svg")!;
@@ -54,12 +46,15 @@ function expectLeaveButton(): void {
 
 describe("icon-only controls (#174)", () => {
   it("names and tooltips every leave control with the same string", () => {
-    enterLobby();
+    driveScene(app!, {
+      entry: { mode: "create", nickname: "Lena" },
+      greeting: [lobbySnapshot({ code: ROOM_CODE, nickname: "Lena" })],
+    });
     expectLeaveButton();
 
     app!.conn().feed(
       playingSnapshot({
-        code: "LAG4T",
+        code: ROOM_CODE,
         selfSeatId: 1,
         nickname: "Lena",
         role: "player",
@@ -68,16 +63,19 @@ describe("icon-only controls (#174)", () => {
     );
     expectLeaveButton();
 
-    app!.conn().feed(roundEnded(1, { groups: [] }));
+    app!.conn().feed(roundEnded(1, NO_WORDS));
     expectLeaveButton();
   });
 
   it("keeps the outcome action as an icon plus visible text", () => {
-    enterLobby();
+    driveScene(app!, {
+      entry: { mode: "create", nickname: "Lena" },
+      greeting: [lobbySnapshot({ code: ROOM_CODE, nickname: "Lena" })],
+    });
     app!.conn().feed({ type: "room-ended", reason: "host-closed" });
 
     const button = app!.root.querySelector<HTMLButtonElement>("#home-btn")!;
-    expect(button.textContent?.trim()).toBe("Zur Startseite");
+    expect(button.textContent?.trim()).toBe(COPY.outcomes.home);
     expect(button.hasAttribute("data-tip")).toBe(false);
     expect(button.hasAttribute("aria-describedby")).toBe(false);
     const svg = button.querySelector("svg")!;
@@ -86,25 +84,24 @@ describe("icon-only controls (#174)", () => {
   });
 
   it("leaves the sort control's accessible name and pressed state on the buttons", () => {
-    click("#join-btn");
-    app!.root.querySelector<HTMLInputElement>("#jn-code")!.value = "ABC12";
-    app!.root.querySelector<HTMLInputElement>("#jn-nick")!.value = "Ben";
-    click("#jn-btn");
-    app!.conn().feed(
-      intermissionSnapshot({
-        code: "ABC12",
-        selfSeatId: 2,
-        nickname: "Ben",
-        board: BOARD,
-        reveal: { groups: [{ length: 3, words: [{ word: "ast", points: 3, foundBy: [1] }] }] },
-      })
-    );
+    driveScene(app!, {
+      entry: { mode: "join", nickname: "Ben", code: ROOM_CODE },
+      greeting: [
+        intermissionSnapshot({
+          code: ROOM_CODE,
+          selfSeatId: 2,
+          nickname: "Ben",
+          board: BOARD,
+          reveal: { groups: [{ length: 3, words: [{ word: "ast", points: 3, foundBy: [1] }] }] },
+        }),
+      ],
+    });
 
     const buttons = [...app!.root.querySelectorAll<HTMLButtonElement>("#reveal-sort button")];
     expect(buttons.map((b) => [b.getAttribute("aria-label"), b.getAttribute("data-tip")])).toEqual([
-      ["Nach Länge sortieren", "Nach Länge sortieren"],
-      ["Nach Punkten sortieren", "Nach Punkten sortieren"],
-      ["Alphabetisch sortieren", "Alphabetisch sortieren"],
+      [COPY.intermission.sortLength, COPY.intermission.sortLength],
+      [COPY.intermission.sortPoints, COPY.intermission.sortPoints],
+      [COPY.intermission.sortAlphabet, COPY.intermission.sortAlphabet],
     ]);
     expect(buttons.map((b) => b.getAttribute("aria-pressed"))).toEqual(["true", "false", "false"]);
 

@@ -1,5 +1,5 @@
-import { ALL_SCENARIOS, ROOM_CODE } from "./scenarios.js";
-import { enterRoom, expect, openPage, test } from "./support.js";
+import { ALL_SCENARIOS, runScenario } from "./scenarios.js";
+import { expect, test } from "./support.js";
 
 /**
  * The curated screenshot matrix (#156): canonical screens, outcome screens
@@ -15,20 +15,7 @@ for (const scenario of ALL_SCENARIOS) {
 
       const register = scenario.fixme ? test.fixme : test;
       register(title, async ({ page }) => {
-        await openPage(page, {
-          viewport,
-          skin,
-          ...(scenario.path ? { path: scenario.path } : {}),
-          ...(scenario.wire ? { wire: scenario.wire } : {}),
-        });
-        if (scenario.wire) {
-          await enterRoom(page, {
-            mode: scenario.enter ?? "create",
-            code: ROOM_CODE,
-          });
-        }
-        if (scenario.afterOpen) await scenario.afterOpen(page);
-        await scenario.ready(page);
+        await runScenario(page, scenario, { viewport, skin });
         await expect(page).toHaveScreenshot(screenshot, { fullPage: true });
       });
     }

@@ -1,9 +1,14 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  BOARD,
+  COPY,
+  NO_WORDS,
+  ROOM_CODE,
+  click,
+  driveToRoundOne,
   firePointerEvent,
   intermissionSnapshot,
-  lobbySnapshot,
   mountHarness,
   playerJoined,
   playingSnapshot,
@@ -12,6 +17,7 @@ import {
   seat,
   tick,
   tileEls,
+  typeInto,
   type Mounted,
   type PlayerInfo,
 } from "./harness.js";
@@ -27,14 +33,10 @@ import {
  * drag pins the rotated arrangement end to end.
  */
 
-const BOARD = ["H", "A", "U", "S", "T", "I", "R", "E", "B", "U", "M", "S", "K", "A", "T", "Z"];
-
 /** The server board laid clockwise over the grid. */
 const CLOCKWISE_90 = ["K", "B", "T", "H", "A", "U", "I", "A", "T", "M", "R", "U", "Z", "S", "E", "S"];
 const CLOCKWISE_180 = ["Z", "T", "A", "K", "S", "M", "U", "B", "E", "R", "I", "T", "S", "U", "A", "H"];
 const CLOCKWISE_270 = ["S", "E", "S", "Z", "U", "R", "M", "T", "A", "I", "U", "A", "H", "T", "B", "K"];
-
-const NO_WORDS = { groups: [] };
 
 let app: Mounted | null = null;
 
@@ -47,42 +49,6 @@ afterEach(() => {
   app?.unmount();
   app = null;
 });
-
-/** Enter Create from the Home landing (ADR-0021). */
-function openCreate(): void {
-  if (!app!.root.querySelector("#mk-nick")) click("#create-btn");
-}
-
-/** Enter Join from the Home landing (ADR-0021). */
-function openJoin(): void {
-  if (!app!.root.querySelector("#jn-code")) click("#join-btn");
-}
-
-/** A form helper walks the landing first when its field is not on screen. */
-function ensureEntryScreen(sel: string): void {
-  if (app!.root.querySelector(sel)) return;
-  if (sel === "#mk-nick" || sel === "#mk-btn") openCreate();
-  else if (sel.startsWith("#jn-")) openJoin();
-}
-
-function click(sel: string): void {
-  ensureEntryScreen(sel);
-  app!.root.querySelector<HTMLButtonElement>(sel)!.click();
-}
-
-function typeInto(sel: string, value: string): void {
-  ensureEntryScreen(sel);
-  app!.root.querySelector<HTMLInputElement>(sel)!.value = value;
-}
-
-/** Home → lobby → round one. */
-function driveToRoundOne(code = "LAG4T"): void {
-  typeInto("#mk-nick", "Lena");
-  click("#mk-btn");
-  app!.conn().feed(lobbySnapshot({ code, nickname: "Lena" }));
-  click("#start-btn");
-  app!.conn().feed(roundStarted(BOARD));
-}
 
 function rotationButton(): HTMLButtonElement {
   return app!.root.querySelector<HTMLButtonElement>("#board-rotation")!;
@@ -117,11 +83,11 @@ function traceText(): string {
 
 describe("board rotation (#151)", () => {
   it("offers one icon-only button whose stable name is its tooltip and cycles 0→90→180→270→0", () => {
-    driveToRoundOne();
+    driveToRoundOne(app!);
     const button = rotationButton();
     expect(button.tagName).toBe("BUTTON");
-    expect(button.getAttribute("aria-label")).toBe("Spielfeld um 90° drehen");
-    expect(button.getAttribute("data-tip")).toBe("Spielfeld um 90° drehen");
+    expect(button.getAttribute("aria-label")).toBe(COPY.game.rotate);
+    expect(button.getAttribute("data-tip")).toBe(COPY.game.rotate);
     expect(button.hasAttribute("aria-describedby")).toBe(false);
     expect(button.textContent).toBe("");
     expect(app!.root.querySelector("#board-rotation [role='group']")).toBeNull();
@@ -155,7 +121,7 @@ describe("board rotation (#151)", () => {
   });
 
   it("permutes the same sixteen upright tiles and keeps every point value in its corner", () => {
-    driveToRoundOne();
+    driveToRoundOne(app!);
     const base = tiles();
     expect(base).toHaveLength(16);
 
@@ -180,7 +146,7 @@ describe("board rotation (#151)", () => {
   });
 
   it("resolves a point to the rotated cell and submits the word those tiles spell", () => {
-    driveToRoundOne();
+    driveToRoundOne(app!);
     turn(1);
 
     const rotated = tileEls(app!.root);
@@ -201,12 +167,12 @@ describe("board rotation (#151)", () => {
     firePointerEvent(rotated[2]!, "pointerup");
 
     expect(seen).toEqual(["H", "HA", "HAT"]);
-    expect(traceText()).toBe("Wische über die Felder, um ein Wort zu bilden.");
+    expect(traceText()).toBe(COPY.game.traceHint);
     expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HAT", reqId: 3 });
   });
 
   it("keeps the chosen arrangement through live updates and structural re-renders, and shows it on that round's intermission", () => {
-    driveToRoundOne();
+    driveToRoundOne(app!);
     turn(2);
 
     // A play-time delta updates live regions in place.
@@ -221,13 +187,13 @@ describe("board rotation (#151)", () => {
 
     // The pause shows the board exactly as the round was played.
     app!.conn().feed(roundEnded(1, NO_WORDS));
-    expect(app!.root.querySelector("h1")!.textContent).toBe("Pause");
+    expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.intermission.title);
     expect(letters()).toEqual(CLOCKWISE_180);
     expect(rotation()).toBe("180");
   });
 
   it("resets to 0° when the next board starts", () => {
-    driveToRoundOne();
+    driveToRoundOne(app!);
     turn(1);
     app!.conn().feed(roundEnded(1, NO_WORDS));
     expect(letters()).toEqual(CLOCKWISE_90);
@@ -239,18 +205,18 @@ describe("board rotation (#151)", () => {
   });
 
   it("starts a fresh mount at 0°", () => {
-    driveToRoundOne();
+    driveToRoundOne(app!);
     turn(3);
     expect(rotation()).toBe("270");
 
     app!.unmount();
     app = mountHarness();
-    typeInto("#jn-code", "LAG4T");
-    typeInto("#jn-nick", "Lena");
-    click("#jn-btn");
+    typeInto(app!.root, "#jn-code", ROOM_CODE);
+    typeInto(app!.root, "#jn-nick", "Lena");
+    click(app!.root, "#jn-btn");
     app!.conn().feed(
       playingSnapshot({
-        code: "LAG4T",
+        code: ROOM_CODE,
         selfSeatId: 1,
         nickname: "Lena",
         role: "player",
@@ -263,12 +229,12 @@ describe("board rotation (#151)", () => {
   });
 
   it("keeps the step across a reconnect snapshot for the same board and resets it for a different board", () => {
-    driveToRoundOne();
+    driveToRoundOne(app!);
     turn(1);
 
     app!.conn().feed(
       playingSnapshot({
-        code: "LAG4T",
+        code: ROOM_CODE,
         selfSeatId: 1,
         nickname: "Lena",
         role: "player",
@@ -281,7 +247,7 @@ describe("board rotation (#151)", () => {
     const NEXT = ["Z", "U", "R", "F", "E", "L", "D", "A", "M", "I", "S", "T", "K", "O", "N", "G"];
     app!.conn().feed(
       playingSnapshot({
-        code: "LAG4T",
+        code: ROOM_CODE,
         selfSeatId: 1,
         nickname: "Lena",
         role: "player",
@@ -294,7 +260,7 @@ describe("board rotation (#151)", () => {
   });
 
   it("sends no wire message and changes neither the board data nor the score", () => {
-    driveToRoundOne();
+    driveToRoundOne(app!);
     app!.conn().feed({
       type: "score-update",
       roundNumber: 1,
@@ -313,12 +279,12 @@ describe("board rotation (#151)", () => {
   });
 
   it("gives spectators the same control", () => {
-    typeInto("#jn-code", "ABC12");
-    typeInto("#jn-nick", "Ben");
-    click("#jn-btn");
+    typeInto(app!.root, "#jn-code", ROOM_CODE);
+    typeInto(app!.root, "#jn-nick", "Ben");
+    click(app!.root, "#jn-btn");
     app!.conn().feed(
       playingSnapshot({
-        code: "ABC12",
+        code: ROOM_CODE,
         selfSeatId: 2,
         nickname: "Ben",
         role: "spectator",
@@ -334,31 +300,31 @@ describe("board rotation (#151)", () => {
   });
 
   it("ends an in-progress drag without submitting it", () => {
-    driveToRoundOne();
+    driveToRoundOne(app!);
     const tilesNow = tileEls(app!.root);
     firePointerEvent(tilesNow[0]!, "pointerdown");
     firePointerEvent(tilesNow[1]!, "pointermove");
     expect(traceText()).toBe("HA");
 
     turn(1);
-    expect(traceText()).toBe("Wische über die Felder, um ein Wort zu bilden.");
+    expect(traceText()).toBe(COPY.game.traceHint);
     expect(letters()).toEqual(CLOCKWISE_90);
 
     // The old gesture is gone: releasing now submits nothing.
     firePointerEvent(tileEls(app!.root)[0]!, "pointerup");
     expect(app!.conn().sentTypes()).toEqual(["create-room", "start-round"]);
-    expect(traceText()).toBe("Wische über die Felder, um ein Wort zu bilden.");
+    expect(traceText()).toBe(COPY.game.traceHint);
   });
 
   it("ends a held gesture at the Round boundary and releases it without submitting", () => {
-    driveToRoundOne();
+    driveToRoundOne(app!);
     const tilesNow = tileEls(app!.root);
     firePointerEvent(tilesNow[0]!, "pointerdown");
     firePointerEvent(tilesNow[1]!, "pointermove");
     expect(traceText()).toBe("HA");
 
     app!.conn().feed(roundEnded(1, NO_WORDS));
-    expect(app!.root.querySelector("h1")!.textContent).toBe("Pause");
+    expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.intermission.title);
 
     // The pause shows the same board, but the drag that began in the round
     // is gone: a release now submits nothing.
@@ -373,9 +339,9 @@ describe("board rotation (#151)", () => {
   });
 
   it("shows the control on an intermission snapshot too", () => {
-    typeInto("#jn-code", "LATE5");
-    typeInto("#jn-nick", "Ben");
-    click("#jn-btn");
+    typeInto(app!.root, "#jn-code", "LATE5");
+    typeInto(app!.root, "#jn-nick", "Ben");
+    click(app!.root, "#jn-btn");
     const roster: PlayerInfo[] = [
       seat({ seatId: 1, nickname: "Lena" }),
       seat({ seatId: 2, nickname: "Ben" }),
@@ -393,7 +359,7 @@ describe("board rotation (#151)", () => {
     );
 
     expect(app!.root.querySelector<HTMLElement>("#board-rotation")!.getAttribute("aria-label")).toBe(
-      "Spielfeld um 90° drehen"
+      COPY.game.rotate
     );
     turn(1);
     expect(letters()).toEqual(CLOCKWISE_90);

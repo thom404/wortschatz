@@ -1,6 +1,12 @@
-import type { ClientMessage, ServerMessage } from "@wortschatz/shared";
+import type { ClientMessage, GreetingMsg, ServerMessage } from "@wortschatz/shared";
 
 export {
+  BOARD,
+  COPY,
+  NO_WORDS,
+  OTHER_ROOM_CODE,
+  ROOM_CODE,
+  ROUND_ONE,
   intermissionSnapshot,
   lobbySnapshot,
   playerJoined,
@@ -11,7 +17,8 @@ export {
   tick,
   wikiLinks,
 } from "./fixtures.js";
-export type { PlayerInfo } from "./fixtures.js";
+export type { PlayerInfo, RoundOneOptions, Scene } from "./fixtures.js";
+import { ROUND_ONE, type RoundOneOptions, type Scene } from "./fixtures.js";
 import { saveSession, type CloseOutcome, type ConnStatus, type GreetFn } from "../src/api.js";
 import { mount, type ConnFactory, type RoomConn } from "../src/app.js";
 
@@ -229,6 +236,73 @@ export function mountHarness(): Mounted {
     },
     unmount,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Shared room-entry drivers                                           */
+/* ------------------------------------------------------------------ */
+
+/** Enter Create from the Home landing (ADR-0021). */
+function openCreate(root: HTMLElement): void {
+  if (!root.querySelector("#mk-nick")) root.querySelector<HTMLButtonElement>("#create-btn")!.click();
+}
+
+/** Enter Join from the Home landing (ADR-0021). */
+function openJoin(root: HTMLElement): void {
+  if (!root.querySelector("#jn-code")) root.querySelector<HTMLButtonElement>("#join-btn")!.click();
+}
+
+/** A form helper walks the landing first when its field is not on screen
+ *  (a deep link is already on Join). */
+function ensureEntryScreen(root: HTMLElement, selector: string): void {
+  if (root.querySelector(selector)) return;
+  if (selector === "#mk-nick" || selector === "#mk-btn") openCreate(root);
+  else if (selector.startsWith("#jn-")) openJoin(root);
+}
+
+export function click(root: HTMLElement, selector: string): void {
+  ensureEntryScreen(root, selector);
+  root.querySelector<HTMLButtonElement>(selector)!.click();
+}
+
+export function typeInto(root: HTMLElement, selector: string, value: string): void {
+  ensureEntryScreen(root, selector);
+  root.querySelector<HTMLInputElement>(selector)!.value = value;
+}
+
+/** Drives one `Scene` through the real client: optional path and Room entry,
+ *  the greeting frames, then the optional Round-start frames. */
+export function driveScene(app: Mounted, scene: Scene): void {
+  if (scene.path) window.history.pushState({}, "", scene.path);
+  if (scene.entry) {
+    if (scene.entry.mode === "join") {
+      if (scene.entry.code) typeInto(app.root, "#jn-code", scene.entry.code);
+      typeInto(app.root, "#jn-nick", scene.entry.nickname);
+      click(app.root, "#jn-btn");
+    } else {
+      typeInto(app.root, "#mk-nick", scene.entry.nickname);
+      click(app.root, "#mk-btn");
+    }
+  }
+  if (!scene.entry) return;
+
+  const conn = app.conn();
+  const greeting = conn
+    .sent()
+    .find((msg): msg is GreetingMsg => msg.type === "create-room" || msg.type === "join");
+  const frames = typeof scene.greeting === "function" ? scene.greeting(greeting!) : scene.greeting;
+  for (const frame of frames) conn.feed(frame);
+
+  if (scene.startRound) {
+    click(app.root, "#start-btn");
+    for (const frame of scene.startRound) conn.feed(frame);
+  }
+  if (scene.closeAfterGreeting) conn.abruptClose();
+}
+
+/** Home → Lobby → (Host starts) → Round one, through the boundary. */
+export function driveToRoundOne(app: Mounted, opts: RoundOneOptions = {}): void {
+  driveScene(app, ROUND_ONE(opts));
 }
 
 /* ------------------------------------------------------------------ */

@@ -1,11 +1,13 @@
 import {
+  COPY,
+  ROOM_CODE,
   intermissionSnapshot,
   lobbySnapshot,
   playingSnapshot,
   seat,
 } from "../packages/client/tests/fixtures.js";
-import { BOARD_DIGRAM, BOARD_DRAG, REVEAL, ROOM_CODE } from "./scenarios.js";
-import { DESKTOP, FIXED_NOW, enterRoom, expect, openMenu, openPage, test } from "./support.js";
+import { BOARD_DIGRAM, BOARD_DRAG, REVEAL } from "./scenarios.js";
+import { DESKTOP, FIXED_NOW, expect, openMenu, openPage, openScene, test } from "./support.js";
 
 /**
  * The core flows (#156), now including the app-owned Menü (ADR-0023): behavior through the real browser UI, asserted
@@ -14,22 +16,16 @@ import { DESKTOP, FIXED_NOW, enterRoom, expect, openMenu, openPage, test } from 
  */
 
 test("create room → lobby", async ({ page }) => {
-  const wire = await openPage(page, {
+  const wire = await openScene(page, {
     viewport: DESKTOP,
     skin: "standard",
-    wire: {
-      onMessage(msg, ws) {
-        if (msg.type !== "create-room") return;
-        ws.send(
-          JSON.stringify(lobbySnapshot({ code: ROOM_CODE, nickname: msg.nickname, seatId: 1, hostSeatId: 1 }))
-        );
-      },
+    scene: {
+      entry: { mode: "create", nickname: "Lena" },
+      greeting: [lobbySnapshot({ code: ROOM_CODE, nickname: "Lena", seatId: 1, hostSeatId: 1 })],
     },
   });
 
-  await enterRoom(page, { mode: "create", nickname: "Lena" });
-
-  await expect(page.locator("#screen h1")).toHaveText(`Raum ${ROOM_CODE}`);
+  await expect(page.locator("#screen h1")).toHaveText(COPY.lobby.title(ROOM_CODE));
   await expect(page.locator("#start-btn")).toBeVisible();
   expect(wire.received.find((m) => m.type === "create-room")).toMatchObject({
     type: "create-room",
@@ -38,31 +34,25 @@ test("create room → lobby", async ({ page }) => {
 });
 
 test("deep-link join", async ({ page }) => {
-  const wire = await openPage(page, {
+  const wire = await openScene(page, {
     viewport: DESKTOP,
     skin: "standard",
-    path: `/r/${ROOM_CODE}`,
-    wire: {
-      onMessage(msg, ws) {
-        if (msg.type !== "join") return;
-        ws.send(
-          JSON.stringify(
-            lobbySnapshot({
-              code: ROOM_CODE,
-              nickname: msg.nickname,
-              seatId: 2,
-              hostSeatId: 1,
-              players: [seat({ seatId: 1, nickname: "Lena" }), seat({ seatId: 2, nickname: msg.nickname })],
-            })
-          )
-        );
-      },
+    scene: {
+      path: `/r/${ROOM_CODE}`,
+      entry: { mode: "join", nickname: "Jonas" },
+      greeting: [
+        lobbySnapshot({
+          code: ROOM_CODE,
+          nickname: "Jonas",
+          seatId: 2,
+          hostSeatId: 1,
+          players: [seat({ seatId: 1, nickname: "Lena" }), seat({ seatId: 2, nickname: "Jonas" })],
+        }),
+      ],
     },
   });
 
-  await enterRoom(page, { mode: "join", nickname: "Jonas" });
-
-  await expect(page.locator("#screen")).toContainText("Warte auf den Gastgeber");
+  await expect(page.locator("#screen")).toContainText(COPY.lobby.waiting);
   expect(wire.received.find((m) => m.type === "join")).toMatchObject({
     type: "join",
     code: ROOM_CODE,
@@ -76,7 +66,7 @@ test("skin switch through the Menü survives reload", async ({ page }) => {
   await expect(page.locator("body")).toHaveAttribute("data-skin", "standard");
   await expect(page.locator("#menu-panel")).toBeHidden();
   await openMenu(page);
-  await expect(page.locator("#menu-panel .menu-version")).toHaveText("Version 0.1.0");
+  await expect(page.locator("#menu-panel .menu-version")).toHaveText(`Version 0.1.0`);
   await page.locator("#skin-select").selectOption("arcade");
   await expect(page.locator("body")).toHaveAttribute("data-skin", "arcade");
 
@@ -88,11 +78,12 @@ test("skin switch through the Menü survives reload", async ({ page }) => {
 });
 
 test("menu over a running round closes on Esc and leaves the board usable", async ({ page }) => {
-  const wire = await openPage(page, {
+  const wire = await openScene(page, {
     viewport: DESKTOP,
     skin: "standard",
-    wire: {
-      messages: [
+    scene: {
+      entry: { mode: "create", nickname: "Lena" },
+      greeting: [
         playingSnapshot({
           code: ROOM_CODE,
           selfSeatId: 1,
@@ -106,7 +97,6 @@ test("menu over a running round closes on Esc and leaves the board usable", asyn
     },
   });
 
-  await enterRoom(page, { mode: "create", nickname: "Lena" });
   // Closed, the floating surface intercepts no pointer input: only the
   // 44 px trigger is interactive.
   await expect(page.locator("#menu")).toHaveCSS("pointer-events", "none");
@@ -140,11 +130,12 @@ test("menu over a running round closes on Esc and leaves the board usable", asyn
 });
 
 test("drag → submit-word", async ({ page }) => {
-  const wire = await openPage(page, {
+  const wire = await openScene(page, {
     viewport: DESKTOP,
     skin: "standard",
-    wire: {
-      messages: [
+    scene: {
+      entry: { mode: "create", nickname: "Lena" },
+      greeting: [
         playingSnapshot({
           code: ROOM_CODE,
           selfSeatId: 1,
@@ -157,8 +148,6 @@ test("drag → submit-word", async ({ page }) => {
       ],
     },
   });
-
-  await enterRoom(page, { mode: "create", nickname: "Lena" });
 
   const tiles = page.locator("#board .tile");
   await expect(tiles).toHaveCount(16);
@@ -185,11 +174,12 @@ test("drag → submit-word", async ({ page }) => {
 });
 
 test("intermission → start-round", async ({ page }) => {
-  const wire = await openPage(page, {
+  const wire = await openScene(page, {
     viewport: DESKTOP,
     skin: "standard",
-    wire: {
-      messages: [
+    scene: {
+      entry: { mode: "create", nickname: "Lena" },
+      greeting: [
         intermissionSnapshot({
           code: ROOM_CODE,
           selfSeatId: 1,
@@ -202,8 +192,6 @@ test("intermission → start-round", async ({ page }) => {
       ],
     },
   });
-
-  await enterRoom(page, { mode: "create", nickname: "Lena" });
 
   await expect(page.locator("#start-btn")).toBeVisible();
   await page.locator("#start-btn").click();

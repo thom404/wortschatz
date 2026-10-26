@@ -1,11 +1,14 @@
 import type { Page } from "@playwright/test";
 import type { RevealPayload, ScoreEntry, ServerMessage } from "@wortschatz/shared";
 import {
+  COPY,
+  ROOM_CODE,
   intermissionSnapshot,
   lobbySnapshot,
   playingSnapshot,
   seat,
   type PlayerInfo,
+  type Scene,
 } from "../packages/client/tests/fixtures.js";
 import {
   FIXED_NOW,
@@ -14,13 +17,10 @@ import {
   SKINS,
   VIEWPORTS,
   expect,
+  openScene,
   type SkinId,
   type Viewport,
-  type WireOptions,
 } from "./support.js";
-
-/** The one room code every fixture uses (deterministic deep links and QR). */
-export const ROOM_CODE = "ABC12";
 
 /** A board with digrams and an either/or tile, the normal playing surface. */
 export const BOARD_DIGRAM = [
@@ -152,11 +152,15 @@ function intermissionWire(selfSeatId: number): ServerMessage[] {
   ];
 }
 
-function outcomeWire(finalFrame: ServerMessage, closeAfterGreeting?: WireOptions["closeAfterGreeting"]) {
+function outcomeScene(
+  finalFrame: ServerMessage,
+  closeAfterGreeting?: { code?: number; reason?: string; delayMs?: number }
+): Scene {
   return {
-    messages: [...lobbyWire(ROSTER, 2), finalFrame],
+    entry: { mode: "create", nickname: "Lena" },
+    greeting: [...lobbyWire(ROSTER, 2), finalFrame],
     ...(closeAfterGreeting ? { closeAfterGreeting } : {}),
-  } satisfies WireOptions;
+  };
 }
 
 async function revealSorted(page: Page, sort: "points" | "alphabet"): Promise<void> {
@@ -170,65 +174,80 @@ async function revealSorted(page: Page, sort: "points" | "alphabet"): Promise<vo
 async function submitCreateLocalError(page: Page): Promise<void> {
   await page.locator("#create-btn").click();
   await page.locator("#mk-btn").click();
-  await expect(page.locator("#notice-error")).toHaveText("Bitte gib einen Namen ein.");
+  await expect(page.locator("#notice-error")).toHaveText(COPY.errors.nameRequired);
 }
 
 /** One screenshot row of the curated matrix (#156). */
 export interface ScreenshotScenario {
   id: string;
+  scene: Scene;
   skins: readonly SkinId[];
   viewports: readonly Viewport[];
-  path?: string;
-  wire?: WireOptions;
-  /** How the scenario opens the room's connection (default `create`). */
-  enter?: "create" | "join";
   /** Written but not enabled until the named issue lands. */
   fixme?: string;
   afterOpen?: (page: Page) => Promise<void>;
   ready: (page: Page) => Promise<void>;
 }
 
+/** Opens one scenario and runs its browser-only hooks before its readiness
+ *  assertion, so every matrix loop shares the open → afterOpen → ready path. */
+export async function runScenario(
+  page: Page,
+  scenario: ScreenshotScenario,
+  opts: { viewport: Viewport; skin: SkinId }
+): Promise<void> {
+  await openScene(page, { scene: scenario.scene, viewport: opts.viewport, skin: opts.skin });
+  if (scenario.afterOpen) await scenario.afterOpen(page);
+  await scenario.ready(page);
+}
+
 const home: ScreenshotScenario = {
   id: "home-fresh",
+  scene: { greeting: [] },
   skins: SKINS,
   viewports: VIEWPORTS,
   ready: async (page) => {
-    await expect(page.locator("#screen h1")).toHaveText("Wortschatz");
+    await expect(page.locator("#screen h1")).toHaveText(COPY.home.title);
     await expect(page.locator(".home-actions button")).toHaveCount(2);
   },
 };
 
 const createFresh: ScreenshotScenario = {
   id: "create-fresh",
+  scene: { greeting: [] },
   skins: SKINS,
   viewports: VIEWPORTS,
   afterOpen: async (page) => {
     await page.locator("#create-btn").click();
   },
   ready: async (page) => {
-    await expect(page.locator("#screen h1")).toHaveText("Raum erstellen");
+    await expect(page.locator("#screen h1")).toHaveText(COPY.create.title);
     await expect(page.locator("#mk-nick")).toBeVisible();
   },
 };
 
 const joinFresh: ScreenshotScenario = {
   id: "join-fresh",
+  scene: { greeting: [] },
   skins: SKINS,
   viewports: VIEWPORTS,
   afterOpen: async (page) => {
     await page.locator("#join-btn").click();
   },
   ready: async (page) => {
-    await expect(page.locator("#screen h1")).toHaveText("Raum beitreten");
+    await expect(page.locator("#screen h1")).toHaveText(COPY.join.title);
     await expect(page.locator("#jn-code")).toBeVisible();
   },
 };
 
 const lobbyHostAlone: ScreenshotScenario = {
   id: "lobby-host-alone",
+  scene: {
+    entry: { mode: "create", nickname: ROSTER[0]!.nickname },
+    greeting: lobbyWire([ROSTER[0]!], 1),
+  },
   skins: SKINS,
   viewports: VIEWPORTS,
-  wire: { messages: lobbyWire([ROSTER[0]!], 1) },
   ready: async (page) => {
     await expect(page.locator("#players .chip")).toHaveCount(1);
     await expect(page.locator("#start-btn")).toBeVisible();
@@ -237,20 +256,26 @@ const lobbyHostAlone: ScreenshotScenario = {
 
 const lobbyHostWithGuests: ScreenshotScenario = {
   id: "lobby-host-three-guests",
+  scene: {
+    entry: { mode: "create", nickname: ROSTER[0]!.nickname },
+    greeting: lobbyWire(),
+  },
   skins: SKINS,
   viewports: VIEWPORTS,
-  wire: { messages: lobbyWire() },
   ready: async (page) => {
     await expect(page.locator("#players .chip")).toHaveCount(4);
-    await expect(page.locator("#players .away")).toHaveText("unterbrochen");
+    await expect(page.locator("#players .away")).toHaveText(COPY.lobby.away);
   },
 };
 
 const game: ScreenshotScenario = {
   id: "game-digram",
+  scene: {
+    entry: { mode: "create", nickname: ROSTER[0]!.nickname },
+    greeting: gameWire(),
+  },
   skins: SKINS,
   viewports: VIEWPORTS,
-  wire: { messages: gameWire() },
   ready: async (page) => {
     await expect(page.locator("#board .tile")).toHaveCount(16);
     await expect(page.locator("#countdown")).toHaveText("1:40");
@@ -259,9 +284,12 @@ const game: ScreenshotScenario = {
 
 const intermissionHost: ScreenshotScenario = {
   id: "intermission-host",
+  scene: {
+    entry: { mode: "create", nickname: ROSTER[0]!.nickname },
+    greeting: intermissionWire(1),
+  },
   skins: SKINS,
   viewports: VIEWPORTS,
-  wire: { messages: intermissionWire(1) },
   ready: async (page) => {
     await expect(page.locator("#reveal .rw")).toHaveCount(7);
     await expect(page.locator("#start-btn")).toBeVisible();
@@ -270,9 +298,12 @@ const intermissionHost: ScreenshotScenario = {
 
 const intermissionGuest: ScreenshotScenario = {
   id: "intermission-guest",
+  scene: {
+    entry: { mode: "create", nickname: ROSTER[0]!.nickname },
+    greeting: intermissionWire(2),
+  },
   skins: SKINS,
   viewports: VIEWPORTS,
-  wire: { messages: intermissionWire(2) },
   ready: async (page) => {
     await expect(page.locator("#reveal .rw")).toHaveCount(7);
     await expect(page.locator(".next-round-hint")).toBeVisible();
@@ -281,66 +312,68 @@ const intermissionGuest: ScreenshotScenario = {
 
 const kicked: ScreenshotScenario = {
   id: "outcome-kicked",
+  scene: outcomeScene({ type: "kicked" }),
   skins: SKINS,
   viewports: [PHONE_LARGE],
-  wire: outcomeWire({ type: "kicked" }),
   ready: async (page) => {
-    await expect(page.locator("#screen h1")).toContainText("Du wurdest aus dem Raum");
+    await expect(page.locator("#screen h1")).toContainText(COPY.outcomes.kicked(ROOM_CODE));
     await expect(page.locator("#home-btn")).toBeVisible();
   },
 };
 
 const roomEnded: ScreenshotScenario = {
   id: "outcome-room-ended",
+  scene: outcomeScene({ type: "room-ended", reason: "host-closed" }),
   skins: SKINS,
   viewports: [PHONE_LARGE],
-  wire: outcomeWire({ type: "room-ended", reason: "host-closed" }),
   ready: async (page) => {
-    await expect(page.locator("#screen h1")).toContainText("wurde beendet");
+    await expect(page.locator("#screen h1")).toContainText(COPY.outcomes.ended(ROOM_CODE));
   },
 };
 
 const roomExpired: ScreenshotScenario = {
   id: "outcome-room-expired",
+  scene: outcomeScene({ type: "room-ended", reason: "expired" }),
   skins: SKINS,
   viewports: [PHONE_LARGE],
-  wire: outcomeWire({ type: "room-ended", reason: "expired" }),
   ready: async (page) => {
-    await expect(page.locator("#screen h1")).toContainText("ist abgelaufen");
+    await expect(page.locator("#screen h1")).toContainText(COPY.outcomes.expired(ROOM_CODE));
   },
 };
 
 const roomNotFound: ScreenshotScenario = {
   id: "outcome-room-not-found",
+  scene: {
+    path: `/r/${ROOM_CODE}`,
+    entry: { mode: "join", nickname: "Jana" },
+    greeting: [{ type: "error", code: "room-not-found" }],
+  },
   skins: SKINS,
   viewports: [PHONE_LARGE],
-  path: `/r/${ROOM_CODE}`,
-  wire: { messages: [{ type: "error", code: "room-not-found" }] },
-  enter: "join",
   ready: async (page) => {
-    await expect(page.locator("#screen h1")).toContainText("nicht gefunden oder abgelaufen");
+    await expect(page.locator("#screen h1")).toContainText(COPY.outcomes.notFound(ROOM_CODE));
   },
 };
 
 const connectionLost: ScreenshotScenario = {
   id: "outcome-connection-lost",
-  skins: SKINS,
-  viewports: [PHONE_LARGE],
-  wire: {
-    messages: lobbyWire(ROSTER, 2),
+  scene: {
+    entry: { mode: "create", nickname: "Lena" },
+    greeting: lobbyWire(ROSTER, 2),
     closeAfterGreeting: { code: 1000, reason: "gone" },
   },
+  skins: SKINS,
+  viewports: [PHONE_LARGE],
   ready: async (page) => {
-    await expect(page.locator("#screen h1")).toHaveText("Verbindung beendet.");
+    await expect(page.locator("#screen h1")).toHaveText(COPY.outcomes.connectionLost);
   },
 };
 
 const overflowChip: ScreenshotScenario = {
   id: "targeted-154-long-standings-chip",
-  skins: SKINS,
-  viewports: [PHONE_SMALL],
-  wire: {
-    messages: [
+  scene: {
+    entry: { mode: "create", nickname: "Lena" },
+    greeting: [
       intermissionSnapshot({
         code: ROOM_CODE,
         selfSeatId: 1,
@@ -373,6 +406,8 @@ const overflowChip: ScreenshotScenario = {
       ]),
     ],
   },
+  skins: SKINS,
+  viewports: [PHONE_SMALL],
   ready: async (page) => {
     await expect(page.locator("#players .chip")).toHaveCount(4);
   },
@@ -380,10 +415,9 @@ const overflowChip: ScreenshotScenario = {
 
 const lowTimer: ScreenshotScenario = {
   id: "targeted-low-timer",
-  skins: SKINS,
-  viewports: [PHONE_SMALL],
-  wire: {
-    messages: [
+  scene: {
+    entry: { mode: "create", nickname: "Lena" },
+    greeting: [
       playingSnapshot({
         code: ROOM_CODE,
         selfSeatId: 2,
@@ -396,6 +430,8 @@ const lowTimer: ScreenshotScenario = {
       scoreUpdate(1, ROUND_ONE_SCORES),
     ],
   },
+  skins: SKINS,
+  viewports: [PHONE_SMALL],
   ready: async (page) => {
     await expect(page.locator("#countdown")).toHaveText("0:15");
     await expect(page.locator("#timer")).toHaveClass(/low/);
@@ -404,14 +440,17 @@ const lowTimer: ScreenshotScenario = {
 
 const tooltip: ScreenshotScenario = {
   id: "targeted-tooltip",
+  scene: {
+    entry: { mode: "create", nickname: "Lena" },
+    greeting: gameWire(),
+  },
   skins: SKINS,
   viewports: [PHONE_SMALL],
-  wire: { messages: gameWire() },
   afterOpen: async (page) => {
     await page.locator("#board-rotation").hover();
   },
   ready: async (page) => {
-    await expect(page.locator("#board-rotation")).toHaveAttribute("aria-label", "Spielfeld um 90° drehen");
+    await expect(page.locator("#board-rotation")).toHaveAttribute("aria-label", COPY.game.rotate);
     await expect
       .poll(() => page.locator("#board-rotation").evaluate((el) => getComputedStyle(el, "::after").opacity))
       .toBe("1");
@@ -420,22 +459,22 @@ const tooltip: ScreenshotScenario = {
 
 const errorNotice: ScreenshotScenario = {
   id: "targeted-error-notice",
+  scene: {
+    entry: { mode: "create", nickname: "Lena" },
+    greeting: [...gameWire(), { type: "error", code: "invalid-word" }],
+  },
   skins: SKINS,
   viewports: [PHONE_SMALL],
-  wire: {
-    messages: [...gameWire(), { type: "error", code: "invalid-word" }],
-  },
   ready: async (page) => {
-    await expect(page.locator("#notice-error")).toHaveText("Kein gültiges Wort.");
+    await expect(page.locator("#notice-error")).toHaveText(COPY.errors.invalidWord);
   },
 };
 
 const spectatorGame: ScreenshotScenario = {
   id: "targeted-spectator",
-  skins: SKINS,
-  viewports: [PHONE_SMALL],
-  wire: {
-    messages: [
+  scene: {
+    entry: { mode: "create", nickname: "Lena" },
+    greeting: [
       playingSnapshot({
         code: ROOM_CODE,
         selfSeatId: 2,
@@ -447,16 +486,21 @@ const spectatorGame: ScreenshotScenario = {
       }),
     ],
   },
+  skins: SKINS,
+  viewports: [PHONE_SMALL],
   ready: async (page) => {
-    await expect(page.locator("#screen")).toContainText("Du schaust zu.");
+    await expect(page.locator("#screen")).toContainText(COPY.game.spectatorNote);
   },
 };
 
 const revealByPoints: ScreenshotScenario = {
   id: "targeted-reveal-points",
+  scene: {
+    entry: { mode: "create", nickname: "Lena" },
+    greeting: intermissionWire(1),
+  },
   skins: SKINS,
   viewports: [PHONE_SMALL],
-  wire: { messages: intermissionWire(1) },
   afterOpen: (page) => revealSorted(page, "points"),
   ready: async (page) => {
     await expect(page.locator("#reveal .rw-word").first()).toHaveText("stein");
@@ -465,9 +509,12 @@ const revealByPoints: ScreenshotScenario = {
 
 const revealAlphabetical: ScreenshotScenario = {
   id: "targeted-reveal-alphabet",
+  scene: {
+    entry: { mode: "create", nickname: "Lena" },
+    greeting: intermissionWire(1),
+  },
   skins: SKINS,
   viewports: [PHONE_SMALL],
-  wire: { messages: intermissionWire(1) },
   afterOpen: (page) => revealSorted(page, "alphabet"),
   ready: async (page) => {
     await expect(page.locator("#reveal .rw-word").first()).toHaveText("ast");
@@ -476,10 +523,9 @@ const revealAlphabetical: ScreenshotScenario = {
 
 const fullLobby: ScreenshotScenario = {
   id: "targeted-full-lobby",
-  skins: SKINS,
-  viewports: [PHONE_SMALL],
-  wire: {
-    messages: lobbyWire(
+  scene: {
+    entry: { mode: "create", nickname: "Lena" },
+    greeting: lobbyWire(
       [
         seat({ seatId: 1, nickname: "Lena" }),
         seat({ seatId: 2, nickname: "Jonas" }),
@@ -493,29 +539,32 @@ const fullLobby: ScreenshotScenario = {
       1
     ),
   },
+  skins: SKINS,
+  viewports: [PHONE_SMALL],
   ready: async (page) => {
     await expect(page.locator("#players .chip")).toHaveCount(8);
-    await expect(page.locator("#screen")).toContainText("8 von 8 verbunden");
+    await expect(page.locator("#screen")).toContainText(COPY.lobby.connected(8));
   },
 };
 
 const createLocalError: ScreenshotScenario = {
   id: "targeted-create-local-error",
+  scene: { greeting: [] },
   skins: SKINS,
   viewports: [PHONE_SMALL],
   afterOpen: submitCreateLocalError,
   ready: async (page) => {
-    await expect(page.locator("#notice-error")).toHaveText("Bitte gib einen Namen ein.");
+    await expect(page.locator("#notice-error")).toHaveText(COPY.errors.nameRequired);
   },
 };
 
 const joinDeepLink: ScreenshotScenario = {
   id: "targeted-join-deep-link",
+  scene: { path: `/r/${ROOM_CODE}`, greeting: [] },
   skins: SKINS,
   viewports: [PHONE_SMALL],
-  path: `/r/${ROOM_CODE}`,
   ready: async (page) => {
-    await expect(page.locator("#screen")).toContainText(`Du wurdest in Raum ${ROOM_CODE} eingeladen.`);
+    await expect(page.locator("#screen")).toContainText(COPY.join.invited(ROOM_CODE));
     await expect(page.locator("#jn-code")).toHaveValue(ROOM_CODE);
     await expect(page.locator("#jn-code")).toHaveAttribute("readonly", "");
   },
@@ -523,12 +572,15 @@ const joinDeepLink: ScreenshotScenario = {
 
 const lobbyGuest: ScreenshotScenario = {
   id: "targeted-lobby-guest",
+  scene: {
+    entry: { mode: "create", nickname: "Lena" },
+    greeting: lobbyWire(ROSTER, 2),
+  },
   skins: SKINS,
   viewports: [PHONE_SMALL],
-  wire: { messages: lobbyWire(ROSTER, 2) },
   ready: async (page) => {
     await expect(page.locator(".next-round-hint")).toHaveCount(0);
-    await expect(page.locator("#screen")).toContainText("Warte auf den Gastgeber");
+    await expect(page.locator("#screen")).toContainText(COPY.lobby.waiting);
   },
 };
 

@@ -1,5 +1,5 @@
-import { CANONICAL_SCENARIOS } from "./scenarios.js";
-import { DESKTOP, enterRoom, expect, openPage, test } from "./support.js";
+import { CANONICAL_SCENARIOS, runScenario } from "./scenarios.js";
+import { DESKTOP, expect, openPage, test } from "./support.js";
 
 /**
  * One ARIA snapshot per canonical screen (#156), independent of skin and
@@ -8,17 +8,7 @@ import { DESKTOP, enterRoom, expect, openPage, test } from "./support.js";
  */
 for (const scenario of CANONICAL_SCENARIOS) {
   test(`${scenario.id} semantics`, async ({ page }) => {
-    await openPage(page, {
-      viewport: DESKTOP,
-      skin: "standard",
-      ...(scenario.path ? { path: scenario.path } : {}),
-      ...(scenario.wire ? { wire: scenario.wire } : {}),
-    });
-    if (scenario.wire) {
-      await enterRoom(page, { mode: scenario.enter ?? "create" });
-    }
-    if (scenario.afterOpen) await scenario.afterOpen(page);
-    await scenario.ready(page);
+    await runScenario(page, scenario, { viewport: DESKTOP, skin: "standard" });
     await expect(page.locator("#app")).toMatchAriaSnapshot({ name: `${scenario.id}.aria.yml` });
   });
 }

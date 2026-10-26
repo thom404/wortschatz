@@ -1,5 +1,6 @@
 import { test as base, expect, type Page, type WebSocketRoute } from "@playwright/test";
 import type { ClientMessage, GreetingMsg, ServerMessage } from "@wortschatz/shared";
+import type { Scene } from "../packages/client/tests/fixtures.js";
 
 /** The two skins in the registry (ADR-0002); kept local to the test tooling. */
 export type SkinId = "standard" | "arcade";
@@ -31,6 +32,8 @@ export const SKINS: readonly SkinId[] = ["standard", "arcade"];
 export interface WireOptions {
   /** Messages replayed on the connection's first frame (create-room / join). */
   messages?: ServerMessage[] | ((greeting: GreetingMsg) => ServerMessage[]);
+  /** Messages answered when the client starts the next round. */
+  startRound?: ServerMessage[];
   /** Custom client→server handling for flow tests; supersedes `messages`. */
   onMessage?: (msg: ClientMessage, ws: WebSocketRoute) => void;
   /** Close the transport after the greeting has been answered. */
@@ -61,6 +64,10 @@ export async function routeWire(page: Page, opts: WireOptions = {}): Promise<Wir
       received.push(msg);
       if (opts.onMessage) {
         opts.onMessage(msg, ws);
+        return;
+      }
+      if (msg.type === "start-round" && opts.startRound) {
+        for (const message of opts.startRound) ws.send(JSON.stringify(message));
         return;
       }
       if (!isGreeting(msg)) return;
@@ -122,6 +129,12 @@ export interface OpenOptions {
   wire?: WireOptions;
 }
 
+export interface OpenSceneOptions {
+  viewport: Viewport;
+  skin?: SkinId;
+  scene: Scene;
+}
+
 /** Installs the fixed clock and optional skin before navigation, starts the
  *  wire fixture, then loads the production build. */
 export async function openPage(page: Page, opts: OpenOptions): Promise<WireHarness> {
@@ -139,6 +152,24 @@ export async function openPage(page: Page, opts: OpenOptions): Promise<WireHarne
   await page.clock.setFixedTime(new Date(FIXED_NOW));
   const wire = await routeWire(page, opts.wire);
   await page.goto(opts.path ?? "/");
+  return wire;
+}
+
+/** Opens one shared `Scene` through the browser boundary: route its wire,
+ *  navigate its path and enter its Room. */
+export async function openScene(page: Page, opts: OpenSceneOptions): Promise<WireHarness> {
+  const { scene } = opts;
+  const wire = await openPage(page, {
+    viewport: opts.viewport,
+    ...(opts.skin ? { skin: opts.skin } : {}),
+    ...(scene.path ? { path: scene.path } : {}),
+    wire: {
+      messages: scene.greeting,
+      ...(scene.startRound ? { startRound: scene.startRound } : {}),
+      ...(scene.closeAfterGreeting ? { closeAfterGreeting: scene.closeAfterGreeting } : {}),
+    },
+  });
+  if (scene.entry) await enterRoom(page, scene.entry);
   return wire;
 }
 

@@ -1,26 +1,31 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  BOARD,
+  COPY,
+  ROOM_CODE,
+  click,
+  driveToRoundOne,
+  firePointerEvent,
+  fireTouchEvent,
   intermissionSnapshot,
   lobbySnapshot,
   mountHarness,
-  playingSnapshot,
   playerJoined,
+  playingSnapshot,
   roundEnded,
   roundStarted,
   strayTouchMove,
   synthesizePointerDrag,
   synthesizeTouchDrag,
-  firePointerEvent,
-  fireTouchEvent,
   seat,
   tick,
   tileAtPoint,
   tileEls,
   tilePoint,
+  typeInto,
   wikiLinks,
   type Mounted,
-  type PlayerInfo,
 } from "./harness.js";
 import type { ErrorCode, RevealPayload } from "@wortschatz/shared";
 import { SKINS } from "../src/skins.js";
@@ -46,7 +51,6 @@ const REVEAL: RevealPayload = {
  * rendered DOM and boundary messages only.
  */
 
-const BOARD = ["H", "A", "U", "S", "T", "I", "R", "E", "B", "U", "M", "S", "K", "A", "T", "Z"];
 /** A board whose notation carries a multi-letter digram (canonical lowercase). */
 const MIXED = ["sch", "T", "E", "R", "H", "A", "U", "S", "Z", "I", "M", "B", "K", "N", "Ö", "D"];
 
@@ -61,34 +65,6 @@ afterEach(() => {
   app?.unmount();
   app = null;
 });
-
-/** Enter Create from the Home landing (ADR-0021). */
-function openCreate(): void {
-  if (!app!.root.querySelector("#mk-nick")) click("#create-btn");
-}
-
-/** Enter Join from the Home landing (ADR-0021). */
-function openJoin(): void {
-  if (!app!.root.querySelector("#jn-code")) click("#join-btn");
-}
-
-/** The split entry screens: a form helper walks the landing first when the
- *  field is not already on screen (a deep link is already on Join). */
-function ensureEntryScreen(sel: string): void {
-  if (app!.root.querySelector(sel)) return;
-  if (sel === "#mk-nick" || sel === "#mk-btn") openCreate();
-  else if (sel.startsWith("#jn-")) openJoin();
-}
-
-function click(sel: string): void {
-  ensureEntryScreen(sel);
-  app!.root.querySelector<HTMLButtonElement>(sel)!.click();
-}
-
-function typeInto(sel: string, value: string): void {
-  ensureEntryScreen(sel);
-  app!.root.querySelector<HTMLInputElement>(sel)!.value = value;
-}
 
 /** The floating layer's non-empty notices, in DOM order (status, then
  *  error) — the external view ADR-0018 tests assert. */
@@ -109,30 +85,16 @@ function revealText(root: HTMLElement): string {
   return (root.querySelector("#reveal")?.textContent ?? "").replace(/\s+/g, " ").trim();
 }
 
-/** Home → lobby → (host starts) → round one, through the boundary. */
-function driveToRoundOne(code: string): void {
-  driveToRoundWith(code, [seat({ seatId: 1, nickname: "Lena" })]);
-}
-
-/** Home → lobby (with a ready roster) → round one, through the boundary. */
-function driveToRoundWith(code: string, roster: PlayerInfo[]): void {
-  typeInto("#mk-nick", roster[0]!.nickname);
-  click("#mk-btn");
-  app!.conn().feed(lobbySnapshot({ code, nickname: roster[0]!.nickname, players: roster }));
-  click("#start-btn");
-  app!.conn().feed(roundStarted(BOARD));
-}
-
 describe("mountable app", () => {
   describe("in-room screens (#20)", () => {
     it("the lobby shows seats as player chips — nickname, host/role badge, connected state — and the host affordance", () => {
-      typeInto("#mk-nick", "Lena");
-      click("#mk-btn");
+      typeInto(app!.root, "#mk-nick", "Lena");
+      click(app!.root, "#mk-btn");
       // A lobby can hold a disconnected seat: its holder lost the socket but
       // keeps the reservation (glossary: seat).
       app!.conn().feed(
         lobbySnapshot({
-          code: "LAG4T",
+          code: ROOM_CODE,
           nickname: "Lena",
           players: [
             seat({ seatId: 1, nickname: "Lena" }),
@@ -166,39 +128,37 @@ describe("mountable app", () => {
       expect(app!.root.querySelector("#players")).toBeTruthy();
 
       // The count line reads the agreed copy, counting connected seats only
-      // (Cem is disconnected): "N von 8 verbunden".
+      // (Cem is disconnected): COPY.lobby.connected(2).
       expect(app!.root.querySelector("#players + p")!.textContent).toContain("2 von 8 verbunden");
 
       // The address bar carries the room's real deep link, not the greeting
       // key the creator pushed before the server named the room.
-      expect(window.location.pathname).toBe("/r/LAG4T");
+      expect(window.location.pathname).toBe(`/r/${ROOM_CODE}`);
     });
 
     it("the lobby shows an Einladen QR card whose payload is the same deep link as the text fallback", () => {
-      typeInto("#mk-nick", "Lena");
-      click("#mk-btn");
-      app!.conn().feed(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
+      typeInto(app!.root, "#mk-nick", "Lena");
+      click(app!.root, "#mk-btn");
+      app!.conn().feed(lobbySnapshot({ code: ROOM_CODE, nickname: "Lena" }));
 
       // The agreed German copy: heading and camera instruction.
       const panel = app!.root.querySelector<HTMLElement>(".panel.invite")!;
       expect(panel.querySelector("h2")!.textContent).toBe("Einladen");
-      expect(panel.querySelector(".note")!.textContent).toBe(
-        "Scanne den Code mit der Kamera, um beizutreten."
-      );
+      expect(panel.querySelector(".note")!.textContent).toBe(COPY.lobby.inviteNote);
 
       // The QR element exists and encodes exactly the text link beside it —
       // origin + /r/<CODE>, code uppercased — so the two can never disagree.
       const qr = app!.root.querySelector<SVGElement>("#qr")!;
       expect(qr).toBeTruthy();
-      const expected = `${location.origin}/r/LAG4T`;
+      const expected = `${location.origin}/r/${ROOM_CODE}`;
       expect(app!.root.querySelector<HTMLElement>("#join-link")!.textContent).toBe(expected);
       expect(qr.getAttribute("data-payload")).toBe(expected);
     });
 
     it("the QR core keeps its literal dark-on-light colours under both skins", () => {
-      typeInto("#mk-nick", "Lena");
-      click("#mk-btn");
-      app!.conn().feed(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
+      typeInto(app!.root, "#mk-nick", "Lena");
+      click(app!.root, "#mk-btn");
+      app!.conn().feed(lobbySnapshot({ code: ROOM_CODE, nickname: "Lena" }));
 
       const standard = app!.root.querySelector("#qr")!.outerHTML;
       expect(standard).toContain('fill="#000000"');
@@ -214,11 +174,13 @@ describe("mountable app", () => {
     });
 
     it("the scoreboard live-updates per score-update: round-score order, ties share a place, join order breaks the tie", () => {
-      driveToRoundWith("LAG4T", [
-        seat({ seatId: 1, nickname: "Lena" }),
-        seat({ seatId: 2, nickname: "Ben" }),
-        seat({ seatId: 3, nickname: "Cem", connected: false }),
-      ]);
+      driveToRoundOne(app!, {
+        roster: [
+          seat({ seatId: 1, nickname: "Lena" }),
+          seat({ seatId: 2, nickname: "Ben" }),
+          seat({ seatId: 3, nickname: "Cem", connected: false }),
+        ],
+      });
 
       // One accepted verdict per seat arrives as a room-wide score-update.
       app!.conn().feed({
@@ -247,7 +209,7 @@ describe("mountable app", () => {
 
       // The chip carries its round score.
       const scores = chips.map((c) => c.querySelector("small")!.textContent);
-      expect(scores).toEqual(["7 P", "5 P", "5 P"]);
+      expect(scores).toEqual([COPY.scores.points(7), COPY.scores.points(5), COPY.scores.points(5)]);
 
       // A later verdict reorders live: Cem's 9 overtakes Ben's 7.
       app!.conn().feed({
@@ -265,11 +227,13 @@ describe("mountable app", () => {
     });
 
     it("a new round resets the scoreboard: places from scratch, round scores cleared", () => {
-      driveToRoundWith("LAG4T", [
-        seat({ seatId: 1, nickname: "Lena" }),
-        seat({ seatId: 2, nickname: "Ben" }),
-        seat({ seatId: 3, nickname: "Cem" }),
-      ]);
+      driveToRoundOne(app!, {
+        roster: [
+          seat({ seatId: 1, nickname: "Lena" }),
+          seat({ seatId: 2, nickname: "Ben" }),
+          seat({ seatId: 3, nickname: "Cem" }),
+        ],
+      });
       app!.conn().feed({
         type: "score-update",
         roundNumber: 1,
@@ -286,11 +250,15 @@ describe("mountable app", () => {
       const chips = [...app!.root.querySelectorAll<HTMLElement>("#players .chip.player")];
       expect(chips.map((c) => c.querySelector(".nick")!.textContent)).toEqual(["Lena", "Ben", "Cem"]);
       expect(chips.map((c) => c.querySelector(".place")!.textContent)).toEqual(["1", "1", "1"]);
-      expect(chips.map((c) => c.querySelector("small")!.textContent)).toEqual(["0 P", "0 P", "0 P"]);
+      expect(chips.map((c) => c.querySelector("small")!.textContent)).toEqual([
+        COPY.scores.points(0),
+        COPY.scores.points(0),
+        COPY.scores.points(0),
+      ]);
     });
 
     it("the game screen renders one dashboard DOM with the arranged area hooks and the shared chip vocabulary", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
 
       // One arrangement container feeds both breakpoints (ADR-0002: the DOM
       // never differs per breakpoint, only the arrangement does).
@@ -310,8 +278,8 @@ describe("mountable app", () => {
 
       // The agreed German headings: "Spielfeld" for the board, "Deine
       // Wörter" for the private found-word list.
-      expect(boardPanel.querySelector("h2")!.textContent).toBe("Spielfeld");
-      expect(foundPanel.querySelector("h2")!.textContent).toBe("Deine Wörter");
+      expect(boardPanel.querySelector("h2")!.textContent).toBe(COPY.game.board);
+      expect(foundPanel.querySelector("h2")!.textContent).toBe(COPY.game.words);
 
       // Same component vocabulary as the lobby: panels wrap found-word chips
       // and player chips alike — a first accepted verdict shows the chip form.
@@ -321,14 +289,14 @@ describe("mountable app", () => {
     });
 
     it("a spectator watches board and countdown with no input affordance, the eviction note and the scoreboard", () => {
-      window.history.pushState({}, "", "/r/ABC12");
+      window.history.pushState({}, "", `/r/${ROOM_CODE}`);
       const deep = mountHarness();
       try {
         deep.root.querySelector<HTMLInputElement>("#jn-nick")!.value = "Ben";
         deep.root.querySelector<HTMLButtonElement>("#jn-btn")!.click();
         deep.conn().feed(
           playingSnapshot({
-            code: "ABC12",
+            code: ROOM_CODE,
             selfSeatId: 2,
             nickname: "Ben",
             role: "spectator",
@@ -351,9 +319,7 @@ describe("mountable app", () => {
 
         // The eviction note stands in the word list's place; Ben's own chip
         // wears the spectator badge.
-        expect(deep.root.querySelector(".area-found")!.textContent).toContain(
-          "Du schaust zu. Ab der nächsten Runde bist du dabei."
-        );
+        expect(deep.root.querySelector(".area-found")!.textContent).toContain(COPY.game.spectatorNote);
         expect(deep.root.querySelector("#players .chip.player.me")!.textContent).toContain("Zuschauer");
 
         // Dragging the watched board claims nothing and submits nothing.
@@ -367,7 +333,7 @@ describe("mountable app", () => {
       }
     });
     it("cleans tile notation for display: prefix/suffix markers and either/or variants never leak raw onto the grid", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       const NOTATED = ["an-", "-s", "e/ä", "H", "qu", "T", "I", "R", "E", "B", "U", "M", "S", "K", "A", "Z"]; // data keeps its markers; display must not
       app!.conn().feed(roundStarted(NOTATED, 2));
       const shown = tileEls(app!.root)
@@ -382,7 +348,7 @@ describe("mountable app", () => {
     });
 
     it("shows each tile's points where the index used to be, with German labels and a hover title", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       // A digram, prefix, suffix, differing either/or, equal either/or and a
       // plain letter, plus fillers — every value rule on one board (#142).
       const VALUED = [
@@ -454,14 +420,13 @@ describe("mountable app", () => {
 
   describe("intermission screen (#22)", () => {
     it("the round-end reveal renders grouped by length with per-word points, found-by chips and missed words visible", () => {
-      driveToRoundWith("LAG4T", [
-        seat({ seatId: 1, nickname: "Lena" }),
-        seat({ seatId: 2, nickname: "Ben" }),
-      ]);
+      driveToRoundOne(app!, {
+        roster: [seat({ seatId: 1, nickname: "Lena" }), seat({ seatId: 2, nickname: "Ben" })],
+      });
       app!.conn().feed(roundEnded(1, REVEAL));
 
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Pause");
-      expect(app!.root.textContent).toContain("Es zählt das Gesamtergebnis der Sitzung.");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.intermission.title);
+      expect(app!.root.textContent).toContain(COPY.intermission.total);
       // The finished board stays on screen (the honest, board-anchored
       // intermission).
       expect(tileEls(app!.root)).toHaveLength(16);
@@ -486,7 +451,7 @@ describe("mountable app", () => {
     });
 
     it("the intermission board carries the same tile values, labels and titles as the live board", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       const VALUED = [
         "sch",
         "an-",
@@ -510,7 +475,7 @@ describe("mountable app", () => {
 
       app!.conn().feed(roundEnded(2, REVEAL));
 
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Pause");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.intermission.title);
       const paused = tileEls(app!.root);
       expect(paused.map((t) => t.querySelector(".pts")?.textContent)).toEqual(livePoints);
       expect(paused.map((t) => t.querySelector(".pts")?.textContent)).toEqual([
@@ -537,11 +502,13 @@ describe("mountable app", () => {
     });
 
     it("standings show round and cumulative session score side by side, read by cumulative score", () => {
-      driveToRoundWith("LAG4T", [
-        seat({ seatId: 1, nickname: "Lena" }),
-        seat({ seatId: 2, nickname: "Ben" }),
-        seat({ seatId: 3, nickname: "Cem" }),
-      ]);
+      driveToRoundOne(app!, {
+        roster: [
+          seat({ seatId: 1, nickname: "Lena" }),
+          seat({ seatId: 2, nickname: "Ben" }),
+          seat({ seatId: 3, nickname: "Cem" }),
+        ],
+      });
       app!.conn().feed({
         type: "score-update",
         roundNumber: 1,
@@ -560,20 +527,22 @@ describe("mountable app", () => {
       expect(chips.map((c) => c.querySelector(".place")!.textContent)).toEqual(["1", "2", "3"]);
       // Both scores ride one chip, side by side: round first, session total
       // second. Each is its own segment so the chip can break between them.
-      expect(chips[0]!.textContent).toContain("Runde 2 P");
-      expect(chips[0]!.textContent).toContain("Gesamt 40 P");
-      expect(chips[1]!.textContent).toContain("Runde 5 P");
-      expect(chips[1]!.textContent).toContain("Gesamt 25 P");
-      expect(chips[0]!.querySelector(".round-score")!.textContent).toBe("Runde 2 P");
-      expect(chips[0]!.querySelector(".cumulative-score")!.textContent).toBe("Gesamt 40 P");
+      expect(chips[0]!.textContent).toContain(COPY.scores.round(2));
+      expect(chips[0]!.textContent).toContain(COPY.scores.total(40));
+      expect(chips[1]!.textContent).toContain(COPY.scores.round(5));
+      expect(chips[1]!.textContent).toContain(COPY.scores.total(25));
+      expect(chips[0]!.querySelector(".round-score")!.textContent).toBe(COPY.scores.round(2));
+      expect(chips[0]!.querySelector(".cumulative-score")!.textContent).toBe(COPY.scores.total(40));
     });
 
     it("a long host-and-self standing keeps every segment, including both scores, inside its chip (#154)", () => {
-      driveToRoundWith("LAG4T", [
-        seat({ seatId: 1, nickname: "Thomas-Maximilian Mustermann", cumulativeScore: 128 }),
-        seat({ seatId: 2, nickname: "Anne-Sophie Charlotte", role: "spectator", cumulativeScore: 96 }),
-        seat({ seatId: 3, nickname: "Maximilian Alexander", connected: false, cumulativeScore: 84 }),
-      ]);
+      driveToRoundOne(app!, {
+        roster: [
+          seat({ seatId: 1, nickname: "Thomas-Maximilian Mustermann", cumulativeScore: 128 }),
+          seat({ seatId: 2, nickname: "Anne-Sophie Charlotte", role: "spectator", cumulativeScore: 96 }),
+          seat({ seatId: 3, nickname: "Maximilian Alexander", connected: false, cumulativeScore: 84 }),
+        ],
+      });
       app!.conn().feed({
         type: "score-update",
         roundNumber: 1,
@@ -595,41 +564,41 @@ describe("mountable app", () => {
       expect(self!.querySelector(".place")!.textContent).toBe("1");
       expect(self!.querySelector(".nick")!.textContent).toBe("Thomas-Maximilian Mustermann");
       expect(self!.querySelector(".badge.host")!.textContent).toBe("Gastgeber");
-      expect(self!.querySelector(".round-score")!.textContent).toBe("Runde 32 P");
-      expect(self!.querySelector(".cumulative-score")!.textContent).toBe("Gesamt 128 P");
+      expect(self!.querySelector(".round-score")!.textContent).toBe(COPY.scores.round(32));
+      expect(self!.querySelector(".cumulative-score")!.textContent).toBe(COPY.scores.total(128));
       expect(self!.querySelector(".dot.on")).not.toBeNull();
 
       // The separator stays part of the sentence between the two separate
       // score segments: the browser may break there.
       expect(self!.querySelector(".round-score")!.nextElementSibling!.textContent).toBe(" · ");
       expect(self!.querySelector(".cumulative-score")!.previousElementSibling!.textContent).toBe(" · ");
-      expect(self!.textContent).toContain("Runde 32 P · Gesamt 128 P");
+      expect(self!.textContent).toContain(`${COPY.scores.round(32)} · ${COPY.scores.total(128)}`);
 
       // A spectator row and a disconnected row keep their role and
       // connection state in the same wrapped layout.
       expect(spectator!.querySelector(".badge.spec")!.textContent).toBe("Zuschauer");
-      expect(spectator!.querySelector(".round-score")!.textContent).toBe("Runde 21 P");
-      expect(spectator!.querySelector(".cumulative-score")!.textContent).toBe("Gesamt 96 P");
+      expect(spectator!.querySelector(".round-score")!.textContent).toBe(COPY.scores.round(21));
+      expect(spectator!.querySelector(".cumulative-score")!.textContent).toBe(COPY.scores.total(96));
       expect(disconnected!.querySelector(".dot.off")).not.toBeNull();
       expect(disconnected!.querySelector(".away")!.textContent).toBe("unterbrochen");
-      expect(disconnected!.querySelector(".round-score")!.textContent).toBe("Runde 8 P");
-      expect(disconnected!.querySelector(".cumulative-score")!.textContent).toBe("Gesamt 84 P");
+      expect(disconnected!.querySelector(".round-score")!.textContent).toBe(COPY.scores.round(8));
+      expect(disconnected!.querySelector(".cumulative-score")!.textContent).toBe(COPY.scores.total(84));
     });
 
     it("the host button sends start-round to begin the next round", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       app!.conn().feed(roundEnded(1, REVEAL));
       const start = app!.root.querySelector<HTMLButtonElement>("#start-btn")!;
-      expect(start.textContent).toBe("Nächste Runde starten");
+      expect(start.textContent).toBe(COPY.intermission.nextRound);
       start.click();
       expect(app!.conn().sent().at(-1)).toEqual({ type: "start-round", reqId: 3 });
     });
 
     it("a non-host is told the host starts the next round", () => {
       window.history.pushState({}, "", "/r/LATE5");
-      typeInto("#jn-code", "LATE5");
-      typeInto("#jn-nick", "Ben");
-      click("#jn-btn");
+      typeInto(app!.root, "#jn-code", "LATE5");
+      typeInto(app!.root, "#jn-nick", "Ben");
+      click(app!.root, "#jn-btn");
       app!.conn().feed(
         intermissionSnapshot({
           code: "LATE5",
@@ -640,18 +609,15 @@ describe("mountable app", () => {
           reveal: REVEAL,
         })
       );
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Pause");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.intermission.title);
       expect(app!.root.querySelector("#start-btn")).toBeNull();
-      expect(app!.root.querySelector(".next-round-hint")!.textContent).toBe(
-        "Der Gastgeber startet die nächste Runde."
-      );
+      expect(app!.root.querySelector(".next-round-hint")!.textContent).toBe(COPY.intermission.hostStarts);
     });
 
     it("marks linked words with a quiet Wiktionary anchor and leaves unlinked words unchanged", () => {
-      driveToRoundWith("LAG4T", [
-        seat({ seatId: 1, nickname: "Lena" }),
-        seat({ seatId: 2, nickname: "Ben" }),
-      ]);
+      driveToRoundOne(app!, {
+        roster: [seat({ seatId: 1, nickname: "Lena" }), seat({ seatId: 2, nickname: "Ben" })],
+      });
       app!.conn().feed(roundEnded(1, REVEAL));
       app!.conn().feed(
         wikiLinks(1, {
@@ -667,8 +633,8 @@ describe("mountable app", () => {
       for (const anchor of linked) {
         expect(anchor.getAttribute("target")).toBe("_blank");
         expect(anchor.getAttribute("rel")).toBe("noopener noreferrer");
-        expect(anchor.getAttribute("aria-label")).toBe("Bei Wiktionary nachschlagen");
-        expect(anchor.getAttribute("title")).toBe("Bei Wiktionary nachschlagen");
+        expect(anchor.getAttribute("aria-label")).toBe(COPY.game.wikiLookup);
+        expect(anchor.getAttribute("title")).toBe(COPY.game.wikiLookup);
       }
       expect(linked.map((a) => a.getAttribute("href"))).toEqual([
         "https://de.wiktionary.org/wiki/Saat",
@@ -690,10 +656,9 @@ describe("mountable app", () => {
     });
 
     it("links arriving after the reveal patch the rows in place, leaving board and standings untouched", () => {
-      driveToRoundWith("LAG4T", [
-        seat({ seatId: 1, nickname: "Lena" }),
-        seat({ seatId: 2, nickname: "Ben" }),
-      ]);
+      driveToRoundOne(app!, {
+        roster: [seat({ seatId: 1, nickname: "Lena" }), seat({ seatId: 2, nickname: "Ben" })],
+      });
       app!.conn().feed(roundEnded(1, REVEAL));
       const board = app!.root.querySelector("#board");
       const players = app!.root.querySelector("#players");
@@ -713,9 +678,9 @@ describe("mountable app", () => {
     it("an intermission snapshot carrying links renders the same anchors", () => {
       const links = { ort: "https://de.wiktionary.org/wiki/Ort" };
       window.history.pushState({}, "", "/r/SPAT7");
-      typeInto("#jn-code", "SPAT7");
-      typeInto("#jn-nick", "Ben");
-      click("#jn-btn");
+      typeInto(app!.root, "#jn-code", "SPAT7");
+      typeInto(app!.root, "#jn-nick", "Ben");
+      click(app!.root, "#jn-btn");
       app!.conn().feed(
         intermissionSnapshot({
           code: "SPAT7",
@@ -734,7 +699,7 @@ describe("mountable app", () => {
     });
 
     it("shows no countdown on the pause screen — the break is not on a timer", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       app!.conn().feed(roundEnded(1, REVEAL));
 
       expect(app!.root.querySelector("#timer")).toBeNull();
@@ -751,9 +716,9 @@ describe("mountable app", () => {
 
     it("a reconnecting client lands in the same clockless pause", () => {
       window.history.pushState({}, "", "/r/SPAT7");
-      typeInto("#jn-code", "SPAT7");
-      typeInto("#jn-nick", "Ben");
-      click("#jn-btn");
+      typeInto(app!.root, "#jn-code", "SPAT7");
+      typeInto(app!.root, "#jn-nick", "Ben");
+      click(app!.root, "#jn-btn");
       app!.conn().feed(
         intermissionSnapshot({
           code: "SPAT7",
@@ -765,16 +730,15 @@ describe("mountable app", () => {
         })
       );
 
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Pause");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.intermission.title);
       expect(app!.root.querySelector("#countdown")).toBeNull();
       expect(tileEls(app!.root)).toHaveLength(16);
     });
 
     it("a snapshot during the intermission renders the same reveal the round-end delta carried", () => {
-      driveToRoundWith("LAG4T", [
-        seat({ seatId: 1, nickname: "Lena" }),
-        seat({ seatId: 2, nickname: "Ben" }),
-      ]);
+      driveToRoundOne(app!, {
+        roster: [seat({ seatId: 1, nickname: "Lena" }), seat({ seatId: 2, nickname: "Ben" })],
+      });
       app!.conn().feed(roundEnded(1, REVEAL));
       const fromRoundEnd = revealText(app!.root);
 
@@ -800,11 +764,13 @@ describe("mountable app", () => {
 
   describe("live regions (#122)", () => {
     it("a play-time delta refreshes the intermission's declared regions — countdown and session standings — in place", () => {
-      driveToRoundWith("LAG4T", [
-        seat({ seatId: 1, nickname: "Lena" }),
-        seat({ seatId: 2, nickname: "Ben" }),
-        seat({ seatId: 3, nickname: "Cem" }),
-      ]);
+      driveToRoundOne(app!, {
+        roster: [
+          seat({ seatId: 1, nickname: "Lena" }),
+          seat({ seatId: 2, nickname: "Ben" }),
+          seat({ seatId: 3, nickname: "Cem" }),
+        ],
+      });
       app!.conn().feed(roundEnded(1, REVEAL));
 
       const players = app!.root.querySelector("#players")!;
@@ -828,24 +794,24 @@ describe("mountable app", () => {
       const chips = [...app!.root.querySelectorAll<HTMLElement>("#players .chip.player")];
       expect(chips.map((c) => c.querySelector(".nick")!.textContent)).toEqual(["Ben", "Cem", "Lena"]);
       expect(chips.map((c) => c.querySelector(".place")!.textContent)).toEqual(["1", "2", "3"]);
-      expect(chips[0]!.textContent).toContain("Runde 7 P");
-      expect(chips[0]!.textContent).toContain("Gesamt 60 P");
+      expect(chips[0]!.textContent).toContain(COPY.scores.round(7));
+      expect(chips[0]!.textContent).toContain(COPY.scores.total(60));
       // The in-place rewrite keeps the two score segments separately
       // addressable, so the wrapped layout cannot be flattened by an update.
-      expect(chips[0]!.querySelector(".round-score")!.textContent).toBe("Runde 7 P");
-      expect(chips[0]!.querySelector(".cumulative-score")!.textContent).toBe("Gesamt 60 P");
+      expect(chips[0]!.querySelector(".round-score")!.textContent).toBe(COPY.scores.round(7));
+      expect(chips[0]!.querySelector(".cumulative-score")!.textContent).toBe(COPY.scores.total(60));
       expect(chips[0]!.classList.contains("session")).toBe(true);
     });
 
     it("a spectator's game screen skips the declared found region it does not render", () => {
-      window.history.pushState({}, "", "/r/ABC12");
+      window.history.pushState({}, "", `/r/${ROOM_CODE}`);
       const deep = mountHarness();
       try {
         deep.root.querySelector<HTMLInputElement>("#jn-nick")!.value = "Ben";
         deep.root.querySelector<HTMLButtonElement>("#jn-btn")!.click();
         deep.conn().feed(
           playingSnapshot({
-            code: "ABC12",
+            code: ROOM_CODE,
             selfSeatId: 2,
             nickname: "Ben",
             role: "spectator",
@@ -874,36 +840,36 @@ describe("mountable app", () => {
   });
 
   it("a connection close with no server frame shows the connection-lost outcome screen", () => {
-    driveToRoundOne("LAG4T");
+    driveToRoundOne(app!);
     // An orderly transport close that carried no end frame is one close
     // outcome — not a separate closed status racing a later frame.
     app!.conn().abruptClose();
-    expect(app!.root.querySelector("h1")!.textContent).toBe("Verbindung beendet.");
+    expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.outcomes.connectionLost);
     expect(app!.conn().statuses).toEqual(["connecting", "open"]);
     expect(app!.conn().closeOutcomes).toEqual([{ kind: "connection-lost" }]);
     // The real action returns to the home screen.
     app!.root.querySelector<HTMLButtonElement>("#home-btn")!.click();
-    expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+    expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.home.title);
   });
 
   it("routes home → lobby → game, fed by snapshot and deltas, through the scripted connection", () => {
     // Home: the mounted app renders its first screen.
-    expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+    expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.home.title);
 
     // Creating a room goes out on the boundary as the connection greets.
-    typeInto("#mk-nick", "Lena");
-    click("#mk-btn");
+    typeInto(app!.root, "#mk-nick", "Lena");
+    click(app!.root, "#mk-btn");
     expect(app!.connections()).toHaveLength(1);
     expect(app!.conn().sent()).toEqual([{ type: "create-room", nickname: "Lena", reqId: 1 }]);
     expect(app!.conn().statuses).toEqual(["connecting"]);
     // Nothing but the Create screen until the server's first word.
-    expect(app!.root.querySelector("h1")!.textContent).toBe("Raum erstellen");
+    expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.create.title);
 
     // The lobby arrives via a full snapshot; it is what flips the
     // boundary to `open`.
-    app!.conn().feed(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
+    app!.conn().feed(lobbySnapshot({ code: ROOM_CODE, nickname: "Lena" }));
     expect(app!.conn().statuses).toEqual(["connecting", "open"]);
-    expect(app!.root.querySelector("h1")!.textContent).toBe("Raum LAG4T");
+    expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.lobby.title(ROOM_CODE));
     expect(app!.root.querySelector("#players")!.textContent).toContain("Lena");
     expect(app!.root.querySelector("#start-btn")).toBeTruthy(); // creator is host
 
@@ -913,7 +879,7 @@ describe("mountable app", () => {
     expect(app!.root.textContent).toContain("2 von 8 verbunden");
 
     // Starting the round crosses the boundary with the next reqId.
-    click("#start-btn");
+    click(app!.root, "#start-btn");
     expect(app!.conn().sent()).toEqual([
       { type: "create-room", nickname: "Lena", reqId: 1 },
       { type: "start-round", reqId: 2 },
@@ -923,7 +889,7 @@ describe("mountable app", () => {
     // round number comes from the round-start delta itself (server truth
     // through the boundary), and so does the mounted round score value.
     app!.conn().feed(roundStarted(BOARD));
-    expect(app!.root.querySelector("h1")!.textContent).toContain("Runde 1");
+    expect(app!.root.querySelector("h1")!.textContent).toContain(COPY.game.title(1));
     const tiles = tileEls(app!.root);
     expect(tiles.map((t) => t.firstChild?.textContent)).toEqual(BOARD);
     // Points replaced the old 0–15 indices everywhere.
@@ -935,11 +901,11 @@ describe("mountable app", () => {
   });
 
   it("renders the drag surface idle and sizes board fonts on the grid container", () => {
-    driveToRoundOne("LAG4T");
+    driveToRoundOne(app!);
     // Idle trace shows the hint that explains dragging.
     const trace = app!.root.querySelector<HTMLElement>("#trace")!;
     expect(trace.classList.contains("hint")).toBe(true);
-    expect(trace.textContent).toContain("Wische über die Felder");
+    expect(trace.textContent).toContain(COPY.game.traceHint);
 
     // Single-letter board: full base size on the grid container.
     expect(app!.root.querySelector<HTMLElement>("#board")!.style.getPropertyValue("--tile-span")).toBe("1");
@@ -951,20 +917,19 @@ describe("mountable app", () => {
   });
 
   it("prefills a deep-linked room code and greets with a join", () => {
-    window.history.pushState({}, "", "/r/abc12");
+    localStorage.clear();
+    window.history.pushState({}, "", `/r/${ROOM_CODE.toLowerCase()}`);
     const deep = mountHarness();
     try {
-      expect(deep.root.querySelector<HTMLInputElement>("#jn-code")!.value).toBe("ABC12");
+      expect(deep.root.querySelector<HTMLInputElement>("#jn-code")!.value).toBe(ROOM_CODE);
       expect(deep.root.querySelector<HTMLInputElement>("#jn-code")!.readOnly).toBe(true);
-      expect(deep.root.querySelector(".panel .note")!.textContent).toBe(
-        "Du wurdest in Raum ABC12 eingeladen."
-      );
+      expect(deep.root.querySelector(".panel .note")!.textContent).toBe(COPY.join.invited(ROOM_CODE));
       expect(deep.root.querySelector<HTMLInputElement>("#jn-nick")!.value).toBe("");
       deep.root.querySelector<HTMLInputElement>("#jn-nick")!.value = "Ben";
       deep.root.querySelector<HTMLButtonElement>("#jn-btn")!.click();
-      expect(deep.conn().sent()).toEqual([{ type: "join", code: "ABC12", nickname: "Ben", reqId: 1 }]);
-      deep.conn().feed(lobbySnapshot({ code: "ABC12", nickname: "Ben" }));
-      expect(deep.root.querySelector("h1")!.textContent).toBe("Raum ABC12");
+      expect(deep.conn().sent()).toEqual([{ type: "join", code: ROOM_CODE, nickname: "Ben", reqId: 1 }]);
+      deep.conn().feed(lobbySnapshot({ code: ROOM_CODE, nickname: "Ben" }));
+      expect(deep.root.querySelector("h1")!.textContent).toBe(COPY.lobby.title(ROOM_CODE));
     } finally {
       deep.unmount();
       window.history.pushState({}, "", "/");
@@ -973,58 +938,56 @@ describe("mountable app", () => {
 
   describe("out-of-room screens (#21)", () => {
     it("being kicked shows the dedicated outcome screen with a real action back home", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       app!.conn().feed({ type: "kicked" });
       // The connection reports one close outcome after the frame reached
       // the app, so the kicked screen wins without depending on callback
       // order.
       expect(app!.conn().closeOutcomes).toEqual([{ kind: "kicked" }]);
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Du wurdest aus dem Raum LAG4T entfernt.");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.outcomes.kicked(ROOM_CODE));
       // No "Wie geht es weiter?" heading: the note speaks for itself.
       expect(app!.root.textContent).not.toContain("Wie geht es weiter?");
-      expect(app!.root.querySelector(".panel .note")!.textContent).toBe(
-        "Der Gastgeber hat dich aus dem Raum entfernt. Du kannst einen neuen Raum erstellen oder einem anderen beitreten."
-      );
+      expect(app!.root.querySelector(".panel .note")!.textContent).toBe(COPY.outcomes.kickedNote);
       expect(app!.root.querySelector("#home-btn")).toBeTruthy();
       expect(app!.conn().stopped).toBe(true);
       app!.root.querySelector<HTMLButtonElement>("#home-btn")!.click();
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.home.title);
     });
 
     it("a host-closed room shows the dedicated ended screen", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       app!.conn().feed({ type: "room-ended", reason: "host-closed" });
       expect(app!.conn().closeOutcomes).toEqual([{ kind: "room-ended", reason: "host-closed" }]);
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum LAG4T wurde beendet.");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.outcomes.ended(ROOM_CODE));
       app!.root.querySelector<HTMLButtonElement>("#home-btn")!.click();
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.home.title);
     });
 
     it("an expired room ends with its own dedicated screen", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       app!.conn().feed({ type: "room-ended", reason: "expired" });
       expect(app!.conn().closeOutcomes).toEqual([{ kind: "room-ended", reason: "expired" }]);
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum LAG4T ist abgelaufen.");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.outcomes.expired(ROOM_CODE));
       // Same real action as every outcome screen: back to the home screen.
       app!.root.querySelector<HTMLButtonElement>("#home-btn")!.click();
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.home.title);
     });
 
     it("a wrong room code surfaces the generic not-found outcome screen", () => {
-      typeInto("#jn-code", "ZZZ99");
-      typeInto("#jn-nick", "Ben");
-      click("#jn-btn");
+      typeInto(app!.root, "#jn-code", "ZZZ99");
+      typeInto(app!.root, "#jn-nick", "Ben");
+      click(app!.root, "#jn-btn");
       expect(app!.conn().sent()).toEqual([{ type: "join", code: "ZZZ99", nickname: "Ben", reqId: 1 }]);
       app!.conn().feed({ type: "error", code: "room-not-found", message: "ZZZ99" });
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum ZZZ99 nicht gefunden oder abgelaufen.");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.outcomes.notFound("ZZZ99"));
       app!.root.querySelector<HTMLButtonElement>("#home-btn")!.click();
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.home.title);
     });
 
     it("a deep link lands pre-filled with the code and the remembered nickname for instant joining", () => {
       // One full flow saves the remembered session for this room code.
-      typeInto("#mk-nick", "Lena");
-      click("#mk-btn");
+      typeInto(app!.root, "#mk-nick", "Lena");
+      click(app!.root, "#mk-btn");
       app!.conn().feed(lobbySnapshot({ code: "XQ7F2", nickname: "Lena" }));
       app!.unmount();
       window.history.pushState({}, "", "/r/xq7f2");
@@ -1033,9 +996,7 @@ describe("mountable app", () => {
         expect(deep.root.querySelector<HTMLInputElement>("#jn-code")!.value).toBe("XQ7F2");
         expect(deep.root.querySelector<HTMLInputElement>("#jn-nick")!.value).toBe("Lena");
         // The join invitation is announced in the join panel.
-        expect(deep.root.querySelector(".panel .note")!.textContent).toContain(
-          "Du wurdest in Raum XQ7F2 eingeladen"
-        );
+        expect(deep.root.querySelector(".panel .note")!.textContent).toContain(COPY.join.invited("XQ7F2"));
         // One click joins — through the remembered session token.
         deep.root.querySelector<HTMLButtonElement>("#jn-btn")!.click();
         expect(deep.conn().sent()).toEqual([
@@ -1054,29 +1015,29 @@ describe("mountable app", () => {
     beforeEach(() => localStorage.clear());
 
     it("a taken nickname returns to the join screen with the German copy and the typed inputs intact", () => {
-      typeInto("#jn-code", "ABC12");
-      typeInto("#jn-nick", "Anja");
-      click("#jn-btn");
-      expect(app!.conn().sent()).toEqual([{ type: "join", code: "ABC12", nickname: "Anja", reqId: 1 }]);
+      typeInto(app!.root, "#jn-code", ROOM_CODE);
+      typeInto(app!.root, "#jn-nick", "Anja");
+      click(app!.root, "#jn-btn");
+      expect(app!.conn().sent()).toEqual([{ type: "join", code: ROOM_CODE, nickname: "Anja", reqId: 1 }]);
 
       app!.conn().feed({ type: "error", code: "nickname-taken" });
 
       // A usable Join screen — never the connection-lost outcome or any
       // room screen, even though the join was answered.
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum beitreten");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.join.title);
       expect(app!.root.querySelector("#jn-btn")).toBeTruthy();
       expect(app!.root.querySelector("#board")).toBeNull();
       expect(app!.root.querySelector("#players")).toBeNull();
-      expect(app!.root.textContent).not.toContain("Verbindung beendet.");
+      expect(app!.root.textContent).not.toContain(COPY.outcomes.connectionLost);
 
       // The shared German copy lands in the floating error slot; no inline
       // error paragraph competes with it.
-      expect(noticeText(app!.root, "error")).toBe("Dieser Name ist bereits vergeben. Wähle einen anderen.");
+      expect(noticeText(app!.root, "error")).toBe(COPY.errors.nicknameTaken);
       expect(app!.root.querySelector("#home-errors")).toBeNull();
 
       // The typed code and name survive for a corrected retry, and the
       // address bar never claims the room.
-      expect(app!.root.querySelector<HTMLInputElement>("#jn-code")!.value).toBe("ABC12");
+      expect(app!.root.querySelector<HTMLInputElement>("#jn-code")!.value).toBe(ROOM_CODE);
       expect(app!.root.querySelector<HTMLInputElement>("#jn-nick")!.value).toBe("Anja");
       expect(window.location.pathname).toBe("/");
 
@@ -1086,54 +1047,54 @@ describe("mountable app", () => {
     });
 
     it("a full room surfaces its German copy on the join screen", () => {
-      typeInto("#jn-code", "ABC12");
-      typeInto("#jn-nick", "Anja");
-      click("#jn-btn");
+      typeInto(app!.root, "#jn-code", ROOM_CODE);
+      typeInto(app!.root, "#jn-nick", "Anja");
+      click(app!.root, "#jn-btn");
       app!.conn().feed({ type: "error", code: "room-full" });
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum beitreten");
-      expect(noticeText(app!.root, "error")).toBe("Der Raum ist voll (max. 8 Spieler).");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.join.title);
+      expect(noticeText(app!.root, "error")).toBe(COPY.errors.roomFull);
       expect(app!.root.querySelector("#board")).toBeNull();
       expect(app!.conn().stopped).toBe(true);
     });
 
     it("a malformed greeting surfaces its German copy on the join screen", () => {
-      typeInto("#jn-code", "ABC12");
-      typeInto("#jn-nick", "Anja");
-      click("#jn-btn");
+      typeInto(app!.root, "#jn-code", ROOM_CODE);
+      typeInto(app!.root, "#jn-nick", "Anja");
+      click(app!.root, "#jn-btn");
       app!.conn().feed({ type: "error", code: "invalid-message" });
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum beitreten");
-      expect(noticeText(app!.root, "error")).toBe("Ungültige Nachricht.");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.join.title);
+      expect(noticeText(app!.root, "error")).toBe(COPY.errors.invalidMessage);
       expect(app!.root.querySelector("#board")).toBeNull();
       expect(app!.conn().stopped).toBe(true);
     });
 
     it("retrying after a rejection sends exactly one new join and clears the old error", () => {
-      typeInto("#jn-code", "ABC12");
-      typeInto("#jn-nick", "Anja");
-      click("#jn-btn");
+      typeInto(app!.root, "#jn-code", ROOM_CODE);
+      typeInto(app!.root, "#jn-nick", "Anja");
+      click(app!.root, "#jn-btn");
       app!.conn().feed({ type: "error", code: "nickname-taken" });
       expect(app!.conn().stopped).toBe(true);
       expect(noticeText(app!.root, "error")).not.toBe("");
 
       // Correct the name and retry: one fresh connection with one greeting,
       // and the previous error is gone.
-      typeInto("#jn-nick", "Ben");
-      click("#jn-btn");
+      typeInto(app!.root, "#jn-nick", "Ben");
+      click(app!.root, "#jn-btn");
       expect(app!.connections()).toHaveLength(2);
-      expect(app!.conn().sent()).toEqual([{ type: "join", code: "ABC12", nickname: "Ben", reqId: 1 }]);
+      expect(app!.conn().sent()).toEqual([{ type: "join", code: ROOM_CODE, nickname: "Ben", reqId: 1 }]);
       expect(noticeText(app!.root, "error")).toBe("");
 
       // The fresh attempt still reaches a room on the confirming snapshot.
-      app!.conn().feed(lobbySnapshot({ code: "ABC12", nickname: "Ben" }));
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum ABC12");
+      app!.conn().feed(lobbySnapshot({ code: ROOM_CODE, nickname: "Ben" }));
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.lobby.title(ROOM_CODE));
     });
   });
 
   describe("floating notifications (#146)", () => {
     it("owns one layer outside the screen that survives a rebuild and a screen transition", () => {
-      typeInto("#mk-nick", "Lena");
-      click("#mk-btn");
-      app!.conn().feed(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
+      typeInto(app!.root, "#mk-nick", "Lena");
+      click(app!.root, "#mk-btn");
+      app!.conn().feed(lobbySnapshot({ code: ROOM_CODE, nickname: "Lena" }));
       const layer = app!.root.querySelector("#notifications")!;
       const status = app!.root.querySelector("#notice-status")!;
       const error = app!.root.querySelector("#notice-error")!;
@@ -1152,36 +1113,33 @@ describe("mountable app", () => {
     });
 
     it("shows nothing on the idle start screen", () => {
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.home.title);
       expect(notices(app!.root)).toEqual([]);
       expect(noticeText(app!.root, "status")).toBe("");
       expect(noticeText(app!.root, "error")).toBe("");
     });
 
     it("shows the connection status on the start screen while a room attempt is in flight, then clears it when open", () => {
-      typeInto("#mk-nick", "Lena");
-      click("#mk-btn");
+      typeInto(app!.root, "#mk-nick", "Lena");
+      click(app!.root, "#mk-btn");
 
       // The Create screen stays put, and the status is visible exactly where
       // the player first waits for the connection.
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum erstellen");
-      expect(noticeText(app!.root, "status")).toBe("Verbinde …");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.create.title);
+      expect(noticeText(app!.root, "status")).toBe(COPY.status.connecting);
 
-      app!.conn().feed(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
+      app!.conn().feed(lobbySnapshot({ code: ROOM_CODE, nickname: "Lena" }));
       expect(noticeText(app!.root, "status")).toBe("");
     });
 
     it("renders connection status and an error together, status first", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       app!.conn().feed({ type: "error", code: "word-duplicate", message: "HAU" });
       app!.conn().retry();
 
       const shown = notices(app!.root);
       expect(shown.map((n) => n.id)).toEqual(["notice-status", "notice-error"]);
-      expect(shown.map((n) => n.textContent)).toEqual([
-        "Verbindung wird wiederhergestellt …",
-        "Das Wort hast du schon.",
-      ]);
+      expect(shown.map((n) => n.textContent)).toEqual([COPY.status.retrying, COPY.errors.wordDuplicate]);
     });
 
     it("marks the status slot polite and the error slot assertive", () => {
@@ -1197,81 +1155,81 @@ describe("mountable app", () => {
     });
 
     it("replaces a repeated identical error in place instead of stacking notices", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       const slot = app!.root.querySelector("#notice-error")!;
       app!.conn().feed({ type: "error", code: "word-duplicate", message: "HAU" });
       app!.conn().feed({ type: "error", code: "word-duplicate", message: "HAU" });
 
       expect(app!.root.querySelector("#notice-error")).toBe(slot);
       expect(notices(app!.root)).toHaveLength(1);
-      expect(notices(app!.root)[0]!.textContent).toBe("Das Wort hast du schon.");
+      expect(notices(app!.root)[0]!.textContent).toBe(COPY.errors.wordDuplicate);
     });
 
     it("keeps a notice through play-time and structural re-renders while its situation is unchanged", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       app!.conn().feed({ type: "error", code: "invalid-word" });
-      expect(noticeText(app!.root, "error")).toBe("Kein gültiges Wort.");
+      expect(noticeText(app!.root, "error")).toBe(COPY.errors.invalidWord);
 
       // A play-time tick updates live regions in place…
       app!.conn().feed(tick(90_000));
-      expect(noticeText(app!.root, "error")).toBe("Kein gültiges Wort.");
+      expect(noticeText(app!.root, "error")).toBe(COPY.errors.invalidWord);
 
       // …and a structural roster change rebuilds the screen: the layer and
       // its message are outside that rebuild.
       app!.conn().feed(playerJoined(2, "Ben"));
-      expect(app!.root.querySelector("h1")!.textContent).toContain("Runde 1");
-      expect(noticeText(app!.root, "error")).toBe("Kein gültiges Wort.");
+      expect(app!.root.querySelector("h1")!.textContent).toContain(COPY.game.title(1));
+      expect(noticeText(app!.root, "error")).toBe(COPY.errors.invalidWord);
     });
 
     it("drops an error when the phase changes", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       app!.conn().feed({ type: "error", code: "word-duplicate", message: "HAU" });
-      expect(noticeText(app!.root, "error")).toBe("Das Wort hast du schon.");
+      expect(noticeText(app!.root, "error")).toBe(COPY.errors.wordDuplicate);
 
       app!.conn().feed(roundEnded(1, REVEAL));
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Pause");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.intermission.title);
       expect(noticeText(app!.root, "error")).toBe("");
       expect(notices(app!.root)).toEqual([]);
     });
 
     it("clears an error on the next submit", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       app!.conn().feed({ type: "error", code: "invalid-word" });
-      expect(noticeText(app!.root, "error")).toBe("Kein gültiges Wort.");
+      expect(noticeText(app!.root, "error")).toBe(COPY.errors.invalidWord);
 
       synthesizePointerDrag([tileEls(app!.root)[0]!, tileEls(app!.root)[1]!]);
       expect(noticeText(app!.root, "error")).toBe("");
     });
 
     it("shows a rejected round start in the layer, not beside the start button", () => {
-      typeInto("#mk-nick", "Lena");
-      click("#mk-btn");
-      app!.conn().feed(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
+      typeInto(app!.root, "#mk-nick", "Lena");
+      click(app!.root, "#mk-btn");
+      app!.conn().feed(lobbySnapshot({ code: ROOM_CODE, nickname: "Lena" }));
 
-      click("#start-btn");
+      click(app!.root, "#start-btn");
       app!.conn().feed({ type: "error", code: "invalid-phase" });
       expect(app!.root.querySelector("#start-hint")).toBeNull();
-      expect(noticeText(app!.root, "error")).toBe("Das geht gerade nicht.");
+      expect(noticeText(app!.root, "error")).toBe(COPY.errors.invalidPhase);
 
       // A new start attempt addresses the old rejection at once.
-      click("#start-btn");
+      click(app!.root, "#start-btn");
       expect(noticeText(app!.root, "error")).toBe("");
     });
 
     it.each([
-      ["invalid-word", "Kein gültiges Wort."],
-      ["round-over", "Die Runde ist bereits vorbei."],
-      ["rate-limited", "Zu viele Nachrichten."],
-      ["not-playing", "Du spielst in dieser Runde nicht."],
+      ["invalid-word", COPY.errors.invalidWord],
+      ["round-over", COPY.errors.roundOver],
+      ["rate-limited", COPY.errors.rateLimited],
+      ["not-playing", COPY.errors.notPlaying],
     ])("renders the shared German copy for %s in the error slot", (code, copy) => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       app!.conn().feed({ type: "error", code: code as ErrorCode });
       expect(noticeText(app!.root, "error")).toBe(copy);
     });
   });
 
   it("pointer drags show the live trace and submit it on release", () => {
-    driveToRoundOne("LAG4T");
+    driveToRoundOne(app!);
     const tiles = tileEls(app!.root);
     const traceSeen: string[] = [];
     synthesizePointerDrag([tiles[0]!, tiles[1]!, tiles[4]!], "mouse", () => {
@@ -1280,7 +1238,7 @@ describe("mountable app", () => {
 
     // The live trace shows what the swipe will submit, step by step, and
     // the hint is gone while dragging.
-    expect(traceSeen).toEqual(["H", "HA", "HAT", "Wische über die Felder, um ein Wort zu bilden."]);
+    expect(traceSeen).toEqual(["H", "HA", "HAT", COPY.game.traceHint]);
     const trace = app!.root.querySelector("#trace")!;
     expect(trace.classList.contains("hint")).toBe(true);
 
@@ -1298,19 +1256,19 @@ describe("mountable app", () => {
   });
 
   it("backtracking unwinds the previous tile and the rest still submits", () => {
-    driveToRoundOne("LAG4T");
+    driveToRoundOne(app!);
     const tiles = tileEls(app!.root);
     const traceSeen: string[] = [];
     // H → A → back onto H (deselects A) → T: submits "HT", not "HAHT".
     synthesizePointerDrag([tiles[0]!, tiles[1]!, tiles[0]!, tiles[4]!], "mouse", () => {
       traceSeen.push(app!.root.querySelector("#trace")!.textContent!);
     });
-    expect(traceSeen).toEqual(["H", "HA", "H", "HT", "Wische über die Felder, um ein Wort zu bilden."]);
+    expect(traceSeen).toEqual(["H", "HA", "H", "HT", COPY.game.traceHint]);
     expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HT", reqId: 3 });
   });
 
   it("a fast swipe that skips a tile still selects the skipped tile", () => {
-    driveToRoundOne("LAG4T");
+    driveToRoundOne(app!);
     const tiles = tileEls(app!.root);
     // H (row 0, col 0) → U (row 0, col 2): the browser delivered no sample
     // for the A between them, so the gap is bridged and A is selected too.
@@ -1318,31 +1276,31 @@ describe("mountable app", () => {
     synthesizePointerDrag([tiles[0]!, tiles[2]!], "mouse", () => {
       traceSeen.push(app!.root.querySelector("#trace")!.textContent!);
     });
-    expect(traceSeen).toEqual(["H", "HAU", "Wische über die Felder, um ein Wort zu bilden."]);
+    expect(traceSeen).toEqual(["H", "HAU", COPY.game.traceHint]);
     expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HAU", reqId: 3 });
   });
 
   it("a touch fast swipe bridges the same gap", () => {
-    driveToRoundOne("LAG4T");
+    driveToRoundOne(app!);
     const tiles = tileEls(app!.root);
     // Same sparse sample delivered through the touch stream, as a phone does.
     const traceSeen: string[] = [];
     synthesizeTouchDrag([tiles[0]!, tiles[2]!], () => {
       traceSeen.push(app!.root.querySelector("#trace")!.textContent!);
     });
-    expect(traceSeen).toEqual(["H", "HAU", "Wische über die Felder, um ein Wort zu bilden."]);
+    expect(traceSeen).toEqual(["H", "HAU", COPY.game.traceHint]);
     expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HAU", reqId: 3 });
   });
 
   it("walks an 8-way stair-step path to a sample two or more tiles away", () => {
-    driveToRoundOne("LAG4T");
+    driveToRoundOne(app!);
     const tiles = tileEls(app!.root);
     // H (0,0) → M (2,2): diagonal to I (1,1), then diagonal to M (2,2).
     const diagonal: string[] = [];
     synthesizePointerDrag([tiles[0]!, tiles[10]!], "mouse", () => {
       diagonal.push(app!.root.querySelector("#trace")!.textContent!);
     });
-    expect(diagonal).toEqual(["H", "HIM", "Wische über die Felder, um ein Wort zu bilden."]);
+    expect(diagonal).toEqual(["H", "HIM", COPY.game.traceHint]);
     expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HIM", reqId: 3 });
 
     // H (0,0) → A (3,1): diagonal until the row matches, then straight down.
@@ -1350,12 +1308,12 @@ describe("mountable app", () => {
     synthesizePointerDrag([tiles[0]!, tiles[13]!], "mouse", () => {
       stepped.push(app!.root.querySelector("#trace")!.textContent!);
     });
-    expect(stepped).toEqual(["H", "HIUA", "Wische über die Felder, um ein Wort zu bilden."]);
+    expect(stepped).toEqual(["H", "HIUA", COPY.game.traceHint]);
     expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HIUA", reqId: 4 });
   });
 
   it("rejects a bridged sample that would reuse a tile", () => {
-    driveToRoundOne("LAG4T");
+    driveToRoundOne(app!);
     const tiles = tileEls(app!.root);
     // H → A → U, then a jump back to H: the bridge would cross A and H,
     // both already selected, so the trace stays the valid path "HAU".
@@ -1363,12 +1321,12 @@ describe("mountable app", () => {
     synthesizePointerDrag([tiles[0]!, tiles[1]!, tiles[2]!, tiles[0]!], "mouse", () => {
       traceSeen.push(app!.root.querySelector("#trace")!.textContent!);
     });
-    expect(traceSeen).toEqual(["H", "HA", "HAU", "HAU", "Wische über die Felder, um ein Wort zu bilden."]);
+    expect(traceSeen).toEqual(["H", "HA", "HAU", "HAU", COPY.game.traceHint]);
     expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HAU", reqId: 3 });
   });
 
   it("a resubmitted word surfaces the word-duplicate error and adds nothing", () => {
-    driveToRoundOne("LAG4T");
+    driveToRoundOne(app!);
     const tiles = tileEls(app!.root);
     synthesizePointerDrag([tiles[0]!, tiles[1]!, tiles[2]!]); // HAU
     app!.conn().feed({ type: "word-accepted", word: "HAU", points: 3 });
@@ -1378,32 +1336,32 @@ describe("mountable app", () => {
     // error slot carries the existing German copy, the chips unchanged.
     synthesizePointerDrag([tiles[0]!, tiles[1]!, tiles[2]!]);
     app!.conn().feed({ type: "error", code: "word-duplicate", message: "HAU" });
-    expect(noticeText(app!.root, "error")).toBe("Das Wort hast du schon.");
+    expect(noticeText(app!.root, "error")).toBe(COPY.errors.wordDuplicate);
     expect(app!.root.querySelector("#error")).toBeNull();
     expect(app!.root.querySelectorAll("#found li")).toHaveLength(1);
   });
 
   it("the lobby lets a solo host start round one", () => {
-    typeInto("#mk-nick", "Lena");
-    click("#mk-btn");
-    app!.conn().feed(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
+    typeInto(app!.root, "#mk-nick", "Lena");
+    click(app!.root, "#mk-btn");
+    app!.conn().feed(lobbySnapshot({ code: ROOM_CODE, nickname: "Lena" }));
 
-    click("#start-btn");
+    click(app!.root, "#start-btn");
     expect(app!.conn().sent().at(-1)).toEqual({ type: "start-round", reqId: 2 });
   });
 
   it("the taken-name error calls the conflict a Name, not a Spitzname", () => {
-    driveToRoundOne("LAG4T");
+    driveToRoundOne(app!);
     // Every catalog entry renders through the one error slot (#50's
     // copy-testing seam), so the taken-name wording is covered too.
     app!.conn().feed({ type: "error", code: "nickname-taken" });
     const error = noticeText(app!.root, "error");
-    expect(error).toBe("Dieser Name ist bereits vergeben. Wähle einen anderen.");
+    expect(error).toBe(COPY.errors.nicknameTaken);
     expect(error).not.toContain("Spitzname");
   });
 
   it("touch drags resolve through retargeting and claim the gesture from the page", () => {
-    driveToRoundOne("LAG4T");
+    driveToRoundOne(app!);
     const tiles = tileEls(app!.root);
     // The browser retargets touchmove to the touchstart tile; capture the
     // event objects to inspect defaultPrevented after each dispatch.
@@ -1430,7 +1388,7 @@ describe("mountable app", () => {
     }
 
     it("a pointerdown drag continues through touchmove (Firefox for Android)", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       const [h, a, t] = hatTiles();
       const traceSeen: string[] = [];
       const seen = () => traceSeen.push(app!.root.querySelector("#trace")!.textContent!);
@@ -1447,12 +1405,12 @@ describe("mountable app", () => {
       fireTouchEvent(h, "touchend", { to: t });
       seen();
 
-      expect(traceSeen).toEqual(["H", "HA", "HAT", "Wische über die Felder, um ein Wort zu bilden."]);
+      expect(traceSeen).toEqual(["H", "HA", "HAT", COPY.game.traceHint]);
       expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HAT", reqId: 3 });
     });
 
     it("counts a move carried by both streams once and submits a single frame", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       const [h, a, t] = hatTiles();
       firePointerEvent(h, "pointerdown", { pointerType: "touch" });
       fireTouchEvent(h, "touchstart", { to: h });
@@ -1478,7 +1436,7 @@ describe("mountable app", () => {
     });
 
     it("a pointercancel does not discard a word the touch stream keeps building", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       const [h, a, t] = hatTiles();
       firePointerEvent(h, "pointerdown", { pointerType: "touch" });
       fireTouchEvent(h, "touchstart", { to: h });
@@ -1494,32 +1452,28 @@ describe("mountable app", () => {
     });
 
     it("a mouse pointercancel ends the gesture without submitting", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       const [h, a] = hatTiles();
       firePointerEvent(h, "pointerdown", { pointerType: "mouse" });
       firePointerEvent(a, "pointermove", { pointerType: "mouse" });
       // No touch fallback: the interrupted gesture clears without a word.
       firePointerEvent(a, "pointercancel", { pointerType: "mouse" });
       expect(app!.conn().sentTypes()).toEqual(["create-room", "start-round"]);
-      expect(app!.root.querySelector("#trace")!.textContent).toBe(
-        "Wische über die Felder, um ein Wort zu bilden."
-      );
+      expect(app!.root.querySelector("#trace")!.textContent).toBe(COPY.game.traceHint);
     });
 
     it("touchcancel ends the gesture without submitting", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       const [h, a] = hatTiles();
       fireTouchEvent(h, "touchstart", { to: h });
       fireTouchEvent(h, "touchmove", { to: a });
       fireTouchEvent(h, "touchcancel", { to: a });
       expect(app!.conn().sentTypes()).toEqual(["create-room", "start-round"]);
-      expect(app!.root.querySelector("#trace")!.textContent).toBe(
-        "Wische über die Felder, um ein Wort zu bilden."
-      );
+      expect(app!.root.querySelector("#trace")!.textContent).toBe(COPY.game.traceHint);
     });
 
     it("a touch-only stream traces and submits (regression replay)", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       const [h, a, t] = hatTiles();
       // No pointer events at all: the browser delivers only touch.
       fireTouchEvent(h, "touchstart", { to: h });
@@ -1531,7 +1485,7 @@ describe("mountable app", () => {
     });
 
     it("a single tap submits the tile's one-letter word", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       const [h] = hatTiles();
       firePointerEvent(h, "pointerdown", { pointerType: "touch" });
       fireTouchEvent(h, "touchstart", { to: h });
@@ -1549,7 +1503,7 @@ describe("mountable app", () => {
     }
 
     it("fires one pointer move at an explicit point, not just a tile centre", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       const board = tiles();
       // A sample clearly inside A's top-left corner, away from its centre
       // (past the board-gap margin that #103 requires for a clear hit).
@@ -1568,7 +1522,7 @@ describe("mountable app", () => {
     });
 
     it("fires one touch move at an explicit point, not just a tile centre", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       const board = tiles();
       const box = board[1]!.getBoundingClientRect();
       const at = { x: box.left + 8, y: box.top + 8 };
@@ -1587,7 +1541,7 @@ describe("mountable app", () => {
     });
 
     it("answers board tile rects from the same synthetic grid as the hit-test", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       const board = tiles();
 
       // 40px cells with 4px gaps, row-major: tile 0 at the origin, tile 5
@@ -1608,7 +1562,7 @@ describe("mountable app", () => {
     });
 
     it("resolves a sample in the gap between two tiles to no tile", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       const board = tiles();
       // x=86 sits between tile 1 (ends at 84) and tile 2 (starts at 88).
       const gap = { x: 86, y: 20 };
@@ -1634,7 +1588,7 @@ describe("mountable app", () => {
     }
 
     it("ignores a touchmove clipping tile A's corner, then bridges to M", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       const board = tiles();
       const [h, a, m] = [board[0]!, board[1]!, board[10]!];
 
@@ -1655,7 +1609,7 @@ describe("mountable app", () => {
     });
 
     it("does not unwind the previous tile when a touchmove clips its corner", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       const board = tiles();
       const h = board[0]!;
       const i = board[5]!;
@@ -1674,7 +1628,7 @@ describe("mountable app", () => {
     });
 
     it("still unwinds the previous tile when the finger reaches its centre", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       const board = tiles();
       const h = board[0]!;
       const i = board[5]!;
@@ -1691,7 +1645,7 @@ describe("mountable app", () => {
     });
 
     it("moves the trace not at all for a sample placed in the gap", () => {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       const board = tiles();
       const h = board[0]!;
 
@@ -1709,7 +1663,7 @@ describe("mountable app", () => {
       style.textContent = ".board { --board-gap: 12px; }";
       document.head.append(style);
       try {
-        driveToRoundOne("LAG4T");
+        driveToRoundOne(app!);
         const board = tiles();
         const [h, a] = [board[0]!, board[1]!];
         const box = a.getBoundingClientRect();
@@ -1736,7 +1690,7 @@ describe("mountable app", () => {
   });
 
   it("clears the found-word chips when the next round starts", () => {
-    driveToRoundOne("LAG4T");
+    driveToRoundOne(app!);
     const tiles = tileEls(app!.root);
     synthesizePointerDrag([tiles[0]!, tiles[1]!, tiles[2]!]); // HAU
     app!.conn().feed({ type: "word-accepted", word: "HAU", points: 3 });
@@ -1749,25 +1703,25 @@ describe("mountable app", () => {
   it("the ring timer shows remaining, round score and the shared low-time look", async () => {
     vi.useFakeTimers();
     try {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       const timer = app!.root.querySelector<HTMLElement>("#timer")!;
 
       // Fresh round: full ring, digits at the deadline, round score reset.
       expect(timer.style.getPropertyValue("--p")).toBe("1.0000");
       expect(app!.root.querySelector("#countdown")!.textContent).toBe("2:00");
-      expect(app!.root.querySelector("#round-score")!.textContent).toBe("0 P");
+      expect(app!.root.querySelector("#round-score")!.textContent).toBe(COPY.scores.points(0));
       expect(timer.classList.contains("low")).toBe(false);
 
       // The synchronous verdict raises the centered round score at once…
       app!.conn().feed({ type: "word-accepted", word: "HAU", points: 5 });
-      expect(app!.root.querySelector("#round-score")!.textContent).toBe("5 P");
+      expect(app!.root.querySelector("#round-score")!.textContent).toBe(COPY.scores.points(5));
       // …and a full scoreboard broadcast re-anchors to the server's value.
       app!.conn().feed({
         type: "score-update",
         roundNumber: 1,
         scores: [{ seatId: 1, nickname: "Lena", roundScore: 7, cumulativeScore: 7 }],
       });
-      expect(app!.root.querySelector("#round-score")!.textContent).toBe("7 P");
+      expect(app!.root.querySelector("#round-score")!.textContent).toBe(COPY.scores.points(7));
 
       // A low-time tick: digits and ring take the one shared `low` look,
       // ring fraction shrinking with the interpolated remaining time.
@@ -1790,7 +1744,7 @@ describe("mountable app", () => {
   it("a Tick re-anchors the ring timer in place while a structural delta rebuilds the screen", () => {
     vi.useFakeTimers();
     try {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       const timer = app!.root.querySelector<HTMLElement>("#timer")!;
       const digits = app!.root.querySelector<HTMLElement>("#countdown")!;
 
@@ -1814,7 +1768,7 @@ describe("mountable app", () => {
   });
 
   it("a score-update and a word-accepted verdict update in place without replacing the ring timer", () => {
-    driveToRoundOne("LAG4T");
+    driveToRoundOne(app!);
     const timer = app!.root.querySelector<HTMLElement>("#timer")!;
     const digits = app!.root.querySelector<HTMLElement>("#countdown")!;
 
@@ -1827,8 +1781,8 @@ describe("mountable app", () => {
     });
     expect(app!.root.querySelector("#timer")).toBe(timer);
     expect(app!.root.querySelector("#countdown")).toBe(digits);
-    expect(app!.root.querySelector("#round-score")!.textContent).toBe("7 P");
-    expect(app!.root.querySelector<HTMLElement>("#players")!.textContent).toContain("7 P");
+    expect(app!.root.querySelector("#round-score")!.textContent).toBe(COPY.scores.points(7));
+    expect(app!.root.querySelector<HTMLElement>("#players")!.textContent).toContain(COPY.scores.points(7));
 
     // An accepted word refreshes the private found-word chips and the centered
     // round score, again without replacing the ring timer.
@@ -1845,7 +1799,7 @@ describe("mountable app", () => {
   });
 
   it("multi-letter tiles contribute their full spelling to the trace", () => {
-    driveToRoundOne("LAG4T");
+    driveToRoundOne(app!);
     app!.conn().feed(roundStarted(MIXED, 2)); // board[0] = "sch"
     const tiles = tileEls(app!.root);
     const traceSeen: string[] = [];
@@ -1853,12 +1807,12 @@ describe("mountable app", () => {
       traceSeen.push(app!.root.querySelector("#trace")!.textContent!);
     });
     // `sch` spells its three letters; singles keep their one.
-    expect(traceSeen).toEqual(["sch", "schT", "schTE", "Wische über die Felder, um ein Wort zu bilden."]);
+    expect(traceSeen).toEqual(["sch", "schT", "schTE", COPY.game.traceHint]);
     expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "schTE", reqId: 3 });
   });
 
   it("synthesizes mouse and touch drags across the rendered tile grid", () => {
-    driveToRoundOne("LAG4T");
+    driveToRoundOne(app!);
     const tiles = tileEls(app!.root);
     expect(tiles).toHaveLength(16);
 
@@ -1914,99 +1868,103 @@ describe("mountable app", () => {
       { type: "submit-word", word: "HAT", reqId: 3 },
       { type: "submit-word", word: "ESM", reqId: 4 },
     ]);
-    expect(app!.root.querySelector("h1")!.textContent).toContain("Runde 1");
+    expect(app!.root.querySelector("h1")!.textContent).toContain(COPY.game.title(1));
     expect(tileEls(app!.root).map((t) => t.firstChild?.textContent)).toEqual(BOARD);
   });
 
   describe("entry screens (#53, #173)", () => {
     it("Home is the landing: tagline, exactly two actions and no form — the skin switcher lives in the Menü", () => {
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
-      expect(app!.root.querySelector(".sheet > p.dim")!.textContent).toBe("Ein Mehrspieler-Wörterspiel.");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.home.title);
+      expect(app!.root.querySelector(".sheet > p.dim")!.textContent).toBe(COPY.home.tagline);
 
       const actions = [...app!.root.querySelectorAll<HTMLButtonElement>(".home-actions button")];
-      expect(actions.map((b) => b.textContent)).toEqual(["Raum erstellen", "Raum beitreten"]);
+      expect(actions.map((b) => b.textContent)).toEqual([COPY.home.create, COPY.home.join]);
       expect(app!.root.querySelector("#screen #skin-select")).toBeNull();
       expect(app!.root.querySelector("#menu-panel #skin-select")).toBeTruthy();
       expect(app!.root.querySelectorAll("input")).toHaveLength(0);
     });
 
     it("Create has one Name field and sends create-room", () => {
-      openCreate();
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum erstellen");
+      click(app!.root, "#create-btn");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.create.title);
       const labels = [...app!.root.querySelectorAll<HTMLLabelElement>("label")];
-      expect(labels.map((l) => l.textContent!.trim())).toEqual(["Name"]);
-      expect(app!.root.querySelector<HTMLInputElement>("#mk-nick")!.placeholder).toBe("z. B. Anja");
-      expect(app!.root.querySelector("#mk-btn")!.textContent).toBe("Raum erstellen");
+      expect(labels.map((l) => l.textContent!.trim())).toEqual([COPY.create.name]);
+      expect(app!.root.querySelector<HTMLInputElement>("#mk-nick")!.placeholder).toBe(
+        COPY.create.namePlaceholder
+      );
+      expect(app!.root.querySelector("#mk-btn")!.textContent).toBe(COPY.create.submit);
 
-      typeInto("#mk-nick", "Lena");
-      click("#mk-btn");
+      typeInto(app!.root, "#mk-nick", "Lena");
+      click(app!.root, "#mk-btn");
       expect(app!.conn().sent()).toEqual([{ type: "create-room", nickname: "Lena", reqId: 1 }]);
     });
 
     it("Join has Raumcode and Name fields and sends join with code and nickname", () => {
       // No remembered seat may replace the typed name in this assertion.
       localStorage.clear();
-      openJoin();
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum beitreten");
+      click(app!.root, "#join-btn");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.join.title);
       const labels = [...app!.root.querySelectorAll<HTMLLabelElement>("label")];
-      expect(labels.map((l) => l.textContent!.trim())).toEqual(["Raumcode", "Name"]);
-      expect(app!.root.querySelector<HTMLInputElement>("#jn-nick")!.placeholder).toBe("z. B. Jörg");
+      expect(labels.map((l) => l.textContent!.trim())).toEqual([COPY.join.code, COPY.join.name]);
+      expect(app!.root.querySelector<HTMLInputElement>("#jn-nick")!.placeholder).toBe(
+        COPY.join.namePlaceholder
+      );
       expect(app!.root.querySelector<HTMLInputElement>("#jn-code")!.readOnly).toBe(false);
 
-      typeInto("#jn-code", "ABC12");
-      typeInto("#jn-nick", "Anja");
-      click("#jn-btn");
-      expect(app!.conn().sent()).toEqual([{ type: "join", code: "ABC12", nickname: "Anja", reqId: 1 }]);
+      typeInto(app!.root, "#jn-code", ROOM_CODE);
+      typeInto(app!.root, "#jn-nick", "Anja");
+      click(app!.root, "#jn-btn");
+      expect(app!.conn().sent()).toEqual([{ type: "join", code: ROOM_CODE, nickname: "Anja", reqId: 1 }]);
     });
 
     it("keeps the local validation copy on the screen that owns the field", () => {
-      openCreate();
-      click("#mk-btn");
-      expect(noticeText(app!.root, "error")).toBe("Bitte gib einen Namen ein.");
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum erstellen");
+      click(app!.root, "#create-btn");
+      click(app!.root, "#mk-btn");
+      expect(noticeText(app!.root, "error")).toBe(COPY.errors.nameRequired);
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.create.title);
       expect(app!.connections()).toHaveLength(0);
 
-      click("#back-btn");
-      openJoin();
-      click("#jn-btn");
-      expect(noticeText(app!.root, "error")).toBe("Bitte gib einen Raumcode ein.");
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum beitreten");
+      click(app!.root, "#back-btn");
+      click(app!.root, "#join-btn");
+      click(app!.root, "#jn-btn");
+      expect(noticeText(app!.root, "error")).toBe(COPY.errors.codeRequired);
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.join.title);
 
-      typeInto("#jn-code", "ABC12");
-      click("#jn-btn");
-      expect(noticeText(app!.root, "error")).toBe("Bitte gib einen Namen ein.");
+      typeInto(app!.root, "#jn-code", ROOM_CODE);
+      click(app!.root, "#jn-btn");
+      expect(noticeText(app!.root, "error")).toBe(COPY.errors.nameRequired);
       expect(app!.connections()).toHaveLength(0);
     });
 
     it("Zurück from Create or Join returns Home without a connection attempt", () => {
-      openCreate();
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum erstellen");
-      click("#back-btn");
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+      click(app!.root, "#create-btn");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.create.title);
+      click(app!.root, "#back-btn");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.home.title);
       expect(window.location.pathname).toBe("/");
       expect(app!.connections()).toHaveLength(0);
 
-      openJoin();
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum beitreten");
-      click("#back-btn");
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+      click(app!.root, "#join-btn");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.join.title);
+      click(app!.root, "#back-btn");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.home.title);
       expect(app!.connections()).toHaveLength(0);
       expect(noticeText(app!.root, "error")).toBe("");
     });
 
     it("popstate renders the entry it names, and stays ignored while in a room", () => {
-      openCreate();
+      click(app!.root, "#create-btn");
       window.dispatchEvent(new PopStateEvent("popstate", { state: { screen: "home" } }));
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Wortschatz");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.home.title);
       expect(app!.connections()).toHaveLength(0);
 
       window.dispatchEvent(new PopStateEvent("popstate", { state: { screen: "join" } }));
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum beitreten");
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.join.title);
       window.dispatchEvent(new PopStateEvent("popstate", { state: { screen: "home" } }));
 
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       window.dispatchEvent(new PopStateEvent("popstate", { state: { screen: "home" } }));
-      expect(app!.root.querySelector("h1")!.textContent).toContain("Runde 1");
+      expect(app!.root.querySelector("h1")!.textContent).toContain(COPY.game.title(1));
     });
   });
 
@@ -2038,16 +1996,16 @@ describe("mountable app", () => {
       expect([...select.options].map((o) => o.value)).toEqual(["standard", "arcade"]);
       expect(select.value).toBe("standard");
       // A room rebuild leaves the app-owned switcher in place.
-      typeInto("#mk-nick", "Lena");
-      click("#mk-btn");
-      app!.conn().feed(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
+      typeInto(app!.root, "#mk-nick", "Lena");
+      click(app!.root, "#mk-btn");
+      app!.conn().feed(lobbySnapshot({ code: ROOM_CODE, nickname: "Lena" }));
       expect(app!.root.querySelector("#screen #skin-select")).toBeNull();
       expect(app!.root.querySelector("#menu-panel #skin-select")).not.toBeNull();
     });
 
     it("the Menü skin entry is headed Skin with a Skin selector — no Erscheinungsbild, Farbwelt or explanatory note", () => {
       const panel = app!.root.querySelector<HTMLElement>(".panel:has(#skin-select)")!;
-      expect(panel.querySelector("h2")!.textContent).toBe("Skin");
+      expect(panel.querySelector("h2")!.textContent).toBe(COPY.menu.skin);
       expect(panel.querySelector("#skin-select")).toBeTruthy();
       expect(panel.textContent).not.toContain("Erscheinungsbild");
       expect(panel.textContent).not.toContain("Farbwelt");
@@ -2055,7 +2013,7 @@ describe("mountable app", () => {
 
       // The option labels the switcher kept.
       const select = panel.querySelector<HTMLSelectElement>("#skin-select")!;
-      expect([...select.options].map((o) => o.textContent)).toEqual(["Standard (hell)", "Arcade (dunkel)"]);
+      expect([...select.options].map((o) => o.textContent)).toEqual([COPY.menu.standard, COPY.menu.arcade]);
 
       // Registry entries carry no unused `note` string.
       for (const skin of SKINS) expect(skin).not.toHaveProperty("note");
@@ -2066,14 +2024,14 @@ describe("mountable app", () => {
       expect(document.body.dataset.skin).toBe("arcade");
 
       // Rooms render from the same root: no per-screen choice needed.
-      typeInto("#mk-nick", "Lena");
-      click("#mk-btn");
-      app!.conn().feed(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
-      expect(app!.root.querySelector("h1")!.textContent).toBe("Raum LAG4T");
+      typeInto(app!.root, "#mk-nick", "Lena");
+      click(app!.root, "#mk-btn");
+      app!.conn().feed(lobbySnapshot({ code: ROOM_CODE, nickname: "Lena" }));
+      expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.lobby.title(ROOM_CODE));
       expect(document.body.dataset.skin).toBe("arcade");
 
       // Back home, the switcher reflects the life choice of this visit.
-      click("#leave-btn");
+      click(app!.root, "#leave-btn");
       expect(app!.root.querySelector<HTMLSelectElement>("#menu-panel #skin-select")!.value).toBe("arcade");
     });
 
@@ -2101,7 +2059,7 @@ describe("mountable app", () => {
     const BOARD_WITH_ẞ = ["ß", "a", "u", "s", "t", "i", "r", "e", "b", "u", "m", "s", "k", "a", "t", "z"];
 
     function driveToẞRound(): void {
-      driveToRoundOne("LAG4T");
+      driveToRoundOne(app!);
       app!.conn().feed(roundStarted(BOARD_WITH_ẞ, 2));
     }
 
@@ -2121,7 +2079,7 @@ describe("mountable app", () => {
         traceSeen.push(app!.root.querySelector("#trace")!.textContent!);
       });
 
-      expect(traceSeen).toEqual(["ẞ", "ẞa", "Wische über die Felder, um ein Wort zu bilden."]);
+      expect(traceSeen).toEqual(["ẞ", "ẞa", COPY.game.traceHint]);
       expect(traceSeen[1]).not.toContain("SS");
       // Display only: the wire still carries the data's real `ß`.
       expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "ßa", reqId: 3 });
