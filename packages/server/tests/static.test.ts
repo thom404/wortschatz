@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { mkdtemp, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { CONTENT_SECURITY_POLICY } from "../src/index.js";
 import { createRoom, FAST_CLOCK, makeScene, type Scene } from "./scene.js";
 
 let scene: Scene;
@@ -52,11 +53,10 @@ describe("static SPA serving", () => {
     const scene2 = await makeScene({ ...FAST_CLOCK, staticDir: dir });
     try {
       const base = `http://localhost:${scene2.handle.port}`;
-      const csp = "default-src 'self'; connect-src 'self'";
 
       for (const path of ["/", "/r/ABC12", "/assets/app.js", "/nope.txt"]) {
         const res = await fetch(new URL(path, base));
-        expect(res.headers.get("content-security-policy")).toBe(csp);
+        expect(res.headers.get("content-security-policy")).toBe(CONTENT_SECURITY_POLICY);
       }
     } finally {
       await scene2.stop();

@@ -471,10 +471,12 @@ describe("mountable app", () => {
       ];
       app!.conn().feed(roundStarted(VALUED, 2));
       const livePoints = tileEls(app!.root).map((t) => t.querySelector(".pts")?.textContent);
+      expect(app!.root.querySelector<HTMLElement>("#board")!.style.getPropertyValue("--tile-span")).toBe("3");
 
       app!.conn().feed(roundEnded(2, REVEAL));
 
       expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.intermission.title);
+      expect(app!.root.querySelector<HTMLElement>("#board")!.style.getPropertyValue("--tile-span")).toBe("3");
       const paused = tileEls(app!.root);
       expect(paused.map((t) => t.querySelector(".pts")?.textContent)).toEqual(livePoints);
       expect(paused.map((t) => t.querySelector(".pts")?.textContent)).toEqual([
@@ -1756,11 +1758,15 @@ describe("mountable app", () => {
       expect(Number(timer.style.getPropertyValue("--p"))).toBeCloseTo(0.75, 2);
 
       // A structural delta (a roster join) still rebuilds the whole screen:
-      // a fresh ring timer takes the old one's place.
+      // a fresh ring timer takes the old one's place, and its CSSOM knob is
+      // seeded from the current fraction so it never flashes the full ring.
       app!.conn().feed(playerJoined(2, "Ben"));
       expect(app!.root.querySelector("#timer")).not.toBe(timer);
       expect(app!.root.querySelector("#countdown")).not.toBe(digits);
       expect(app!.root.querySelector("#countdown")!.textContent).toBe("1:30");
+      expect(
+        Number(app!.root.querySelector<HTMLElement>("#timer")!.style.getPropertyValue("--p"))
+      ).toBeCloseTo(0.75, 2);
     } finally {
       vi.useRealTimers();
     }

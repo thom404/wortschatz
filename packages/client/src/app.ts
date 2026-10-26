@@ -162,7 +162,7 @@ function tileHtml(t: string): string {
  *  cells (ADR-0002 amendment #151): the tile markup stays upright and the
  *  server board array is never reordered. */
 function boardHtml(board: readonly string[], rotation: BoardRotation): string {
-  return `<div id="board" class="board" data-rotation="${rotation}" style="${boardSpanStyle(board)}">${boardTilesHtml(board, rotation)}</div>`;
+  return `<div id="board" class="board" data-rotation="${rotation}">${boardTilesHtml(board, rotation)}</div>`;
 }
 
 /** The tiles in rotated render order: each cell shows the tile the module's
@@ -173,11 +173,11 @@ function boardTilesHtml(board: readonly string[], rotation: BoardRotation): stri
   return rotateBoard(board, rotation).map(tileHtml).join("");
 }
 
-/** The grid container's one font-size knob: the widest tile span on the
- *  server board (rotation never changes the set of tiles). */
-function boardSpanStyle(board: readonly string[]): string {
+/** Inline style attributes are intentionally forbidden by the app-level CSP;
+ *  dynamic style values go through CSSOM instead. */
+function applyBoardSpan(el: HTMLElement, board: readonly string[]): void {
   const tileSpan = Math.max(1, ...board.map((t) => tileSpellingLength(t)));
-  return `--tile-span:${tileSpan}`;
+  el.style.setProperty("--tile-span", String(tileSpan));
 }
 
 /**
@@ -690,7 +690,7 @@ const LOW_TIME_MS = 20_000;
 function timerHtml(app: App): string {
   const state = timerState(app);
   return `
-    <div id="timer" class="timer area-timer${state.low ? " low" : ""}" style="--p:${state.fraction.toFixed(4)}">
+    <div id="timer" class="timer area-timer${state.low ? " low" : ""}">
       <span id="countdown" class="timer-digits">${fmt(remainingOf(app.store))}</span>
       <span id="round-score" class="timer-score">${app.store.selfRoundScore} P</span>
     </div>`;
@@ -706,6 +706,8 @@ function timerState(app: App): { fraction: number; low: boolean } {
   };
 }
 
+/** Inline style attributes are intentionally forbidden by the app-level CSP;
+ *  the timer's `--p` knob goes through CSSOM on first paint and every tick. */
 function updateTimer(app: App): void {
   if (app.store.phase !== "playing") return;
   const el = app.root.querySelector<HTMLElement>("#countdown");
@@ -871,6 +873,9 @@ function renderGame(app: App): void {
       </div>
       ${leaveButtonHtml()}
     </div>`;
+  const boardEl = app.root.querySelector<HTMLElement>("#board");
+  if (boardEl) applyBoardSpan(boardEl, board);
+  updateTimer(app);
   measureBoardGap(app);
   app.liveRegions = GAME_LIVE_REGIONS;
   wireBoardRotation(app);
@@ -920,6 +925,8 @@ function renderIntermission(app: App): void {
       }
       ${leaveButtonHtml()}
     </div>`;
+  const boardEl = app.root.querySelector<HTMLElement>("#board");
+  if (boardEl) applyBoardSpan(boardEl, board);
   measureBoardGap(app);
   app.liveRegions = INTERMISSION_LIVE_REGIONS;
   wireRevealOrder(app);
@@ -1485,7 +1492,7 @@ function repaintBoard(app: App): void {
   const el = app.root.querySelector<HTMLElement>("#board");
   if (el) {
     el.dataset.rotation = String(app.view.boardRotation);
-    el.setAttribute("style", boardSpanStyle(board));
+    applyBoardSpan(el, board);
     el.innerHTML = boardTilesHtml(board, app.view.boardRotation);
   }
 }

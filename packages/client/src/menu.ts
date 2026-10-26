@@ -27,6 +27,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: "0.1.1",
+    notes: ["Spielfeld und Zeitring werden wieder korrekt dargestellt."],
+  },
+  {
     version: "0.1.0",
     notes: [
       "Das Menü: Skin wechseln und Version ansehen, auf jedem Bildschirm.",

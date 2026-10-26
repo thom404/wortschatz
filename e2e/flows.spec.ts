@@ -66,7 +66,7 @@ test("skin switch through the Menü survives reload", async ({ page }) => {
   await expect(page.locator("body")).toHaveAttribute("data-skin", "standard");
   await expect(page.locator("#menu-panel")).toBeHidden();
   await openMenu(page);
-  await expect(page.locator("#menu-panel .menu-version")).toHaveText(`Version 0.1.0`);
+  await expect(page.locator("#menu-panel .menu-version")).toHaveText(`Version 0.1.1`);
   await page.locator("#skin-select").selectOption("arcade");
   await expect(page.locator("body")).toHaveAttribute("data-skin", "arcade");
 
@@ -141,7 +141,7 @@ test("drag → submit-word", async ({ page }) => {
           selfSeatId: 1,
           nickname: "Lena",
           role: "player",
-          board: BOARD_DRAG,
+          board: BOARD_DIGRAM,
           deadline: FIXED_NOW + 100_000,
           players: [seat({ seatId: 1, nickname: "Lena" })],
         }),
@@ -151,7 +151,19 @@ test("drag → submit-word", async ({ page }) => {
 
   const tiles = page.locator("#board .tile");
   await expect(tiles).toHaveCount(16);
-  const boxes = await Promise.all([0, 1, 2].map(async (i) => tiles.nth(i).boundingBox()));
+
+  // The dynamic style knobs reach the DOM through CSSOM under the real CSP.
+  const tileSpan = await page
+    .locator("#board")
+    .evaluate((element) => getComputedStyle(element).getPropertyValue("--tile-span").trim());
+  expect(tileSpan).toBe("3");
+  const fraction = await page
+    .locator("#timer")
+    .evaluate((element) => Number.parseFloat(getComputedStyle(element).getPropertyValue("--p")));
+  expect(fraction).toBeGreaterThan(0);
+  expect(fraction).toBeLessThan(1);
+
+  const boxes = await Promise.all([1, 2, 3].map(async (i) => tiles.nth(i).boundingBox()));
   const points = boxes.map((box) => {
     if (!box) throw new Error("board tile has no layout box");
     return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
@@ -170,7 +182,7 @@ test("drag → submit-word", async ({ page }) => {
 
   await expect
     .poll(() => wire.received.find((m) => m.type === "submit-word"))
-    .toMatchObject({ type: "submit-word", word: "hau" });
+    .toMatchObject({ type: "submit-word", word: "ein" });
 });
 
 test("intermission → start-round", async ({ page }) => {
