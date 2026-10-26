@@ -27,10 +27,12 @@ room-wide or host setting. See
 ## Board variety
 
 The acceptance rules that keep a generated board from looking like a rendering
-accident: at most three copies of any single-letter tile, exactly one **special
-tile**, and no two identical tiles 8-way adjacent. Letters contributed by a
-special do not count toward the single-letter cap, so an `e` cell next to an `er`
-cell is allowed. See [ADR-0003](docs/adr/0003-board-generation-and-tile-inventory.md).
+accident: at most three copies of any single-letter tile, exactly one
+**position-free special** (a digram or either/or tile), and no two identical
+tiles 8-way adjacent. Letters contributed by a special do not count toward the
+single-letter cap, so an `e` cell next to an `er` cell is allowed. Prefix and
+suffix tiles retired with [ADR-0027](docs/adr/0027-position-free-specials-and-submittable-either-or.md);
+see [ADR-0003](docs/adr/0003-board-generation-and-tile-inventory.md).
 
 ## Changelog
 
@@ -84,6 +86,16 @@ Exactly one letter is special-cased: `ß` renders as capital `ẞ` (U+1E9E), so
 it stays one glyph and never expands to `SS`, and a `ß` word stays visually
 distinct from an `ss` word. Submission, matching and scoring keep the canonical
 lowercase `ß`. See [ADR-0002](docs/adr/0002-game-screen-layout-and-skins.md).
+
+## Either/or tile
+
+The one special tile whose two single-letter spellings are joined by `/`
+(`r/s`, `s/t`, …). A word on the board may use either reading. The menu is
+measured and committed, not hand-picked; a drag sends the first reading plus
+one `alternate`, and the server accepts the best valid reading by points, then
+length, then alphabetical word. Duplicate identity is the resolved word. It is
+the existing either/or notation, not a new tile kind; see
+[ADR-0027](docs/adr/0027-position-free-specials-and-submittable-either-or.md).
 
 ## Exclusion list
 
@@ -287,8 +299,8 @@ already-enumerated, formability-filtered list. See
 ## Tile value
 
 The points a single tile is worth: the plain sum of the German Scrabble values
-of the letters it spells. Digrams, prefixes and suffixes show one total (`sch`
-→ 7, `an-` → 2, `-ung` → 4). An **either/or** tile has one value per spelling
+of the letters it spells. Digrams show one total (`sch` → 7, `st` → 2). An
+**either/or** tile has one value per spelling
 in declared letter order; the board shows both joined by `/` when they differ
 (`e/ä` → 1/6, `o/u` → 2/1) and a single number when they are equal (`i/e` → 1).
 A tile value reads the same table as the **word score** — the sum for a whole

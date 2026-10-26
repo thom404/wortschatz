@@ -332,29 +332,29 @@ describe("mountable app", () => {
         window.history.pushState({}, "", "/");
       }
     });
-    it("cleans tile notation for display: prefix/suffix markers and either/or variants never leak raw onto the grid", () => {
+    it("cleans tile notation for display: either/or variants never leak raw onto the grid", () => {
       driveToRoundOne(app!);
-      const NOTATED = ["an-", "-s", "e/ä", "H", "qu", "T", "I", "R", "E", "B", "U", "M", "S", "K", "A", "Z"]; // data keeps its markers; display must not
+      const NOTATED = ["e/ä", "H", "T", "I", "R", "E", "B", "U", "M", "S", "K", "A", "Z", "D", "F", "G"];
       app!.conn().feed(roundStarted(NOTATED, 2));
       const shown = tileEls(app!.root)
-        .slice(0, 5)
+        .slice(0, 3)
         .map((t) => (t.firstChild?.textContent ?? "").trim()); // tile letters only (the value span rides along)
-      expect(shown).toEqual(["an", "s", "e/ä", "H", "qu"]);
+      expect(shown).toEqual(["e/ä", "H", "T"]);
 
       // The input still spells the cleaned letters (trace uses the data).
       const tiles = tileEls(app!.root);
-      synthesizePointerDrag([tiles[7]!, tiles[11]!], "mouse"); // R → M (8-way adjacent, both singles)
-      expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "RM", reqId: 3 });
+      synthesizePointerDrag([tiles[1]!, tiles[2]!], "mouse"); // H → T (8-way adjacent singles)
+      expect(app!.conn().sent().at(-1)).toEqual({ type: "submit-word", word: "HT", reqId: 3 });
     });
 
     it("shows each tile's points where the index used to be, with German labels and a hover title", () => {
       driveToRoundOne(app!);
-      // A digram, prefix, suffix, differing either/or, equal either/or and a
-      // plain letter, plus fillers — every value rule on one board (#142).
+      // Two digrams, differing either/or, equal either/or and plain letters,
+      // plus fillers — every value rule on one board (#142).
       const VALUED = [
         "sch",
-        "an-",
-        "-ung",
+        "st",
+        "qu",
         "e/ä",
         "o/u",
         "i/e",
@@ -376,7 +376,7 @@ describe("mountable app", () => {
       expect(tiles.map((t) => t.querySelector(".pts")?.textContent)).toEqual([
         "7",
         "2",
-        "4",
+        "11",
         "1/6",
         "2/1",
         "1",
@@ -405,12 +405,11 @@ describe("mountable app", () => {
       expect(tiles[4]!.getAttribute("aria-label")).toBe("o/u, 2 oder 1 Punkte");
       expect(tiles[5]!.getAttribute("aria-label")).toBe("i/e, 1 Punkt");
 
-      // Letters still render as before: notation markers and slashes are
-      // display-cleaned only.
+      // Letters still render as before: either/or slashes stay visible.
       expect(tiles.slice(0, 6).map((t) => t.firstChild?.textContent)).toEqual([
         "sch",
-        "an",
-        "ung",
+        "st",
+        "qu",
         "e/ä",
         "o/u",
         "i/e",
@@ -454,8 +453,8 @@ describe("mountable app", () => {
       driveToRoundOne(app!);
       const VALUED = [
         "sch",
-        "an-",
-        "-ung",
+        "st",
+        "qu",
         "e/ä",
         "o/u",
         "i/e",
@@ -481,7 +480,7 @@ describe("mountable app", () => {
       expect(paused.map((t) => t.querySelector(".pts")?.textContent)).toEqual([
         "7",
         "2",
-        "4",
+        "11",
         "1/6",
         "2/1",
         "1",
@@ -1796,6 +1795,26 @@ describe("mountable app", () => {
     // fresh ring timer takes the old one's place.
     app!.conn().feed(playerJoined(2, "Ben"));
     expect(app!.root.querySelector("#timer")).not.toBe(timer);
+  });
+
+  it("sends the second reading of a choice tile alongside the first", () => {
+    driveToRoundOne(app!);
+    const CHOICE = ["H", "A/E", "T", "S", "E", "N", "D", "R", "I", "M", "L", "B", "K", "G", "O", "C"];
+    app!.conn().feed(roundStarted(CHOICE, 2));
+    const tiles = tileEls(app!.root);
+    const traceSeen: string[] = [];
+    synthesizePointerDrag([tiles[0]!, tiles[1]!, tiles[2]!], "mouse", () => {
+      traceSeen.push(app!.root.querySelector("#trace")!.textContent!);
+    });
+    // The trace keeps the first reading; the wire carries both so the engine
+    // can pick the valid one (ADR-0027).
+    expect(traceSeen).toEqual(["H", "HA", "HAT", COPY.game.traceHint]);
+    expect(app!.conn().sent().at(-1)).toEqual({
+      type: "submit-word",
+      word: "HAT",
+      alternate: "HET",
+      reqId: 3,
+    });
   });
 
   it("multi-letter tiles contribute their full spelling to the trace", () => {

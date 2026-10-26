@@ -138,27 +138,4 @@ describe("findWords", () => {
     const board = ["a/e", "i", "n", "s", "n", "o", "r", "d", "b", "b", "c", "c", "z", "z", "y", "y"];
     expect(dict.findWords(board).sort()).toEqual(["ain", "ein"]);
   });
-
-  it("enumerates prefix tile candidates at any path position (constraint-oblivious)", () => {
-    // w an- d ... : "and" spells via the prefix tile at word start, "wand"
-    // via the same tile mid-word. Positioning is boardgen's post-filter job.
-    const dict = createDictionary(["wand", "and"]);
-    const board = ["w", "an-", "d", "a", "e", "r", "n", "t", "s", "t", "o", "b", "c", "c", "z", "z"];
-    expect(dict.findWords(board).sort()).toEqual(["and", "wand"]);
-  });
-
-  it("enumerates suffix tile candidates independent of position (constraint-oblivious)", () => {
-    // a r t -s ... : "arts" ends on the suffix tile — allowed.
-    const dict = createDictionary(["art", "arts"]);
-    const board = ["a", "r", "t", "-s", "e", "n", "o", "b", "c", "c", "z", "z", "w", "w", "y", "y"];
-    expect(dict.findWords(board).sort()).toEqual(["art", "arts"]);
-  });
-
-  it("enumerates words that pass through a suffix tile mid-path (constraint-oblivious)", () => {
-    // a -s t ... : "ast" consumes -s mid-word; enumerated here, removed later
-    // by boardgen's isFormable post-filter (tested in boardgen.test.ts).
-    const dict = createDictionary(["ast"]);
-    const board = ["a", "-s", "t", "e", "n", "o", "b", "c", "z", "z", "w", "w", "y", "y", "d", "d"];
-    expect(dict.findWords(board)).toEqual(["ast"]);
-  });
 });

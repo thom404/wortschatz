@@ -42,6 +42,27 @@ export const BOARD_DIGRAM = [
   "en",
 ] as const;
 
+/** A board carrying the two-letter choice tile the reveal and drag must agree
+ *  on; the smallest phone checks that its face stays legible. */
+export const BOARD_CHOICE = [
+  "r/s",
+  "e",
+  "i",
+  "n",
+  "s",
+  "t",
+  "a",
+  "h",
+  "u",
+  "g",
+  "l",
+  "b",
+  "o",
+  "m",
+  "k",
+  "d",
+] as const;
+
 /** A plain board whose first row spells `hau`, for the drag flow. */
 export const BOARD_DRAG = [
   "h",
@@ -121,14 +142,14 @@ function lobbyWire(players: PlayerInfo[] = ROSTER, selfSeatId = 1): ServerMessag
   ];
 }
 
-function gameWire(): ServerMessage[] {
+function gameWire(board: readonly string[] = BOARD_DIGRAM): ServerMessage[] {
   return [
     playingSnapshot({
       code: ROOM_CODE,
       selfSeatId: 2,
       nickname: "Jonas",
       role: "player",
-      board: BOARD_DIGRAM,
+      board,
       deadline: FIXED_NOW + 100_000,
       players: ROSTER,
     }),
@@ -438,6 +459,20 @@ const lowTimer: ScreenshotScenario = {
   },
 };
 
+const choiceTile: ScreenshotScenario = {
+  id: "targeted-choice-tile",
+  scene: {
+    entry: { mode: "create", nickname: "Lena" },
+    greeting: gameWire(BOARD_CHOICE),
+  },
+  skins: SKINS,
+  viewports: [PHONE_SMALL],
+  ready: async (page) => {
+    await expect(page.locator("#board .tile")).toHaveCount(16);
+    await expect(page.locator("#board .tile").first()).toContainText("r/s");
+  },
+};
+
 const tooltip: ScreenshotScenario = {
   id: "targeted-tooltip",
   scene: {
@@ -609,6 +644,7 @@ export const OUTCOME_SCENARIOS: readonly ScreenshotScenario[] = [
 export const TARGETED_SCENARIOS: readonly ScreenshotScenario[] = [
   overflowChip,
   lowTimer,
+  choiceTile,
   tooltip,
   errorNotice,
   spectatorGame,

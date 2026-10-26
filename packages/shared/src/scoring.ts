@@ -5,8 +5,8 @@
  * corner number can never disagree with the scoreboard.
  *
  * A word scores the plain sum of its letters' values — no length multiplier,
- * no multiplier tiles. Tile structure never needs inspecting: a multi-letter
- * tile contributes the sum of its constituent letters, and an either/or tile
+ * no multiplier tiles. Tile structure never needs inspecting: a digram tile
+ * contributes the sum of its constituent letters, and an either/or tile
  * scores the variant the player actually spelled.
  */
 import type { Tile } from "./tiles.js";
@@ -66,9 +66,9 @@ export function wordScore(word: string): number {
 }
 
 /**
- * The points for each spelling a tile can produce: one entry for single,
- * digram, prefix and suffix tiles, and one per variant for either/or tiles in
- * the order the variants are declared. Display collapses equal variants and
+ * The points for each spelling a tile can produce: one entry for single and
+ * digram tiles, and one per variant for either/or tiles in the order the
+ * variants are declared. Display collapses equal variants and
  * joins differing ones with `/`; the game never scores a whole either/or tile.
  */
 export function tileValues(tile: Tile): number[] {

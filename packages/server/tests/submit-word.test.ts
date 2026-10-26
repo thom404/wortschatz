@@ -24,6 +24,31 @@ async function accept(client: Awaited<ReturnType<typeof match>>["host"], word: s
   return client.expect((m) => m.type === "word-accepted" && m.reqId === reqId, 4000);
 }
 
+describe("submit-word with a choice tile", () => {
+  test("accepts the second reading carried alongside the first", async () => {
+    const choiceScene = await makeScene({
+      ...FAST_CLOCK,
+      generateBoard: () => ({
+        board: ["t", "a/e", "s", "t", "w", "o", "r", "t", "z", "z", "a", "a", "b", "b", "c", "c"],
+        words: ["test"],
+      }),
+    });
+    try {
+      const { host, snap } = await createRoom(choiceScene, "Hansi");
+      await joinPlayer(choiceScene, snap.room.code, "Gretl");
+      host.send({ type: "start-round", reqId: 1 });
+      await host.expect((m) => m.type === "round-start");
+
+      host.send({ type: "submit-word", word: "tast", alternate: "test", reqId: 2 });
+      const ack = await host.expect((m) => m.type === "word-accepted" && m.reqId === 2, 4000);
+      expect(ack.word).toBe("test");
+      expect(ack.points).toBe(4);
+    } finally {
+      await choiceScene.stop();
+    }
+  });
+});
+
 describe("submit-word", () => {
   test("valid word synchronously accepted with points, echoed reqId", async () => {
     const { host } = await match();

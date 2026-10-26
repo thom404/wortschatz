@@ -55,11 +55,6 @@ describe("tile values", () => {
     expect(tileValues("qu")).toEqual([11]);
   });
 
-  it("sums prefix and suffix tiles", () => {
-    expect(tileValues("an-")).toEqual([2]);
-    expect(tileValues("-ung")).toEqual([4]);
-  });
-
   it("gives an either/or tile one value per variant in declared order", () => {
     expect(tileValues("e/ä")).toEqual([1, 6]);
     expect(tileValues("o/u")).toEqual([2, 1]);

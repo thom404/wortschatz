@@ -1166,30 +1166,49 @@ function clearHit(app: App, tile: number, x: number, y: number): boolean {
 }
 
 /** Ends the trace: painting restores the idle hint and, on a real release
- *  during play, the traced string crosses the boundary as `submit-word`. The
- *  gesture state is already cleared, so the paint goes idle. */
+ *  during play, the traced string crosses the boundary as `submit-word`. A
+ *  choice tile on the path also carries its second reading, so the server can
+ *  accept either valid word (ADR-0027). The gesture state is already cleared,
+ *  so the paint goes idle. */
 function submitTrace(app: App, trace: number[]): void {
   paintTrace(app);
-  const word = traceWord(app, trace);
+  const { word, alternate } = traceReadings(app, trace);
   if (word && app.store.phase === "playing") {
     // A new submit is the action that addresses the previous rejection, so
     // the old verdict leaves at once.
     clearError(app);
-    app.conn?.request({ type: "submit-word", word });
+    app.conn?.request({ type: "submit-word", word, ...(alternate ? { alternate } : {}) });
   }
 }
 
-/** The string a release would submit: each traced cell's tile letters, in
- *  order. The trace holds grid cells, so the rotation maps a cell back to
+/** The string the trace shows and the optional second reading a choice tile
+ *  offers. The trace holds grid cells, so the rotation maps a cell back to
  *  its server board index before reading the tile — the submitted word is
- *  always exactly what the tiles under the finger spell (issue #151).
- *  Either/or tiles contribute their first variant (swipes don't choose
- *  variants — later tickets own special-tile input). */
-function traceWord(app: App, trace: readonly number[]): string {
+ *  always exactly what the tiles under the finger spell (issue #151). A board
+ *  has at most one special, so there is at most one either/or tile to vary. */
+function traceReadings(app: App, trace: readonly number[]): { word: string; alternate?: string } {
   const board = app.store.round?.board ?? [];
-  return trace
-    .map((cell) => tileStrings(board[serverBoardIndex(cell, app.view.boardRotation)] ?? "")[0] ?? "")
-    .join("");
+  let word = "";
+  let alternate = "";
+  let varied = false;
+  for (const cell of trace) {
+    const variants = tileStrings(board[serverBoardIndex(cell, app.view.boardRotation)] ?? "");
+    const first = variants[0] ?? "";
+    word += first;
+    const second = variants[1];
+    if (!varied && second !== undefined) {
+      alternate += second;
+      varied = true;
+    } else {
+      alternate += first;
+    }
+  }
+  return varied ? { word, alternate } : { word };
+}
+
+/** The primary reading the trace line shows. */
+function traceWord(app: App, trace: readonly number[]): string {
+  return traceReadings(app, trace).word;
 }
 
 /** Point → tile resolution, the same for mouse and finger. Real browsers

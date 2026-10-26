@@ -1,8 +1,20 @@
 import { describe, expect, test } from "vitest";
-import type { RoomEndReason, ServerMessage } from "@wortschatz/shared";
+import {
+  isEitherOr,
+  neighbors,
+  tileStrings,
+  wordScore,
+  type RoomEndReason,
+  type ServerMessage,
+} from "@wortschatz/shared";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { resolveConfig, type ServerConfig, type ServerConfigResolved } from "../src/config.js";
 import { RoomLogic, type Clock, type TimerHandle } from "../src/room-logic.js";
 import { makeRoom, type Room, type Seat } from "../src/state.js";
+import { generateBoard } from "../src/boardgen/index.js";
+import { createDictionary } from "../src/dictionary/index.js";
+import { defaultExclusionsPath, defaultWordsPath } from "../src/dictionary/loader.js";
 
 /**
  * A clock the test owns: `advance` fires every due timer in order, so the
@@ -672,14 +684,14 @@ describe("submission", () => {
     });
   });
 
-  test("the duplicate check runs before placeability and dictionary lookup", () => {
+  test("an invalid word is rejected on validity even when its spelling is already recorded", () => {
     const { h, seat } = playingHarness();
     seat.roundWords.add("saat"); // neither formable nor known
 
     expect(h.logic.submitWord(h.room, seat, "saat")).toEqual({
       kind: "rejected",
-      code: "word-duplicate",
-      detail: "saat",
+      code: "invalid-word",
+      detail: "not placeable",
     });
   });
 
@@ -701,6 +713,69 @@ describe("submission", () => {
       code: "invalid-word",
       detail: "test",
     });
+  });
+
+  const CHOICE_BOARD = ["h", "a/e", "t", "s", "e", "n", "d", "r", "i", "m", "l", "b", "k", "g", "o", "c"];
+
+  function choiceHarness(over: Partial<ServerConfig> = {}) {
+    return playingHarness({
+      generateBoard: () => ({ board: CHOICE_BOARD, words: [] }),
+      dictionary: { isValid: (w) => ["hat", "het", "hut"].includes(w) },
+      scoreWord: (word) => word.length,
+      ...over,
+    });
+  }
+
+  test("resolves a choice path to the valid reading when only the alternate is a word", () => {
+    const { h, seat } = choiceHarness({
+      dictionary: { isValid: (w) => w === "het" },
+    });
+
+    expect(h.logic.submitWord(h.room, seat, "hat", "het")).toEqual({
+      kind: "accepted",
+      word: "het",
+      points: 3,
+    });
+    expect(seat.roundWords).toEqual(new Set(["het"]));
+  });
+
+  test("takes the more valuable valid reading, never the client's primary", () => {
+    const { h, seat } = choiceHarness({ scoreWord: (word) => (word === "het" ? 10 : word.length) });
+
+    expect(h.logic.submitWord(h.room, seat, "hat", "het")).toMatchObject({
+      kind: "accepted",
+      word: "het",
+      points: 10,
+    });
+  });
+
+  test("breaks an equal-point equal-length tie alphabetically, independent of reading order", () => {
+    const { h, seat } = choiceHarness();
+
+    expect(h.logic.submitWord(h.room, seat, "het", "hat")).toMatchObject({
+      kind: "accepted",
+      word: "hat",
+    });
+    const other = h.addSeat("Gretl");
+    expect(h.logic.submitWord(h.room, other, "hat", "het")).toMatchObject({
+      kind: "accepted",
+      word: "hat",
+    });
+  });
+
+  test("duplicate identity is the resolved word, not the submitted reading", () => {
+    const { h, seat } = choiceHarness();
+    expect(h.logic.submitWord(h.room, seat, "het", "hat")).toMatchObject({
+      kind: "accepted",
+      word: "hat",
+    });
+
+    expect(h.logic.submitWord(h.room, seat, "hat", "het")).toEqual({
+      kind: "rejected",
+      code: "word-duplicate",
+      detail: "hat",
+    });
+    expect(seat.roundScore).toBe(3);
   });
 
   test("acceptance followed by announceScores broadcasts the scored totals", () => {
@@ -783,5 +858,101 @@ describe("room expiry", () => {
     h.clock.advance(1500);
 
     expect(h.expired).toEqual(["expired"]);
+  });
+});
+
+/* --------------------------------------------------------------------- */
+/* Reveal parity on generated choice boards                               */
+/* --------------------------------------------------------------------- */
+
+const FULL_WORDS = readFileSync(defaultWordsPath(), "utf8").split("\n");
+const FULL_EXCLUSIONS = readFileSync(defaultExclusionsPath(), "utf8").split("\n");
+const fullDictionary = createDictionary(FULL_WORDS, FULL_EXCLUSIONS);
+
+/** The path readings for `word`: primary uses a choice tile's first spelling,
+ *  the alternate its second — exactly what the client sends (ADR-0027). */
+function readingPair(word: string, board: string[]): { word: string; alternate?: string } | null {
+  const used = new Array<boolean>(board.length).fill(false);
+  const search = (
+    pos: number,
+    cell: number,
+    primary: string,
+    alternate: string
+  ): { word: string; alternate?: string } | null => {
+    const variants = tileStrings(board[cell] ?? "");
+    const first = variants[0] ?? "";
+    const second = variants[1] ?? first;
+    for (const cand of variants) {
+      if (!word.startsWith(cand, pos)) continue;
+      const end = pos + cand.length;
+      const nextPrimary = primary + first;
+      const nextAlternate = alternate + second;
+      if (end === word.length) {
+        return nextPrimary === nextAlternate
+          ? { word: nextPrimary }
+          : { word: nextPrimary, alternate: nextAlternate };
+      }
+      used[cell] = true;
+      for (const nb of neighbors(cell)) {
+        if (used[nb]) continue;
+        const found = search(end, nb, nextPrimary, nextAlternate);
+        if (found) {
+          used[cell] = false;
+          return found;
+        }
+      }
+      used[cell] = false;
+    }
+    return null;
+  };
+  for (let cell = 0; cell < board.length; cell++) {
+    used.fill(false);
+    used[cell] = true;
+    const found = search(0, cell, "", "");
+    if (found) return found;
+  }
+  return null;
+}
+
+describe("reveal parity on generated choice boards", () => {
+  test("every revealed word is accepted and scores the value the reveal shows", () => {
+    const boards = [] as { board: string[]; words: string[] }[];
+    for (let i = 0; boards.length < 4 && i < 80; i++) {
+      const seed = 1n + BigInt(i) * 7919n;
+      const result = generateBoard(seed, fullDictionary);
+      if (result.board.some((tile) => isEitherOr(tile))) boards.push(result);
+    }
+    expect(boards.length).toBe(4);
+    let alternateWins = 0;
+
+    for (const result of boards) {
+      const h = makeHarness({
+        dictionary: fullDictionary,
+        generateBoard: () => result,
+        scoreWord: wordScore,
+        roundMs: 60_000,
+      });
+      const seat = h.addSeat("Hansi");
+      h.room.hostSeatId = seat.seatId;
+      h.logic.startRound(h.room);
+
+      for (const word of result.words) {
+        const pair = readingPair(word, result.board);
+        expect(pair, word).not.toBeNull();
+        // Score each reveal word as its own find; the duplicate rule has its
+        // own tests, and resolving twice would mask a second-spelling result.
+        seat.roundWords.clear();
+        const verdict = h.logic.submitWord(h.room, seat, pair!.word, pair!.alternate);
+        expect(verdict.kind, word).toBe("accepted");
+        if (verdict.kind !== "accepted") continue;
+        expect(result.words, word).toContain(verdict.word);
+        expect(verdict.points, word).toBe(wordScore(verdict.word));
+        if (pair!.alternate && verdict.word === pair!.alternate) alternateWins += 1;
+      }
+    }
+
+    // At least one second spelling is only reachable through the alternate;
+    // dropping that field would fail the parity run above.
+    expect(alternateWins).toBeGreaterThan(0);
   });
 });

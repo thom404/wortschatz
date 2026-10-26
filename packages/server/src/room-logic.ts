@@ -295,12 +295,13 @@ export class RoomLogic {
 
   /**
    * The one decision about a submitted word. The seat's raw input is
-   * normalized and checked here; an acceptance records the word for this
-   * seat, prices it for this seat and adds it to the round and cumulative
-   * scores and the round's word list. The adapter echoes the reply and then
-   * asks for the room-wide scoreboard.
+   * normalized and checked here; an either/or tile may contribute a second
+   * `rawAlternate` reading. The engine resolves the candidates to the best
+   * valid word, then records and prices that word for this seat and adds it to
+   * the round and cumulative scores and the round's word list. The adapter
+   * echoes the reply and then asks for the room-wide scoreboard.
    */
-  submitWord(room: Room, seat: Seat, rawWord: string): SubmitVerdict {
+  submitWord(room: Room, seat: Seat, rawWord: string, rawAlternate?: string): SubmitVerdict {
     if (!this.acceptsSubmissions(room)) {
       return { kind: "rejected", code: "round-over" };
     }
@@ -311,23 +312,55 @@ export class RoomLogic {
     if (word.length < 3) {
       return { kind: "rejected", code: "invalid-word", detail: "too short" };
     }
-    if (seat.roundWords.has(word)) {
-      return { kind: "rejected", code: "word-duplicate", detail: word };
-    }
-    if (!isFormable(word, room.board)) {
-      return { kind: "rejected", code: "invalid-word", detail: "not placeable" };
-    }
-    if (!this.deps.cfg.dictionary.isValid(word)) {
+    const candidates = this.resolveCandidates(room, seat.seatId, word, rawAlternate);
+    const best = candidates[0];
+    if (!best) {
+      if (!isFormable(word, room.board)) {
+        return { kind: "rejected", code: "invalid-word", detail: "not placeable" };
+      }
       return { kind: "rejected", code: "invalid-word", detail: word };
     }
-    const points = this.deps.cfg.scoreWord(word, seat.seatId);
-    seat.roundWords.add(word);
-    seat.roundScore += points;
-    seat.cumulativeScore += points;
+    // Duplicate identity is the resolved word, not the path or the client's
+    // primary reading: the same find reached another way stays one find.
+    if (seat.roundWords.has(best.word)) {
+      return { kind: "rejected", code: "word-duplicate", detail: best.word };
+    }
+    seat.roundWords.add(best.word);
+    seat.roundScore += best.points;
+    seat.cumulativeScore += best.points;
     const list = room.wordsBySeat.get(seat.seatId);
-    if (list) list.push(word);
+    if (list) list.push(best.word);
     this.touch(room);
-    return { kind: "accepted", word, points };
+    return { kind: "accepted", word: best.word, points: best.points };
+  }
+
+  /**
+   * The deterministic reading of a submission (ADR-0027): normalize and
+   * dedupe both readings, keep the formable list words, then rank by points,
+   * length and alphabetical word — a pure function of the candidates.
+   */
+  private resolveCandidates(
+    room: Room,
+    seatId: number,
+    word: string,
+    rawAlternate?: string
+  ): { word: string; points: number }[] {
+    const readings = new Set([word]);
+    if (rawAlternate !== undefined) readings.add(normalizeWord(rawAlternate));
+    return [...readings]
+      .filter(
+        (candidate) =>
+          candidate.length >= 3 &&
+          isFormable(candidate, room.board) &&
+          this.deps.cfg.dictionary.isValid(candidate)
+      )
+      .map((candidate) => ({ word: candidate, points: this.deps.cfg.scoreWord(candidate, seatId) }))
+      .sort(
+        (a, b) =>
+          b.points - a.points ||
+          b.word.length - a.word.length ||
+          (a.word < b.word ? -1 : a.word > b.word ? 1 : 0)
+      );
   }
 
   /** The one room-wide scoreboard projection: the moved `score-update` fan-out. */

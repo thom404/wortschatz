@@ -221,7 +221,7 @@ export class Rooms {
     seat: Seat,
     msg: Extract<ClientMessage, { type: "submit-word" }>
   ): void {
-    const verdict = this.logic.submitWord(room, seat, msg.word);
+    const verdict = this.logic.submitWord(room, seat, msg.word, msg.alternate);
     if (verdict.kind === "rejected") {
       this.sendToSeat(seat, errorReply(verdict.code, verdict.detail, msg.reqId));
       return;

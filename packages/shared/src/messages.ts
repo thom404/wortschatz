@@ -38,6 +38,9 @@ export type GreetingMsg = CreateRoomMsg | JoinMsg;
 export interface SubmitWordMsg {
   type: "submit-word";
   word: string;
+  /** The other reading of a choice tile on the path, when there is one. The
+   *  server tries both and accepts the best valid word (ADR-0027). */
+  alternate?: string | undefined;
   reqId?: number | undefined;
 }
 

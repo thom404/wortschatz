@@ -1,25 +1,16 @@
 /**
- * The German tile vocabulary: notation predicates, tile letters, curated
- * special-tile menus and the one committed tile bag. ADR-0003 is normative
- * for the bag's composition; this module is its surface.
+ * The German tile vocabulary: notation predicates, tile letters, the
+ * measured either/or menu and the one committed tile bag. ADR-0003 is
+ * normative for the bag's composition; this module is its surface.
  *
  * Canonical tile form is lowercase NFC strings; notation is `st`-style
- * digrams as plain concatenation, either/or as `a/e`, prefixes as `an-`,
- * suffixes as `-ung`. Display is independent of data (ADR-0002). Length
- * counts letters, not tiles: a `sch` tile contributes three.
+ * digrams as plain concatenation and either/or as `a/e`. Prefix and suffix
+ * tiles retired with ADR-0027, so every special is position-free. Display is
+ * independent of data (ADR-0002). Length counts letters, not tiles: a `sch`
+ * tile contributes three.
  */
 export type Tile = string;
-export type TileKind = "single" | "digram" | "either-or" | "prefix" | "suffix";
-
-/** Words must start with the prefix, exactly where a prefix tile begins a path. */
-export function isPrefix(t: Tile): boolean {
-  return t.length > 1 && t.endsWith("-");
-}
-
-/** Words must end with the suffix, on the suffix tile. */
-export function isSuffix(t: Tile): boolean {
-  return t.length > 1 && t.startsWith("-");
-}
+export type TileKind = "single" | "digram" | "either-or";
 
 /** Word is valid if either variant is on the list. */
 export function isEitherOr(t: Tile): boolean {
@@ -33,8 +24,6 @@ export function isDigram(t: Tile): boolean {
 
 export function tileKind(t: Tile): TileKind {
   if (isEitherOr(t)) return "either-or";
-  if (isPrefix(t)) return "prefix";
-  if (isSuffix(t)) return "suffix";
   if (t.length > 1) return "digram";
   return "single";
 }
@@ -42,7 +31,7 @@ export function tileKind(t: Tile): TileKind {
 /** The tile's letters, in order — length counts letters, not tiles. */
 export function tileLetters(t: Tile): string[] {
   if (isEitherOr(t)) return [...t.replace("/", "")];
-  return [...t.replace(/^-|-$/g, "")];
+  return [...t];
 }
 
 /**
@@ -51,7 +40,7 @@ export function tileLetters(t: Tile): string[] {
  */
 export function tileStrings(t: Tile): string[] {
   if (isEitherOr(t)) return t.split("/");
-  return [t.replace(/^-|-$/g, "")];
+  return [t];
 }
 
 /** The most letters any one variant of this tile can contribute. */
@@ -59,15 +48,18 @@ export function tileSpellingLength(t: Tile): number {
   return Math.max(...tileStrings(t).map((s) => s.length));
 }
 
-/** Tiles that spell more than one letter (digrams, prefixes, suffixes). */
+/** Tiles that spell more than one letter (the digrams). */
 export function isMulti(t: Tile): boolean {
   return tileSpellingLength(t) > 1;
 }
 
-/** Curated menus for special tiles (ADR-0003 §6). */
-export const PREFIX_MENU = ["an-", "un-", "ge-", "ab-"] as const;
-export const SUFFIX_MENU = ["-ung", "-en", "-er", "-s"] as const;
-export const EITHER_OR_MENU = ["e/ä", "i/e", "a/e", "o/u"] as const;
+/**
+ * The measured either/or pair menu (ADR-0027). Sorted by the extra words each
+ * pair unlocked across the calibration boards, highest first; see
+ * `docs/research/either-or-pair-calibration.md`. Both spellings are single
+ * letters, so the tile face and the one-alternate wire field stay simple.
+ */
+export const EITHER_OR_MENU = ["r/s", "s/t", "g/s", "n/s", "l/s", "a/s", "b/s", "k/s"] as const;
 
 /**
  * One tile bag: tile → count. Vowel mass 30/96 (31.25%); no standalone `q`
