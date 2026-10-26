@@ -183,3 +183,11 @@ drehen`) that never includes the current angle: with one button the numeral
     lifetime across re-renders, the reset on the next board, and the
     gesture-ending behaviour of §17 are all unchanged. The accessible-name and
     tooltip policy is [ADR-0022](0022-icon-only-controls-and-tooltips.md).
+
+## Amendment (#232, 2026-10-26): the prototype branch is retired
+
+`prototype/game-screen` was deleted on 2026-10-26 as part of routine branch
+hygiene. Its single HTML file was never merged into `main` and is no longer
+available. The header pointer and §6 describe where the prototype lived; the
+decisions in §1–§6 and the later amendments remain the record of what it
+established.
