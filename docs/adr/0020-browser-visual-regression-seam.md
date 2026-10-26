@@ -40,7 +40,11 @@ at phone and desktop widths in both skins.
 4. **Shared fixtures.** The DOM-free message builders live in
    `packages/client/tests/fixtures.ts`; the happy-dom harness re-exports them,
    so existing imports keep working and Vitest and Playwright script one set of
-   wire shapes.
+   wire shapes. The same module also owns the canonical test data, the expected
+   German UI copy and the setup-only `Scene` type, so a Room code, board or copy
+   change has one TypeScript home. Each layer keeps its own driver: the mount
+   harness owns the happy-dom entry and the browser support module owns
+   Playwright's; the visual seam keeps its **Snapshot**-at-greeting wire shape.
 5. **Browser matrix.** Chromium only, `deviceScaleFactor: 1`. Cross-browser
    pixel baselines are out of scope.
 6. **Viewports and skins.** Three viewports — 360×640, 390×844 and 1280×800 —

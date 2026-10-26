@@ -3,6 +3,9 @@ import type { ServerMessage } from "@wortschatz/shared";
 import type { GestureState } from "../src/gesture.js";
 import { ViewState } from "../src/view-state.js";
 import {
+  BOARD,
+  NO_WORDS,
+  ROOM_CODE,
   intermissionSnapshot,
   lobbySnapshot,
   playingSnapshot,
@@ -17,10 +20,7 @@ import {
  * behaviour is proven through the public reset rules.
  */
 
-const BOARD = ["H", "A", "U", "S", "T", "I", "R", "E", "B", "U", "M", "S", "K", "A", "T", "Z"];
 const OTHER_BOARD = ["Z", "U", "R", "F", "E", "L", "D", "A", "M", "I", "S", "T", "K", "O", "N", "G"];
-
-const NO_WORDS = { groups: [] };
 
 /** A live gesture shaped like the rule module's state; its trace is a plain
  *  three-tile path so identity is easy to observe. */
@@ -30,7 +30,7 @@ function liveGesture(): GestureState {
 
 function playing(board: readonly string[], roundNumber: number) {
   return playingSnapshot({
-    code: "LAG4T",
+    code: ROOM_CODE,
     selfSeatId: 1,
     nickname: "Lena",
     role: "player",
@@ -81,7 +81,7 @@ describe("View state (ADR-0024)", () => {
     view.gesture = gesture;
     view.apply(
       intermissionSnapshot({
-        code: "LAG4T",
+        code: ROOM_CODE,
         selfSeatId: 1,
         nickname: "Lena",
         board: BOARD,
@@ -109,7 +109,7 @@ describe("View state (ADR-0024)", () => {
     view.revealOrder = "points";
     view.rotate();
     view.gesture = liveGesture();
-    view.apply(lobbySnapshot({ code: "LAG4T", nickname: "Lena" }));
+    view.apply(lobbySnapshot({ code: ROOM_CODE, nickname: "Lena" }));
     expect(view.revealOrder).toBe("length");
     expect(view.boardRotation).toBe(0);
     expect(view.gesture).toBeNull();

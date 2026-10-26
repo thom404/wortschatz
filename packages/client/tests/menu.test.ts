@@ -1,14 +1,18 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  intermissionSnapshot,
+  BOARD,
+  COPY,
+  NO_WORDS,
+  ROOM_CODE,
+  click,
+  driveScene,
+  driveToRoundOne,
   lobbySnapshot,
   mountHarness,
-  playingSnapshot,
   playerJoined,
   roundEnded,
   roundStarted,
-  seat,
   synthesizePointerDrag,
   tick,
   tileEls,
@@ -23,9 +27,6 @@ import { CHANGELOG } from "../src/menu.js";
  * and the boundary messages — never on the app's internal state.
  */
 
-const BOARD = ["H", "A", "U", "S", "T", "I", "R", "E", "B", "U", "M", "S", "K", "A", "T", "Z"];
-const REVEAL = { groups: [] };
-
 let app: Mounted | null = null;
 
 beforeEach(() => {
@@ -38,10 +39,6 @@ afterEach(() => {
   app?.unmount();
   app = null;
 });
-
-function click(sel: string): void {
-  app!.root.querySelector<HTMLButtonElement>(sel)!.click();
-}
 
 function trigger(): HTMLButtonElement {
   return app!.root.querySelector<HTMLButtonElement>("#menu-trigger")!;
@@ -56,63 +53,43 @@ function openMenu(): void {
   trigger().click();
 }
 
-function enterLobby(code = "LAG4T"): void {
-  click("#create-btn");
-  app!.root.querySelector<HTMLInputElement>("#mk-nick")!.value = "Lena";
-  click("#mk-btn");
-  app!.conn().feed(lobbySnapshot({ code, nickname: "Lena" }));
-}
-
-function enterGame(code = "LAG4T"): void {
-  enterLobby(code);
-  click("#start-btn");
-  app!.conn().feed(roundStarted(BOARD));
-}
-
-function enterIntermission(code = "LAG4T"): void {
-  enterGame(code);
-  app!.conn().feed(roundEnded(1, REVEAL));
-}
-
-function enterOutcome(): void {
-  enterLobby();
-  app!.conn().feed({ type: "room-ended", reason: "host-closed" });
-}
-
 describe("Menü (ADR-0023)", () => {
   it("keeps one trigger outside the screen markup on all seven screens", () => {
     const surface = trigger();
     expect(app!.root.querySelector("#screen #menu-trigger")).toBeNull();
-    expect(surface.getAttribute("aria-label")).toBe("Menü");
-    expect(surface.getAttribute("data-tip")).toBe("Menü");
+    expect(surface.getAttribute("aria-label")).toBe(COPY.menu.label);
+    expect(surface.getAttribute("data-tip")).toBe(COPY.menu.label);
     expect(surface.getAttribute("aria-haspopup")).toBe("dialog");
     expect(surface.getAttribute("aria-expanded")).toBe("false");
     expect(panel().hidden).toBe(true);
 
-    click("#create-btn");
+    click(app!.root, "#create-btn");
     expect(trigger()).toBe(surface);
     expect(trigger().isConnected).toBe(true);
 
-    click("#back-btn");
-    click("#join-btn");
+    click(app!.root, "#back-btn");
+    click(app!.root, "#join-btn");
     expect(trigger()).toBe(surface);
 
     app!.unmount();
     app = mountHarness();
-    enterLobby();
+    driveScene(app!, {
+      entry: { mode: "create", nickname: "Lena" },
+      greeting: [lobbySnapshot({ code: ROOM_CODE, nickname: "Lena" })],
+    });
     expect(trigger().isConnected).toBe(true);
 
-    click("#start-btn");
+    click(app!.root, "#start-btn");
     app!.conn().feed(roundStarted(BOARD));
-    expect(app!.root.querySelector("#screen h1")!.textContent).toContain("Runde 1");
+    expect(app!.root.querySelector("#screen h1")!.textContent).toContain(COPY.game.title(1));
     expect(trigger().isConnected).toBe(true);
 
-    app!.conn().feed(roundEnded(1, REVEAL));
-    expect(app!.root.querySelector("#screen h1")!.textContent).toBe("Pause");
+    app!.conn().feed(roundEnded(1, NO_WORDS));
+    expect(app!.root.querySelector("#screen h1")!.textContent).toBe(COPY.intermission.title);
     expect(trigger().isConnected).toBe(true);
 
     app!.conn().feed({ type: "room-ended", reason: "host-closed" });
-    expect(app!.root.querySelector("#screen h1")!.textContent).toContain("wurde beendet");
+    expect(app!.root.querySelector("#screen h1")!.textContent).toContain(COPY.outcomes.ended(ROOM_CODE));
     expect(trigger().isConnected).toBe(true);
   });
 
@@ -138,12 +115,12 @@ describe("Menü (ADR-0023)", () => {
 
     // Screen change: opening over Play and starting the intermission closes
     // it, while a rebuild of the same screen leaves it alone.
-    enterGame();
+    driveToRoundOne(app!);
     openMenu();
     app!.conn().feed(playerJoined(2, "Ben"));
     expect(panel().hidden).toBe(false);
-    app!.conn().feed(roundEnded(1, REVEAL));
-    expect(app!.root.querySelector("#screen h1")!.textContent).toBe("Pause");
+    app!.conn().feed(roundEnded(1, NO_WORDS));
+    expect(app!.root.querySelector("#screen h1")!.textContent).toBe(COPY.intermission.title);
     expect(panel().hidden).toBe(true);
     expect(document.activeElement).toBe(trigger());
   });
@@ -168,7 +145,7 @@ describe("Menü (ADR-0023)", () => {
     openMenu();
     expect(panel().querySelector(".menu-version")!.textContent).toBe(`Version ${APP_VERSION}`);
     expect(panel().querySelector<HTMLSelectElement>("#skin-select")!.value).toBe("standard");
-    expect(panel().querySelector("h2")!.textContent).toBe("Skin");
+    expect(panel().querySelector("h2")!.textContent).toBe(COPY.menu.skin);
   });
 
   it("applies a skin through the Menü app-wide at once and persists it across visits", () => {
@@ -182,7 +159,7 @@ describe("Menü (ADR-0023)", () => {
 
     // A structural rebuild while the panel is open neither removes the menu
     // nor loses the wiring.
-    enterGame();
+    driveToRoundOne(app!);
     openMenu();
     const rebuiltSelect = panel().querySelector<HTMLSelectElement>("#skin-select")!;
     rebuiltSelect.value = "standard";
@@ -197,7 +174,7 @@ describe("Menü (ADR-0023)", () => {
   });
 
   it("keeps the round ticking behind the open panel and leaves board gestures working after closing", () => {
-    enterGame();
+    driveToRoundOne(app!);
     const timer = app!.root.querySelector("#timer");
     openMenu();
 
@@ -239,7 +216,7 @@ describe("Menü entries (spec #194)", () => {
     const toggle = toggleFor("menu-changelog");
     expect(toggle).toBe(panel().querySelector(".menu-version"));
     expect(toggle.tagName).toBe("BUTTON");
-    expect(toggle.textContent).toBe(`Version ${APP_VERSION}`);
+    expect(toggle.textContent).toBe(COPY.menu.version(APP_VERSION));
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
 
     const body = bodyFor("menu-changelog");
@@ -253,7 +230,7 @@ describe("Menü entries (spec #194)", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(body.hidden).toBe(true);
     // The row keeps its familiar plain text through the whole toggle.
-    expect(toggle.textContent).toBe(`Version ${APP_VERSION}`);
+    expect(toggle.textContent).toBe(COPY.menu.version(APP_VERSION));
   });
 
   it("ships exactly the 0.1.0 changelog entry and tags the running build", () => {
@@ -266,12 +243,10 @@ describe("Menü entries (spec #194)", () => {
     toggleFor("menu-changelog").click();
     const blocks = bodyFor("menu-changelog").querySelectorAll(".menu-changelog-entry");
     expect(blocks).toHaveLength(1);
-    expect(blocks[0]!.querySelector("h3")!.textContent).toContain("Version 0.1.0");
-    expect(blocks[0]!.querySelector(".menu-current")!.textContent).toBe("aktuell");
-    expect(blocks[0]!.textContent).toContain(
-      "Das Menü: Skin wechseln und Version ansehen, auf jedem Bildschirm."
-    );
-    expect(blocks[0]!.textContent).toContain("Das Spielfeld lässt sich in 90°-Schritten drehen.");
+    expect(blocks[0]!.querySelector("h3")!.textContent).toContain(COPY.menu.version("0.1.0"));
+    expect(blocks[0]!.querySelector(".menu-current")!.textContent).toBe(COPY.menu.current);
+    expect(blocks[0]!.textContent).toContain(COPY.menu.changelog);
+    expect(blocks[0]!.textContent).toContain(COPY.menu.rotate);
   });
 
   it("keeps the skin switcher working while the changelog is expanded", () => {
@@ -288,7 +263,7 @@ describe("Menü entries (spec #194)", () => {
   it("expands the Spielanleitung with the rules text and collapses it again", () => {
     openMenu();
     const toggle = toggleFor("menu-rules");
-    expect(toggle.textContent).toBe("Spielanleitung");
+    expect(toggle.textContent).toBe(COPY.menu.rules);
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(bodyFor("menu-rules").hidden).toBe(true);
 
@@ -296,11 +271,11 @@ describe("Menü entries (spec #194)", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     const rules = bodyFor("menu-rules");
     expect(rules.hidden).toBe(false);
-    expect(rules.textContent).toContain("So spielst du:");
-    expect(rules.textContent).toContain("Ä, ö, ü und ß gelten als echte Buchstaben.");
-    expect(rules.textContent).toContain("Der Gastgeber startet die nächste Runde.");
-    expect(rules.textContent).toContain("Du schaust zu. Ab der nächsten Runde bist du dabei.");
-    expect(rules.textContent).toContain("Am Ende zählt das Gesamtergebnis der Sitzung.");
+    expect(rules.textContent).toContain(COPY.menu.rulesIntro);
+    expect(rules.textContent).toContain(COPY.menu.rulesUmlauts);
+    expect(rules.textContent).toContain(COPY.menu.rulesNextRound);
+    expect(rules.textContent).toContain(COPY.menu.rulesSpectator);
+    expect(rules.textContent).toContain(COPY.menu.rulesTotal);
 
     toggle.click();
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
@@ -310,15 +285,15 @@ describe("Menü entries (spec #194)", () => {
   it("names the word-list source and its policy in Quellen, with one outbound anchor", () => {
     openMenu();
     const toggle = toggleFor("menu-sources");
-    expect(toggle.textContent).toBe("Quellen");
+    expect(toggle.textContent).toBe(COPY.menu.sources);
     expect(bodyFor("menu-sources").hidden).toBe(true);
 
     toggle.click();
     const sources = bodyFor("menu-sources");
     expect(sources.hidden).toBe(false);
-    expect(sources.textContent).toContain("CC0-1.0");
-    expect(sources.textContent).toContain("Ausschlussliste");
-    expect(sources.textContent).toContain("Wiktionary");
+    expect(sources.textContent).toContain(COPY.menu.sourcesLicense);
+    expect(sources.textContent).toContain(COPY.menu.sourcesExclusions);
+    expect(sources.textContent).toContain(COPY.menu.sourcesWiktionary);
 
     const anchors = sources.querySelectorAll("a");
     expect(anchors).toHaveLength(1);
@@ -330,7 +305,7 @@ describe("Menü entries (spec #194)", () => {
   it("links Problem melden to the issues list without closing the panel", () => {
     openMenu();
     const link = panel().querySelector<HTMLAnchorElement>(".menu-link")!;
-    expect(link.textContent).toBe("Problem melden");
+    expect(link.textContent).toBe(COPY.menu.report);
     expect(link.getAttribute("href")).toBe("https://github.com/thom404/wortschatz/issues");
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")).toBe("noopener noreferrer");
@@ -370,11 +345,11 @@ describe("Menü entries (spec #194)", () => {
     expect(panel().hidden).toBe(true);
 
     // Screen change.
-    enterGame();
+    driveToRoundOne(app!);
     openMenu();
     toggleFor("menu-rules").click();
-    app!.conn().feed(roundEnded(1, REVEAL));
-    expect(app!.root.querySelector("#screen h1")!.textContent).toBe("Pause");
+    app!.conn().feed(roundEnded(1, NO_WORDS));
+    expect(app!.root.querySelector("#screen h1")!.textContent).toBe(COPY.intermission.title);
     expect(panel().hidden).toBe(true);
   });
 

@@ -1,17 +1,6 @@
 import type { Page } from "@playwright/test";
-import { CANONICAL_SCENARIOS, ROOM_CODE, type ScreenshotScenario } from "./scenarios.js";
-import {
-  DESKTOP,
-  PHONE_LARGE,
-  PHONE_SMALL,
-  TABLET,
-  enterRoom,
-  expect,
-  openPage,
-  test,
-  type SkinId,
-  type Viewport,
-} from "./support.js";
+import { CANONICAL_SCENARIOS, runScenario } from "./scenarios.js";
+import { DESKTOP, PHONE_LARGE, PHONE_SMALL, TABLET, expect, test, type Viewport } from "./support.js";
 
 /**
  * The responsive audit (#175, ADR-0020 amendment): the widths named by the
@@ -31,25 +20,6 @@ const AUDIT_VIEWPORTS: readonly Viewport[] = [
 ];
 
 const TARGET_MIN = 44;
-
-async function openScenario(
-  page: Page,
-  scenario: ScreenshotScenario,
-  viewport: Viewport,
-  skin: SkinId
-): Promise<void> {
-  await openPage(page, {
-    viewport,
-    skin,
-    ...(scenario.path ? { path: scenario.path } : {}),
-    ...(scenario.wire ? { wire: scenario.wire } : {}),
-  });
-  if (scenario.wire) {
-    await enterRoom(page, { mode: scenario.enter ?? "create", code: ROOM_CODE });
-  }
-  if (scenario.afterOpen) await scenario.afterOpen(page);
-  await scenario.ready(page);
-}
 
 interface ControlBox {
   name: string;
@@ -93,7 +63,7 @@ for (const scenario of CANONICAL_SCENARIOS) {
       const title = `${scenario.id} · ${skin} · ${viewport.width}×${viewport.height}`;
 
       test(`${title} · no horizontal overflow`, async ({ page }) => {
-        await openScenario(page, scenario, viewport, skin);
+        await runScenario(page, scenario, { viewport, skin });
 
         const overflow = await page.evaluate(() => ({
           document: document.documentElement.scrollWidth,
@@ -125,16 +95,16 @@ for (const viewport of [DESKTOP, PHONE_LARGE]) {
       const game = CANONICAL_SCENARIOS.find((scenario) => scenario.id === "game-digram");
       if (!game) throw new Error("the game scenario is missing from the canonical matrix");
 
-      await openScenario(page, game, viewport, skin);
+      await runScenario(page, game, { viewport, skin });
 
       const board = await page.locator("#board").boundingBox();
-      const window = page.viewportSize();
-      if (!board || !window) throw new Error("the board or viewport has no box");
+      const viewportSize = page.viewportSize();
+      if (!board || !viewportSize) throw new Error("the board or viewport has no box");
 
       expect(board.x, "board left edge").toBeGreaterThanOrEqual(0);
       expect(board.y, "board top edge").toBeGreaterThanOrEqual(0);
-      expect(board.x + board.width, "board right edge").toBeLessThanOrEqual(window.width);
-      expect(board.y + board.height, "board bottom edge").toBeLessThanOrEqual(window.height);
+      expect(board.x + board.width, "board right edge").toBeLessThanOrEqual(viewportSize.width);
+      expect(board.y + board.height, "board bottom edge").toBeLessThanOrEqual(viewportSize.height);
       expect(await page.evaluate(() => window.scrollY), "page scroll").toBe(0);
     });
   }

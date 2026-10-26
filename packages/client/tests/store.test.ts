@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PlayerInfo, RevealPayload, ServerMessage, SnapshotMsg } from "@wortschatz/shared";
 import { GameStore, type DeltaKind } from "../src/store.js";
+import { BOARD, ROOM_CODE } from "./fixtures.js";
 
 /**
  * The store is the single reducer for server messages. These tests drive it
@@ -8,7 +9,6 @@ import { GameStore, type DeltaKind } from "../src/store.js";
  * and the play-time versus structural classification that the renderer uses.
  */
 
-const BOARD = ["H", "A", "U", "S", "T", "I", "R", "E", "B", "U", "M", "S", "K", "A", "T", "Z"];
 const REVEAL: RevealPayload = {
   groups: [{ length: 3, words: [{ word: "ort", points: 4, foundBy: [1] }] }],
 };
@@ -20,7 +20,7 @@ function seat(seatId: number, nickname: string): PlayerInfo {
 function playingSnapshot(): SnapshotMsg {
   return {
     type: "snapshot",
-    room: { code: "LAG4T", phase: "playing", hostSeatId: 1, roundNumber: 1 },
+    room: { code: ROOM_CODE, phase: "playing", hostSeatId: 1, roundNumber: 1 },
     self: { seatId: 1, nickname: "Lena", role: "player", cumulativeScore: 0 },
     players: [seat(1, "Lena"), seat(2, "Ben")],
     round: { roundNumber: 1, board: BOARD, deadline: 10_000 },
@@ -30,7 +30,7 @@ function playingSnapshot(): SnapshotMsg {
 function intermissionSnapshot(): SnapshotMsg {
   return {
     type: "snapshot",
-    room: { code: "LAG4T", phase: "intermission", hostSeatId: 1, roundNumber: 1 },
+    room: { code: ROOM_CODE, phase: "intermission", hostSeatId: 1, roundNumber: 1 },
     self: { seatId: 1, nickname: "Lena", role: "player", cumulativeScore: 0 },
     players: [seat(1, "Lena"), seat(2, "Ben")],
     finishedRound: { roundNumber: 1, board: BOARD, reveal: REVEAL, deadline: 0 },
@@ -41,7 +41,7 @@ describe("GameStore.apply", () => {
   it("applies a playing snapshot and classifies it as structural", () => {
     const store = new GameStore();
     expect(store.apply(playingSnapshot())).toBe<DeltaKind>("structural");
-    expect(store.code).toBe("LAG4T");
+    expect(store.code).toBe(ROOM_CODE);
     expect(store.phase).toBe("playing");
     expect(store.roundNumber).toBe(1);
     expect(store.players.map((p) => p.nickname)).toEqual(["Lena", "Ben"]);
