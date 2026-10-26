@@ -19,8 +19,15 @@ export {
 } from "./fixtures.js";
 export type { PlayerInfo, RoundOneOptions, Scene } from "./fixtures.js";
 import { ROUND_ONE, type RoundOneOptions, type Scene } from "./fixtures.js";
-import { saveSession, type CloseOutcome, type ConnStatus, type GreetFn } from "../src/api.js";
-import { mount, type ConnFactory, type RoomConn } from "../src/app.js";
+import {
+  ConnectionCore,
+  type CloseOutcome,
+  type ConnFactory,
+  type ConnectionOptions,
+  type ConnStatus,
+  type RoomConn,
+} from "../src/connection.js";
+import { mount } from "../src/app.js";
 
 /**
  * The client mount test harness (#18): mounts the real app into a test DOM
@@ -50,14 +57,15 @@ import { mount, type ConnFactory, type RoomConn } from "../src/app.js";
 /* Scripted connection boundary                                        */
 /* ------------------------------------------------------------------ */
 
-type ServerListener = (msg: ServerMessage) => void;
-
 /** One client→server wire frame as JSON.stringify would put it on the
  *  boundary: a typed message with its optional echoed reqId. */
 export type SentMessage = ClientMessage;
 
+/** The test adapter: it composes the real `ConnectionCore`, so the mount
+ *  suite exercises the production message-handling path — Greeting, reqId,
+ *  Snapshot side effects and Close outcomes all live in the core. This class
+ *  supplies only the scripted transport and the test-side drive. */
 export class ScriptedConnection implements RoomConn {
-  readonly code: string;
   /** Everything the client sent through this boundary, in send order. */
   readonly outbox: ClientMessage[] = [];
   /** Status history the app was told about, in order. */
@@ -68,105 +76,73 @@ export class ScriptedConnection implements RoomConn {
    *  server-initiated end frame (`kicked` / `room-ended`). */
   stopped = false;
 
-  private readonly greet: GreetFn;
-  private readonly listener: ServerListener;
-  private readonly onStatus: (status: ConnStatus) => void;
-  private readonly onClose: (outcome: CloseOutcome) => void;
-  private nextReqId = 1;
-  private open = false;
+  private readonly core: ConnectionCore;
 
-  constructor(opts: {
-    code: string;
-    greet: GreetFn;
-    listener: ServerListener;
-    onStatus: (status: ConnStatus) => void;
-    onClose: (outcome: CloseOutcome) => void;
-  }) {
-    this.code = opts.code;
-    this.greet = opts.greet;
-    this.listener = opts.listener;
-    this.onStatus = opts.onStatus;
-    this.onClose = opts.onClose;
+  constructor(opts: ConnectionOptions) {
+    this.core = new ConnectionCore({
+      greet: opts.greet,
+      listener: opts.listener,
+      onStatus: (status) => {
+        this.statuses.push(status);
+        opts.onStatus(status);
+      },
+      onClose: (outcome) => {
+        this.stopped = true;
+        this.closeOutcomes.push(outcome);
+        opts.onClose(outcome);
+      },
+      transport: {
+        open: () => this.core.transportUp(),
+        write: (msg) => this.outbox.push(msg),
+        close: () => {
+          /* the scripted transport has no socket to release */
+        },
+      },
+    });
   }
 
   /* —— the app-side surface (the calls the production client makes) —— */
 
-  /** Transport up: the app is told `connecting`, and like an open socket
-   *  the greeting (create-room / join) crosses the boundary with reqId 1.
-   *  Mirrors `RoomConnection`: only a snapshot flips the status to `open`. */
+  /** Starts the core: `connecting`, then the greeting with reqId 1. */
   start(): void {
-    if (this.open) throw new Error("connection already started");
-    this.open = true;
-    this.statuses.push("connecting");
-    this.onStatus("connecting");
-    const greet = this.greet();
-    if (greet) this.send({ ...greet, reqId: this.nextReqId++ });
+    this.core.start();
   }
 
-  /** Client-initiated close. Mirrors `RoomConnection.stop()`: silent — a
-   *  1000 close never surfaces as a status callback. */
+  /** Client-initiated close: silent, with no status and no outcome. */
   stop(): void {
     this.stopped = true;
-    this.open = false;
+    this.core.stop();
   }
 
-  /** A reconnect attempt after a drop: mirrors `RoomConnection`'s capped
-   *  backoff status, without replaying the transport itself. The app drives
-   *  the floating status slot from this existing callback. */
+  /** Reports the unexpected-close branch to the core: `retrying` and no
+   *  outcome, exactly as the WebSocket adapter does before its timer. */
   retry(): void {
-    this.statuses.push("retrying");
-    this.onStatus("retrying");
+    this.core.transportClosed(false);
   }
 
-  /** An orderly transport close with no server frame ahead. Mirrors
-   *  `RoomConnection`: one connection-lost close outcome reaches the app. */
+  /** An orderly transport close with no server frame ahead: one
+   *  connection-lost close outcome reaches the app. */
   abruptClose(): void {
-    this.close({ kind: "connection-lost" });
+    this.core.transportClosed(true);
   }
 
   send(msg: Omit<ClientMessage, "reqId"> & { reqId?: number }): void {
-    if (this.open) this.outbox.push(msg as ClientMessage);
+    this.core.send(msg);
   }
 
   request<T extends Omit<ClientMessage, "reqId">>(msg: T): number {
-    const reqId = this.nextReqId++;
-    this.send({ ...msg, reqId });
-    return reqId;
+    return this.core.request(msg);
   }
 
   resync(): void {
-    this.request({ type: "resync" });
+    this.core.resync();
   }
 
   /* —— the test-side drive ------------------------------------------ */
 
-  /** Delivers one server message to the mounted app. Mirrors
-   *  `RoomConnection.onMessage`: a snapshot persists the session token
-   *  under the snapshot's room code and flips the status to `open`;
-   *  server-initiated ends deliver the frame, then emit one close outcome. */
+  /** Delivers one server message to the mounted app through the core. */
   feed(msg: ServerMessage): void {
-    if (msg.type === "snapshot") {
-      const token = msg.self.token ?? "";
-      if (token) {
-        saveSession(msg.room.code, { token, nickname: msg.self.nickname, seatId: msg.self.seatId });
-      }
-      this.statuses.push("open");
-      this.onStatus("open");
-    }
-    this.listener(msg);
-    if (msg.type === "kicked") {
-      this.close({ kind: "kicked" });
-    } else if (msg.type === "room-ended") {
-      this.close({ kind: "room-ended", reason: msg.reason });
-    }
-  }
-
-  private close(outcome: CloseOutcome): void {
-    if (this.stopped) return;
-    this.stopped = true;
-    this.open = false;
-    this.closeOutcomes.push(outcome);
-    this.onClose(outcome);
+    this.core.receive(msg);
   }
 
   /** Frames sent so far, as a stable copy for assertions. */

@@ -1,5 +1,6 @@
-import { RoomConnection } from "./api.js";
-import { mount, type ConnFactory } from "./app.js";
+import { RoomConnection } from "./websocket.js";
+import { mount } from "./app.js";
+import type { ConnFactory } from "./connection.js";
 
 /**
  * Production boot: the page-level wiring of the mountable app (#18). The
@@ -7,7 +8,7 @@ import { mount, type ConnFactory } from "./app.js";
  * factory — here the real WebSocket-bound `RoomConnection`, unchanged.
  */
 
-const connect: ConnFactory = ({ code, greet, listener, onStatus, onClose }) =>
-  new RoomConnection(code, greet, listener, onStatus, onClose);
+const connect: ConnFactory = ({ greet, listener, onStatus, onClose }) =>
+  new RoomConnection({ greet, listener, onStatus, onClose });
 
 mount(document.getElementById("app")!, connect);

@@ -1,4 +1,12 @@
-import { loadSession, clearSession, type CloseOutcome, type ConnStatus, type GreetFn } from "./api.js";
+import {
+  loadSession,
+  clearSession,
+  type CloseOutcome,
+  type ConnFactory,
+  type ConnStatus,
+  type GreetFn,
+  type RoomConn,
+} from "./connection.js";
 import { GameStore, type DeltaKind } from "./store.js";
 import {
   applyGestureSample,
@@ -23,7 +31,6 @@ import { applySkin, loadSkin } from "./skins.js";
 import { menuHtml, wireMenu, type MenuSurface } from "./menu.js";
 import { ViewState, type RevealOrder } from "./view-state.js";
 import type {
-  ClientMessage,
   PlayerInfo,
   RevealPayload,
   RevealWord,
@@ -50,28 +57,6 @@ import "./style.css";
  * and its connection factory; every client message crosses that boundary,
  * as does every server message the app renders from.
  */
-
-/** The client-facing surface of a room connection. Production hands over
- *  a real `RoomConnection`; tests substitute a scripted fake of the same
- *  shape. */
-export interface RoomConn {
-  start(): void;
-  request<T extends Omit<ClientMessage, "reqId">>(msg: T): number;
-  send(msg: Omit<ClientMessage, "reqId"> & { reqId?: number }): void;
-  resync(): void;
-  stop(): void;
-}
-
-/** How a room connection comes to be. The factory receives the room code,
- *  the greeting builder, the status callback and the one close-outcome
- *  callback; it returns an unstarted connection the app then `start()`s. */
-export type ConnFactory = (opts: {
-  code: string;
-  greet: GreetFn;
-  listener: (msg: ServerMessage) => void;
-  onStatus: (status: ConnStatus) => void;
-  onClose: (outcome: CloseOutcome) => void;
-}) => RoomConn;
 
 type Unsubscribe = () => void;
 
@@ -510,7 +495,6 @@ function startRoom(app: App, code: string, greet: GreetFn): void {
   // reveal order and 0° rotation (ADR-0024).
   app.view.reset();
   app.conn = app.connect({
-    code,
     greet,
     listener: (msg) => onMessage(app, msg),
     onStatus: (status) => onStatus(app, status),
