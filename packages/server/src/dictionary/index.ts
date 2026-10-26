@@ -3,10 +3,9 @@
  * Public surface: `createDictionary`/`rawLinesToWords` (from raw lines) and
  * the `Dictionary` class answering membership (`isValid`) and
  * *constraint-oblivious* board enumeration (`findWords`). The DAWG stays
- * private to the module. Special-tile positioning (prefix word-start,
- * suffix word-end, either/or variants) is NOT applied here — tile rules
- * live with the board (#7 boardgen); the enumerated superset is
- * post-filtered there via `isFormable` (ADR-0003 §8).
+ * private to the module. Either/or variants are enumerated for both readings;
+ * tile rules live with the board (#7 boardgen), whose `isFormable` post-filter
+ * mirrors the same path rules (ADR-0003 §8).
  *
  * Validity semantics (ADR-0001 §2/§9): case-insensitive with lowercase NFC
  * canonical form; real `ä/ö/ü/ß` with no `ae/oe/ue/ss` aliasing; strict list
@@ -88,11 +87,10 @@ export class Dictionary {
   }
 
   /**
-   * All distinct words spellable on the caller-supplied board, IGNORING
-   * special-tile positioning: 8-way steps, each tile at most once, candidate
-   * letter-strings per cell from the tile notation, min length 3 via the
-   * loaded list. Either/or tiles contribute both variants. Callers apply
-   * tile constraints by post-filtering with `isFormable` (boardgen).
+   * All distinct words spellable on the caller-supplied board: 8-way steps,
+   * each tile at most once, candidate letter-strings per cell from the tile
+   * notation, min length 3 via the loaded list. Either/or tiles contribute
+   * both variants. Callers post-filter with `isFormable` (boardgen).
    */
   findWords(board: Tile[]): string[] {
     if (board.length !== PROTOCOL.BOARD_SIZE) throw new Error("board must have 16 cells");

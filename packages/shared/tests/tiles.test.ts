@@ -4,8 +4,6 @@ import {
   TILE_BAG_SIZE,
   isDigram,
   isEitherOr,
-  isPrefix,
-  isSuffix,
   tileKind,
   tileLetters,
   tileSpellingLength,
@@ -28,21 +26,15 @@ describe("tile notation", () => {
     expect(isEitherOr("ie")).toBe(false);
   });
 
-  it("classifies prefix and suffix tiles", () => {
-    expect(tileKind("an-")).toBe("prefix");
-    expect(isPrefix("un-")).toBe(true);
-    expect(isPrefix("an")).toBe(false);
-    expect(tileKind("-ung")).toBe("suffix");
-    expect(isSuffix("-en")).toBe(true);
-    expect(isSuffix("ung-")).toBe(false);
+  it("treats retired prefix and suffix notation as plain digrams", () => {
+    expect(tileKind("an-")).toBe("digram");
+    expect(tileKind("-ung")).toBe("digram");
   });
 
   it("contributes letters, not tiles, to word length", () => {
     expect(tileLetters("sch")).toEqual(["s", "c", "h"]);
     expect(tileLetters("a")).toEqual(["a"]);
     expect(tileLetters("a/e")).toEqual(["a", "e"]);
-    expect(tileLetters("an-")).toEqual(["a", "n"]);
-    expect(tileLetters("-ung")).toEqual(["u", "n", "g"]);
   });
 
   it("yields the candidate letter-strings the cell can spell", () => {
@@ -57,8 +49,6 @@ describe("tile notation", () => {
     expect(tileSpellingLength("a/e")).toBe(1); // either variant: one letter
     expect(tileSpellingLength("st")).toBe(2);
     expect(tileSpellingLength("sch")).toBe(3);
-    expect(tileSpellingLength("an-")).toBe(2);
-    expect(tileSpellingLength("-ung")).toBe(3);
   });
 });
 

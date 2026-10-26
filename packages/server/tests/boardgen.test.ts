@@ -1,10 +1,9 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   EITHER_OR_MENU,
-  PREFIX_MENU,
-  SUFFIX_MENU,
   TILE_BAG,
   isDigram,
+  isEitherOr,
   neighbors,
   tileKind,
   type Board,
@@ -12,7 +11,9 @@ import {
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  CHOICE_TILE_FREQUENCY,
   COVERAGE_THRESHOLD,
+  DENSITY_BAND,
   MAX_SINGLE_COPIES,
   coverageCounts,
   generateBoard,
@@ -37,7 +38,7 @@ const FULL_EXCLUSIONS = readFileSync(defaultExclusionsPath(), "utf8").split("\n"
 const fullDictionary = createDictionary(FULL_WORDS, FULL_EXCLUSIONS);
 
 const DIGRAM_MENU = Object.keys(TILE_BAG).filter((t) => isDigram(t));
-const SPECIAL_MENU = new Set<string>([...DIGRAM_MENU, ...EITHER_OR_MENU, ...PREFIX_MENU, ...SUFFIX_MENU]);
+const SPECIAL_MENU = new Set<string>([...DIGRAM_MENU, ...EITHER_OR_MENU]);
 
 const isSingleTile = (t: string): boolean => tileKind(t) === "single";
 const isSpecialTile = (t: string): boolean => !isSingleTile(t);
@@ -72,19 +73,28 @@ describe("generateBoard", () => {
     }
   });
 
-  it("draws special types across all four menus with digrams most often", () => {
-    const kinds = PROPERTY_BOARDS.flatMap(({ board }) => board.filter(isSpecialTile).map((t) => tileKind(t)));
+  it("draws only position-free specials, with digrams most often", () => {
+    const specials = PROPERTY_BOARDS.flatMap(({ board }) => board.filter(isSpecialTile));
+    const kinds = specials.map(tileKind);
     const counts = {
       digram: kinds.filter((k) => k === "digram").length,
       either: kinds.filter((k) => k === "either-or").length,
-      prefix: kinds.filter((k) => k === "prefix").length,
-      suffix: kinds.filter((k) => k === "suffix").length,
     };
     expect(counts.digram).toBeGreaterThan(0);
     expect(counts.either).toBeGreaterThan(0);
-    expect(counts.prefix).toBeGreaterThan(0);
-    expect(counts.suffix).toBeGreaterThan(0);
-    expect(counts.digram).toBeGreaterThan(Math.max(counts.either, counts.prefix, counts.suffix));
+    expect(counts.digram).toBeGreaterThan(counts.either);
+    expect(specials.every((t) => isDigram(t) || isEitherOr(t))).toBe(true);
+    expect(specials.some((t) => t.includes("-"))).toBe(false);
+  });
+
+  it("holds the measured density band and choice-tile frequency", () => {
+    const totals = PROPERTY_BOARDS.map(({ words }) => words.length).sort((a, b) => a - b);
+    const median = totals[Math.floor(totals.length / 2)]!;
+    expect(median).toBeGreaterThanOrEqual(DENSITY_BAND.minWords);
+    expect(median).toBeLessThanOrEqual(DENSITY_BAND.maxWords);
+    const choices = PROPERTY_BOARDS.filter(({ board }) => board.some((tile) => isEitherOr(tile))).length;
+    expect(choices / PROPERTY_BOARDS.length).toBeGreaterThanOrEqual(CHOICE_TILE_FREQUENCY.min);
+    expect(choices / PROPERTY_BOARDS.length).toBeLessThanOrEqual(CHOICE_TILE_FREQUENCY.max);
   });
 
   it("keeps board variety across 200 seeds", () => {
@@ -206,19 +216,6 @@ describe("coverageCounts", () => {
     expect(counts.slice(2).every((n) => n === 0)).toBe(true);
   });
 
-  it("counts a suffix tile that ends a word, and not one that would sit mid-word", () => {
-    const board = boardWith([
-      [0, "a"],
-      [1, "r"],
-      [2, "t"],
-      [3, "-s"],
-    ]);
-    const withSuffix = coverageCounts(board, ["arts"]);
-    expect(withSuffix[3]).toBe(1);
-    const withoutSuffix = coverageCounts(board, ["tra"]);
-    expect(withoutSuffix[3]).toBe(0);
-  });
-
   it("counts an either/or tile against both variants", () => {
     const board = boardWith([
       [0, "a/e"],
@@ -229,20 +226,6 @@ describe("coverageCounts", () => {
     expect(counts[0]).toBe(2);
     expect(counts[1]).toBe(2);
     expect(counts[2]).toBe(2);
-  });
-
-  it("lets a prefix start a word but never sit in the middle", () => {
-    const board = boardWith([
-      [0, "w"],
-      [1, "an-"],
-      [2, "d"],
-      [3, "a"],
-    ]);
-    const prefixStart = coverageCounts(board, ["and"]);
-    expect(prefixStart[1]).toBe(1);
-    expect(prefixStart[2]).toBe(1);
-    const midWord = coverageCounts(board, ["wand"]);
-    expect(midWord.slice(0, 4).every((n) => n === 0)).toBe(true);
   });
 
   it("counts a word reachable by two paths once per cell", () => {
@@ -287,17 +270,6 @@ describe("isFormable", () => {
     expect(isFormable("quatsch", board)).toBe(true);
     expect(isFormable("stein", board)).toBe(true);
     expect(isFormable("quash", board)).toBe(false); // needs ch as one tile
-  });
-
-  it("enforces prefix-start and suffix-end", () => {
-    // w an- d a ...: "and" starts on the prefix tile; "wand" would need it mid-word.
-    const board = ["w", "an-", "d", "a", "e", "r", "n", "t", "s", "t", "o", "b", "c", "c", "z", "z"];
-    expect(isFormable("and", board)).toBe(true);
-    expect(isFormable("wand", board)).toBe(false);
-    const sBoard = ["a", "r", "t", "-s", "e", "n", "o", "b", "c", "c", "z", "z", "w", "w", "y", "y"];
-    expect(isFormable("arts", sBoard)).toBe(true);
-    expect(isFormable("tra", sBoard)).toBe(true); // t-r-a avoids the suffix tile
-    expect(isFormable("tar", sBoard)).toBe(false); // t(2)-a(0) not adjacent
   });
 
   it("matches either/or tiles against either variant", () => {

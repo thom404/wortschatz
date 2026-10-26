@@ -14,10 +14,8 @@ export function displayWord(word: string): string {
   return word.replace(/ß/g, "ẞ");
 }
 
-/** The displayed tile notation: prefix/suffix markers drop off, either/or
- *  tiles keep both candidate variants, and the letters take the same
- *  `ß` → `ẞ` mapping as every word surface. */
+/** The displayed tile notation: either/or tiles keep both candidate variants,
+ *  and every letter takes the same `ß` → `ẞ` mapping as every word surface. */
 export function displayTile(t: string): string {
-  if (t.includes("/")) return displayWord(t);
-  return displayWord(t.replace(/^-|-$/g, ""));
+  return displayWord(t);
 }

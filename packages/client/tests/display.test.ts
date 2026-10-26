@@ -33,11 +33,6 @@ describe("tile display", () => {
     expect(displayTile("ß")).toBe("ẞ");
   });
 
-  it("still trims prefix and suffix markers", () => {
-    expect(displayTile("an-")).toBe("an");
-    expect(displayTile("-ung")).toBe("ung");
-  });
-
   it("passes either/or tiles through with both variants", () => {
     expect(displayTile("a/e")).toBe("a/e");
     expect(displayTile("e/ä")).toBe("e/ä");

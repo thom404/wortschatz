@@ -11,7 +11,7 @@
  * medians, generation-time median/p95, fallback count, vowel share and the
  * special-type distribution.
  */
-import { tileKind, isDigram, isEitherOr, isPrefix, isSuffix } from "@wortschatz/shared";
+import { tileKind, isDigram, isEitherOr } from "@wortschatz/shared";
 import { loadDictionary, defaultWordsPath } from "../dist/dictionary/loader.js";
 import { generateBoard, passesCoverage, passesGate, passesVariety } from "../dist/boardgen/index.js";
 
@@ -33,7 +33,7 @@ const counts: number[] = [];
 const len5: number[] = [];
 const len7: number[] = [];
 const times: number[] = [];
-const specials = { digram: 0, either: 0, prefix: 0, suffix: 0 };
+const specials = { digram: 0, either: 0 };
 
 for (let i = 0; i < N; i++) {
   const seed = seed0 + BigInt(i) * 7919n;
@@ -47,8 +47,6 @@ for (let i = 0; i < N; i++) {
   for (const tile of board) {
     if (isDigram(tile)) specials.digram += 1;
     else if (isEitherOr(tile)) specials.either += 1;
-    else if (isPrefix(tile)) specials.prefix += 1;
-    else if (isSuffix(tile)) specials.suffix += 1;
   }
   const pass = passesGate(words) && passesCoverage(board, words) && passesVariety(board);
   if (pass) accepted += 1;
@@ -68,5 +66,5 @@ console.log(
     `median words ${median(counts)} · median ≥5 ${median(len5)} · median ≥7 ${median(len7)} · ` +
     `median gen ${median(times).toFixed(2)} ms · p95 gen ${percentile(times, 0.95).toFixed(2)} ms · ` +
     `vowel share ${(vowelTotal / (N * 16)).toFixed(3)} · ` +
-    `specials ${specials.digram}/${specials.either}/${specials.prefix}/${specials.suffix} (digram/either/prefix/suffix)`
+    `specials ${specials.digram}/${specials.either} (digram/either)`
 );

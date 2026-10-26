@@ -1,11 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   EITHER_OR_MENU,
-  PREFIX_MENU,
-  SUFFIX_MENU,
   TILE_BAG,
   PROTOCOL,
   isDigram,
+  isEitherOr,
   neighbors,
   tileKind,
 } from "@wortschatz/shared";
@@ -23,7 +22,7 @@ const FIXTURE_WORDS = readFileSync(join(import.meta.dirname, "fixtures", "words.
 const fixtureDict = () => createDictionary(FIXTURE_WORDS);
 
 const DIGRAM_MENU = Object.keys(TILE_BAG).filter((t) => isDigram(t));
-const SPECIAL_MENU = new Set<string>([...DIGRAM_MENU, ...EITHER_OR_MENU, ...PREFIX_MENU, ...SUFFIX_MENU]);
+const SPECIAL_MENU = new Set<string>([...DIGRAM_MENU, ...EITHER_OR_MENU]);
 const isSingleTile = (t: string): boolean => tileKind(t) === "single";
 const isSpecialTile = (t: string): boolean => !isSingleTile(t);
 
@@ -64,7 +63,7 @@ describe("board generation wiring", () => {
     await scene.stop();
   });
 
-  test("round-start broadcasts 15 inventory singles and one menu special", async () => {
+  test("round-start broadcasts 15 inventory singles and one position-free special", async () => {
     const { rs } = await startedRound(scene);
     expect(rs.round.board).toHaveLength(PROTOCOL.BOARD_SIZE);
     expect(rs.round.board.filter(isSpecialTile)).toHaveLength(1);
@@ -73,6 +72,7 @@ describe("board generation wiring", () => {
         expect(TILE_BAG[t], t).toBeGreaterThan(0);
       } else {
         expect(SPECIAL_MENU.has(t), t).toBe(true);
+        expect(isDigram(t) || isEitherOr(t), t).toBe(true);
       }
     }
     expect(rs.round.roundNumber).toBe(1);

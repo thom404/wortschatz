@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-15
 - Amended: 2026-10-20 (#148) — board variety, one special tile, per-cell coverage
+- Amended: 2026-10-26 (#225) — position-free specials and the measured either/or menu (ADR-0027)
 - Ticket: [#7](https://github.com/thom404/wortschatz/issues/7) (board
   generation, tile inventory & solvability)
 - Research: [`docs/research/wordament-rules.md`](../research/wordament-rules.md)
@@ -184,3 +185,34 @@ gate, scoring, wire protocol, client and round lifecycle stay unchanged.
     official maximum. There is no published duplicate-letter cap, and our
     "no adjacent identical tiles" rule is a quality choice that is stricter than
     the original. The gate was not lowered to fit the new composition.
+
+## Amendment (#225, 2026-10-26): position-free specials only
+
+The position rules on prefix and suffix tiles made those boards thinner and
+made the draw spend rejection attempts on a handicap. Either/or boards also
+promised unreachable second-spelling words because the client could only send
+the first reading. [ADR-0027](0027-position-free-specials-and-submittable-either-or.md)
+supersedes the special-kind parts of §6 and §14; the bag, gate, coverage,
+variety and seeding rules stay as written.
+
+20. **One position-free special.** The single special cell is drawn only from
+    digrams and either/or tiles. Prefix and suffix tiles leave the draw, and
+    their notation predicates, menus and `isFormable` positioning checks are
+    deleted. The board variety rule is still exactly one special, now phrased
+    as one position-free special.
+21. **Weights.** Digram **9/15**, either/or **6/15**. The former prefix and
+    suffix shares (2/15 each) moved to the either/or tile; digrams remain the
+    most common special.
+22. **Measured pair menu.** `EITHER_OR_MENU` is the top eight pairs from the
+    committed calibration: `r/s`, `s/t`, `g/s`, `n/s`, `l/s`, `a/s`, `b/s`,
+    `k/s`. It is the existing either/or tile, not a new kind.
+23. **Both readings are submittable.** The client sends the first spelling plus
+    one `alternate`; the server resolves by points, then length, then
+    alphabetical word. Duplicate identity is the resolved word. The full
+    decision is in ADR-0027.
+24. **Measured acceptance (200 boards, full curated list, seeds 1 + i·7919).**
+    200/200 passed gate + coverage + variety with 0 fallbacks. Median findable
+    words **136** (recorded band 100–140), median ≥5-letter words 63, median
+    ≥7-letter words 7. Choice-tile boards **96/200 (48 %)**, inside the
+    recorded 35–55 % band; specials split 104 digram / 96 either-or. Median
+    generation **3.5 ms**. The gate thresholds are unchanged.

@@ -8,14 +8,10 @@ import {
   type Board,
   TILE_BAG,
   EITHER_OR_MENU,
-  PREFIX_MENU,
-  SUFFIX_MENU,
   PROTOCOL,
   isDigram,
   isEitherOr,
   isMulti,
-  isPrefix,
-  isSuffix,
   neighbors,
   tileStrings,
   type Tile,
@@ -39,11 +35,17 @@ export const MAX_SINGLE_COPIES = 3;
 /** Distinct words each cell must be usable in (ADR-0003 #148). */
 export const COVERAGE_THRESHOLD = 3;
 
-/** Special-tile type weights: digram 9, either/or 2, prefix 2, suffix 2. */
+/** Recorded density band for the committed composition (ADR-0027): the
+ *  200-board median must stay near today's value. */
+export const DENSITY_BAND = { minWords: 100, maxWords: 140 } as const;
+
+/** Recorded share of boards carrying a choice tile (draw weight 6/15). */
+export const CHOICE_TILE_FREQUENCY = { min: 0.35, max: 0.55 } as const;
+
+/** Special-tile type weights: digram 9, either/or 6 (ADR-0027). */
 const SPECIAL_WEIGHT_TOTAL = 15;
 const DIGRAM_WEIGHT = 9;
-const EITHER_OR_WEIGHT = 2;
-const PREFIX_WEIGHT = 2;
+const EITHER_OR_WEIGHT = 6;
 
 export interface BoardResult {
   board: Board;
@@ -59,8 +61,8 @@ export function generateBoard(seed: bigint, dict: BoardDict): BoardResult {
 
   for (let attempt = 0; attempt < MAX_BOARD_ATTEMPTS; attempt++) {
     const board = drawBoard(rng);
-    // The dictionary enumerates constraint-obliviously; special-tile
-    // positioning is applied here by post-filtering (spec #14, ADR-0003 §8).
+    // The dictionary enumerates constraint-obliviously; the board's tile
+    // rules (both either/or readings) are applied by this post-filter.
     const words = dict
       .findWords(board)
       .filter((w) => isFormable(w, board))
@@ -169,11 +171,9 @@ function cellsUsedByWord(word: string, board: Board): number[] {
   const match = (pos: number, cell: number): void => {
     const t = board[cell];
     if (t === undefined) return;
-    if (isPrefix(t) && pos > 0) return; // word-start only
     for (const cand of tileStrings(t)) {
       if (!w.startsWith(cand, pos)) continue;
       const end = pos + cand.length;
-      if (isSuffix(t) && end !== w.length) continue; // word-end only
       if (end === w.length) {
         cells.add(cell);
         for (const p of path) cells.add(p);
@@ -225,17 +225,11 @@ function shuffle<T>(arr: T[], rng: Rng): T[] {
   return arr;
 }
 
-/** Weighted special-tile draw: digram 9/15, then 2/15 for each other type. */
+/** Weighted special-tile draw: digram 9/15, either/or 6/15 (ADR-0027). */
 function drawSpecial(rng: Rng): Tile {
   const roll = rng.range(SPECIAL_WEIGHT_TOTAL);
   if (roll < DIGRAM_WEIGHT) return DIGRAM_MENU[rng.range(DIGRAM_MENU.length)]!;
-  if (roll < DIGRAM_WEIGHT + EITHER_OR_WEIGHT) {
-    return EITHER_OR_MENU[rng.range(EITHER_OR_MENU.length)]!;
-  }
-  if (roll < DIGRAM_WEIGHT + EITHER_OR_WEIGHT + PREFIX_WEIGHT) {
-    return PREFIX_MENU[rng.range(PREFIX_MENU.length)]!;
-  }
-  return SUFFIX_MENU[rng.range(SUFFIX_MENU.length)]!;
+  return EITHER_OR_MENU[rng.range(EITHER_OR_MENU.length)]!;
 }
 
 /** 15 singles drawn without replacement + exactly one special. */
@@ -322,9 +316,9 @@ function compareRank(a: Rank, b: Rank): number {
 
 /**
  * True iff `word` is spellable on `board` along an 8-way path, each tile at
- * most once, honoring prefix-start/suffix-end and either/or variants. The
- * mirror of `Dictionary.findWords` (tile rules live here, NOT membership —
- * that stays `Dictionary.isValid` per ADR-0001).
+ * most once, honoring either/or variants. The mirror of `Dictionary.findWords`
+ * (tile rules live here, NOT membership — that stays `Dictionary.isValid` per
+ * ADR-0001).
  */
 export function isFormable(word: string, board: Board): boolean {
   const w = normalizeWord(word);
@@ -334,14 +328,9 @@ export function isFormable(word: string, board: Board): boolean {
   const match = (pos: number, cell: number): boolean => {
     const t = board[cell];
     if (t === undefined) return false;
-    if (isPrefix(t) && pos > 0) return false; // word-start only
     for (const cand of tileStrings(t)) {
       if (!w.startsWith(cand, pos)) continue;
       const end = pos + cand.length;
-      if (isSuffix(t)) {
-        if (end !== w.length) continue; // word-end only
-        return true;
-      }
       if (end === w.length) return true;
       used[cell] = true;
       for (const nb of NEIGHBOR_CACHE[cell] ?? []) {

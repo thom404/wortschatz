@@ -8,9 +8,9 @@
  * The engine is a pure word function on purpose: the word string already
  * contains the letters the player actually spelled, so tile structure never
  * needs inspecting. The #6 rules fall out for free:
- * - a multi-letter tile (`ch`, `sch`, prefix/suffix) contributes the sum of
- *   its constituent letters' values, and its letters count toward the
- *   length gate (which tests the word string);
+ * - a digram tile (`ch`, `sch`) contributes the sum of its constituent
+ *   letters' values, and its letters count toward the length gate (which
+ *   tests the word string);
  * - an either/or tile (`e/ä`) scores the value of the variant the player
  *   actually spelled, never the sum of both options;
  * - a `ß`/`SS` tile, were one shipped, is worth 2;
