@@ -11,6 +11,9 @@ COPY package.json package-lock.json tsconfig.base.json vitest.config.ts ./
 COPY packages/shared packages/shared
 COPY packages/server packages/server
 COPY packages/client packages/client
+# The root typecheck compiles the Playwright layer too (#219); the image build
+# only type-checks it and never downloads or launches a browser.
+COPY e2e e2e
 COPY words words
 COPY COPYING COPYING
 
