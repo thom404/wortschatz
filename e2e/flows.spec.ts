@@ -152,11 +152,7 @@ test("drag → submit-word", async ({ page }) => {
   const tiles = page.locator("#board .tile");
   await expect(tiles).toHaveCount(16);
 
-  // The dynamic style knobs reach the DOM through CSSOM under the real CSP.
-  const tileSpan = await page
-    .locator("#board")
-    .evaluate((element) => getComputedStyle(element).getPropertyValue("--tile-span").trim());
-  expect(tileSpan).toBe("3");
+  // The dynamic timer knob reaches the DOM through CSSOM under the real CSP.
   const fraction = await page
     .locator("#timer")
     .evaluate((element) => Number.parseFloat(getComputedStyle(element).getPropertyValue("--p")));

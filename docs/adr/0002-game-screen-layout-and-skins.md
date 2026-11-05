@@ -191,3 +191,33 @@ hygiene. Its single HTML file was never merged into `main` and is no longer
 available. The header pointer and §6 describe where the prototype lived; the
 decisions in §1–§6 and the later amendments remain the record of what it
 established.
+
+## Amendment (#242, 2026-11-05): one content-independent board type scale
+
+The board's letter size used to be derived from the widest tile on it: a
+`--tile-span` value divided a clamp, so any digram (`sch`, `st`, `ch`, …) or
+prefix/suffix tile shrank every letter on the board at once. A singles-only
+board kept the full size while a mixed board dropped by about 41 % at
+360×640. The tile mix is not a typographic input, so that knob is gone.
+
+22. **One scale, no content branch.** The grid container carries a single
+    `font-size: 1.35rem` — the former singles-only baseline — and nothing in
+    the render path reads the board to change it. The value may still move
+    through the existing responsive tokens, but at a given viewport every
+    board shape computes the same size.
+23. **The span knob is removed everywhere.** Neither the initial board render
+    nor the rotation-only repaint sets a custom property or inline style from
+    the tile contents. `tileSpellingLength` and `isMulti` remain shared tile
+    vocabulary for display and board generation; they simply stop feeding
+    typography.
+24. **Not the parent-`em` bug again.** Tiles still inherit the container's
+    scale and receive no per-tile `font-size` or `em`, so the prohibition in
+    §2 holds. The fix only replaces a content-derived container value with a
+    constant one; it does not reintroduce sizing that resolves against a
+    different inherited parent.
+25. **The invariant is proven in the browser.** The Playwright layer opens a
+    singles-only, an either/or and a digram board at 360×640 and 1280×800 in
+    both skins, asserts one computed size across all three, checks the size
+    has not fallen below the singles baseline, and measures each tile's text
+    range against its content box. Screenshot baselines that show a board
+    with multi-letter tiles are refreshed in the pinned container.
