@@ -471,12 +471,10 @@ describe("mountable app", () => {
       ];
       app!.conn().feed(roundStarted(VALUED, 2));
       const livePoints = tileEls(app!.root).map((t) => t.querySelector(".pts")?.textContent);
-      expect(app!.root.querySelector<HTMLElement>("#board")!.style.getPropertyValue("--tile-span")).toBe("3");
 
       app!.conn().feed(roundEnded(2, REVEAL));
 
       expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.intermission.title);
-      expect(app!.root.querySelector<HTMLElement>("#board")!.style.getPropertyValue("--tile-span")).toBe("3");
       const paused = tileEls(app!.root);
       expect(paused.map((t) => t.querySelector(".pts")?.textContent)).toEqual(livePoints);
       expect(paused.map((t) => t.querySelector(".pts")?.textContent)).toEqual([
@@ -901,20 +899,12 @@ describe("mountable app", () => {
     expect(app!.root.querySelector("#word-form")).toBeNull();
   });
 
-  it("renders the drag surface idle and sizes board fonts on the grid container", () => {
+  it("renders the drag surface idle", () => {
     driveToRoundOne(app!);
     // Idle trace shows the hint that explains dragging.
     const trace = app!.root.querySelector<HTMLElement>("#trace")!;
     expect(trace.classList.contains("hint")).toBe(true);
     expect(trace.textContent).toContain(COPY.game.traceHint);
-
-    // Single-letter board: full base size on the grid container.
-    expect(app!.root.querySelector<HTMLElement>("#board")!.style.getPropertyValue("--tile-span")).toBe("1");
-
-    // A board with multi-letter notation widens the span knob; the grid
-    // container owns the font sizing (never per-tile `em`).
-    app!.conn().feed(roundStarted(MIXED, 2));
-    expect(app!.root.querySelector<HTMLElement>("#board")!.style.getPropertyValue("--tile-span")).toBe("3");
   });
 
   it("prefills a deep-linked room code and greets with a join", () => {

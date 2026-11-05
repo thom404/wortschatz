@@ -711,11 +711,11 @@ code {
   gap: var(--board-gap);
   max-width: var(--board-width);
   margin: var(--gap-s) auto;
-  /* The grid container owns tile font sizing (ADR-0002): one clamp from
-   * the widest tile span on the board — never per-tile `em`, whose parent
-   * resolution breaks scale-independence. Boards with multi-letter tiles
-   * shrink the shared basis so `sch`/`st` stay legible. */
-  font-size: clamp(0.8rem, calc(1.35rem / var(--tile-span, 1)), 1.35rem);
+  /* The grid container owns one content-independent type scale (ADR-0002).
+   * It keeps the singles-only baseline, so a digram or either/or tile never
+   * resizes the whole board; there is deliberately no per-tile `em`, whose
+   * parent resolution breaks scale-independence. */
+  font-size: 1.35rem;
   /* No scroll/zoom under the finger during a drag. */
   touch-action: none;
   user-select: none;

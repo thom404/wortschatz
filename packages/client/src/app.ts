@@ -38,7 +38,7 @@ import type {
   ServerErrorMsg,
   ServerMessage,
 } from "@wortschatz/shared";
-import { PROTOCOL, tileSpellingLength, tileStrings, tileValues } from "@wortschatz/shared";
+import { PROTOCOL, tileStrings, tileValues } from "@wortschatz/shared";
 import "./style.css";
 
 /**
@@ -156,11 +156,11 @@ function tileHtml(t: string): string {
   return `<div class="tile" title="${escapeHtml(points)}" aria-label="${escapeHtml(label)}">${escapeHtml(letters)}<span class="pts" aria-hidden="true">${escapeHtml(pointsDisplay(values))}</span></div>`;
 }
 
-/** The 4×4 board both screens share. Font sizing lives on the grid
- *  container via the widest tile span knob (ADR-0002): per-tile `em`
- *  resolves against the parent and breaks. Rotation only permutes the
- *  cells (ADR-0002 amendment #151): the tile markup stays upright and the
- *  server board array is never reordered. */
+/** The 4×4 board both screens share. Font sizing is one content-independent
+ *  value on the grid container (ADR-0002): per-tile `em` resolves against
+ *  the parent and breaks, and the tile mix must never move the type scale.
+ *  Rotation only permutes the cells (ADR-0002 amendment #151): the tile
+ *  markup stays upright and the server board array is never reordered. */
 function boardHtml(board: readonly string[], rotation: BoardRotation): string {
   return `<div id="board" class="board" data-rotation="${rotation}">${boardTilesHtml(board, rotation)}</div>`;
 }
@@ -171,13 +171,6 @@ function boardHtml(board: readonly string[], rotation: BoardRotation): string {
 function boardTilesHtml(board: readonly string[], rotation: BoardRotation): string {
   if (board.length === 0) return "";
   return rotateBoard(board, rotation).map(tileHtml).join("");
-}
-
-/** Inline style attributes are intentionally forbidden by the app-level CSP;
- *  dynamic style values go through CSSOM instead. */
-function applyBoardSpan(el: HTMLElement, board: readonly string[]): void {
-  const tileSpan = Math.max(1, ...board.map((t) => tileSpellingLength(t)));
-  el.style.setProperty("--tile-span", String(tileSpan));
 }
 
 /**
@@ -873,8 +866,6 @@ function renderGame(app: App): void {
       </div>
       ${leaveButtonHtml()}
     </div>`;
-  const boardEl = app.root.querySelector<HTMLElement>("#board");
-  if (boardEl) applyBoardSpan(boardEl, board);
   updateTimer(app);
   measureBoardGap(app);
   app.liveRegions = GAME_LIVE_REGIONS;
@@ -925,8 +916,6 @@ function renderIntermission(app: App): void {
       }
       ${leaveButtonHtml()}
     </div>`;
-  const boardEl = app.root.querySelector<HTMLElement>("#board");
-  if (boardEl) applyBoardSpan(boardEl, board);
   measureBoardGap(app);
   app.liveRegions = INTERMISSION_LIVE_REGIONS;
   wireRevealOrder(app);
@@ -1492,7 +1481,6 @@ function repaintBoard(app: App): void {
   const el = app.root.querySelector<HTMLElement>("#board");
   if (el) {
     el.dataset.rotation = String(app.view.boardRotation);
-    applyBoardSpan(el, board);
     el.innerHTML = boardTilesHtml(board, app.view.boardRotation);
   }
 }
