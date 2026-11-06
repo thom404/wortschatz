@@ -19,6 +19,8 @@ import { displayTile, displayWord } from "./display.js";
 import { escapeHtml } from "./escape.js";
 import { rotateBoard, serverBoardIndex, type BoardRotation } from "./board-rotation.js";
 import {
+  checkIcon,
+  copyIcon,
   homeIcon,
   leaveIcon,
   rotateIcon,
@@ -83,6 +85,9 @@ interface App {
   store: GameStore;
   conn: RoomConn | null;
   renderTimer: ReturnType<typeof setInterval> | null;
+  /** The invite card's two-second copy confirmation, cleared before the
+   *  card is rebuilt so a stale timer cannot touch a later render. */
+  copyFeedbackTimer: ReturnType<typeof setTimeout> | null;
   inRoom: boolean;
   /** The live connection attempt, or `null` when no attempt exists (the idle
    *  start screen). `open` is also the absence of a notice. */
@@ -194,6 +199,9 @@ function measureBoardGap(app: App): void {
  *  accessible name and its tooltip, so the two can never drift (ADR-0022). */
 const ROTATE_LABEL = "Spielfeld um 90° drehen";
 const LEAVE_LABEL = "Raum verlassen";
+const COPY_LINK_LABEL = "Link kopieren";
+const COPIED_LINK_LABEL = "Link kopiert.";
+const COPY_LINK_ERROR = "Der Link konnte nicht kopiert werden. Markiere ihn und kopiere ihn von Hand.";
 
 /** One icon-only control: the glyph is hidden from assistive technology,
  *  the `aria-label` carries the name, and `data-tip` is the same string for
@@ -259,6 +267,7 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
     store: new GameStore(),
     conn: null,
     renderTimer: null,
+    copyFeedbackTimer: null,
     inRoom: false,
     connStatus: null,
     localError: null,
@@ -606,6 +615,7 @@ function teardown(app: App): void {
     clearInterval(app.renderTimer);
     app.renderTimer = null;
   }
+  clearCopyFeedback(app);
 }
 
 /* ------------------------------------------------------------------ */
@@ -784,6 +794,84 @@ function updateFound(app: App): void {
   el.innerHTML = foundHtml(app.store);
 }
 
+/** The invite card's two-second copy confirmation. The card rebuild clears
+ *  the timer first, so a stale callback can never write into a later render. */
+function clearCopyFeedback(app: App): void {
+  if (!app.copyFeedbackTimer) return;
+  clearTimeout(app.copyFeedbackTimer);
+  app.copyFeedbackTimer = null;
+}
+
+/** Returns the copy control to its resting label and empties the polite
+ *  announcement; only ever resolves against the current invite card. */
+function resetCopyFeedback(app: App): void {
+  app.copyFeedbackTimer = null;
+  const button = app.root.querySelector<HTMLButtonElement>("#copy-link-btn");
+  if (button) {
+    button.innerHTML = copyIcon;
+    button.setAttribute("aria-label", COPY_LINK_LABEL);
+    button.setAttribute("data-tip", COPY_LINK_LABEL);
+  }
+  const status = app.root.querySelector<HTMLElement>("#copy-status");
+  if (status) status.textContent = "";
+}
+
+/** The one success path: check icon, same label and tooltip, a polite hidden
+ *  announcement, and a fresh 2000 ms window on every press. */
+function showCopySuccess(app: App): void {
+  const button = app.root.querySelector<HTMLButtonElement>("#copy-link-btn");
+  if (!button) return;
+  button.innerHTML = checkIcon;
+  button.setAttribute("aria-label", COPIED_LINK_LABEL);
+  button.setAttribute("data-tip", COPIED_LINK_LABEL);
+  const status = app.root.querySelector<HTMLElement>("#copy-status");
+  if (status) {
+    status.textContent = "";
+    status.textContent = COPIED_LINK_LABEL;
+  }
+  clearCopyFeedback(app);
+  app.copyFeedbackTimer = setTimeout(() => resetCopyFeedback(app), 2000);
+}
+
+/** The no-Clipboard-API fallback: select the visible link text and hand the
+ *  selection to the legacy copy command. Returns whether it succeeded. */
+function copyLinkBySelection(app: App): boolean {
+  const link = app.root.querySelector<HTMLElement>("#join-link");
+  if (!link) return false;
+  const selection = window.getSelection();
+  if (!selection) return false;
+  const range = document.createRange();
+  range.selectNodeContents(link);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  try {
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  }
+}
+
+/** Writes the exact Deep link as text/plain. A missing, denied or rejecting
+ *  Clipboard API falls back to the selected text; both failures surface in
+ *  the one floating error slot, and the visible text stays selectable. */
+async function copyInviteLink(app: App, deepLink: string): Promise<void> {
+  const clipboard = navigator.clipboard;
+  if (clipboard && typeof clipboard.writeText === "function") {
+    try {
+      await clipboard.writeText(deepLink);
+      showCopySuccess(app);
+      return;
+    } catch {
+      // Fall through to the selection path.
+    }
+  }
+  if (copyLinkBySelection(app)) {
+    showCopySuccess(app);
+    return;
+  }
+  setLocalError(app, COPY_LINK_ERROR);
+}
+
 /** The lobby's live region: the join-ordered seat roster. A play-time delta
  *  never reaches the lobby, but the declaration keeps its refresh path
  *  uniform with the other screens. */
@@ -792,8 +880,10 @@ const LOBBY_LIVE_REGIONS: readonly LiveRegion[] = [SCOREBOARD_REGION];
 function renderLobby(app: App): void {
   app.menu.screenChanged(`lobby:${app.store.code}`);
   document.title = `${APP_NAME} — Raum ${app.store.code}`;
-  // One source of truth for the join target (#48): the QR payload and the
-  // plain-text fallback are the same absolute deep link, code uppercased.
+  clearCopyFeedback(app);
+  // One source of truth for the join target (#48): the QR payload, the
+  // visible invite text and the clipboard write are the same absolute deep
+  // link, code uppercased.
   const code = app.store.code.toUpperCase();
   const deepLink = `${location.origin}/r/${code}`;
   app.root.innerHTML = `
@@ -803,7 +893,13 @@ function renderLobby(app: App): void {
         <h2>Einladen</h2>
         <p class="note">Scanne den Code mit der Kamera, um beizutreten.</p>
         ${qrSvg(deepLink)}
-        <p class="invite-link"><code id="join-link">${escapeHtml(location.origin)}<wbr />/r/${escapeHtml(code)}</code></p>
+        <p class="invite-link"><span id="join-link">${escapeHtml(deepLink)}</span>${iconButtonHtml({
+          id: "copy-link-btn",
+          className: "icon-btn copy-link",
+          icon: copyIcon,
+          label: COPY_LINK_LABEL,
+        })}</p>
+        <span id="copy-status" class="visually-hidden" role="status" aria-live="polite"></span>
       </section>
       <section class="panel">
         <h2>Spieler</h2>
@@ -826,6 +922,10 @@ function renderLobby(app: App): void {
     };
   }
   app.root.querySelector<HTMLButtonElement>("#leave-btn")!.onclick = () => leaveRoom(app);
+  app.root.querySelector<HTMLButtonElement>("#copy-link-btn")!.onclick = () => {
+    clearError(app);
+    void copyInviteLink(app, deepLink);
+  };
 }
 
 /** The game screen's live regions: the ring timer, the ranked scoreboard and

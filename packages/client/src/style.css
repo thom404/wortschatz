@@ -447,14 +447,36 @@ h2 {
   height: auto;
   margin: var(--gap-s) auto;
 }
+/* The invite link is styled plain text, never code or an anchor (ADR-0008
+ * amendment #245): body font, accent colour, no underline. The row wraps so
+ * the copy control can drop below the link on a narrow phone. */
 .invite-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap-s);
   margin: 0;
   text-align: center;
 }
 /* The origin can outgrow a 320 px phone before the `/r/<code>` break; the
- * code text wraps anywhere rather than widening the document. */
-.invite-link code {
+ * link text wraps anywhere rather than widening the document. */
+.invite-link #join-link {
+  min-width: 0;
+  color: var(--accent);
   overflow-wrap: anywhere;
+}
+/* Hidden from sight, still announced politely (the copy confirmation). */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* ------------------------------------------------------------------ */

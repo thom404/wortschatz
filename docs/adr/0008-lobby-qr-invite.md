@@ -69,3 +69,27 @@ Constraints shaping the decision:
   and stop scanning; scannability is a correctness requirement, not a style.
 - **Write the encoder (including Reed–Solomon ECC) from scratch.** Rejected:
   needless risk for a solved, standardised problem.
+
+## Amendment (#245, 2026-11-06): plain-text invite link with a copy control
+
+The invite text used to render inside `<code>`. A browser copying that gives a
+rich HTML clipboard flavour alongside the plain text — monospace inline styling
+and a `<wbr>` — so pasting into a markup-aware input could turn the link into
+code or split it. There was also no one-press copy path.
+
+6. **Styled plain text, not code and not an anchor.** The invite link renders as
+   body-font text in `--accent`, with no underline. It has no `<code>` and no
+   `<wbr>`; `overflow-wrap: anywhere` wraps it on a narrow phone. The
+   `#join-link` id and its exact `textContent` remain the one value shared with
+   the QR payload.
+7. **A copy control writes the same value as plain text.** An icon-only
+   secondary control (ADR-0022) beside the link calls
+   `navigator.clipboard.writeText(deepLink)` directly, so only a `text/plain`
+   flavour is written. Its German name and tooltip are `Link kopieren`; after a
+   successful write it shows a check and `Link kopiert.` for two seconds, and a
+   visually hidden polite `role="status"` announces the same phrase.
+8. **A fallback keeps the link copyable.** When the Clipboard API is missing,
+   denied or rejects, the client selects the visible text and tries
+   `document.execCommand("copy")`. If both paths fail, the floating error slot
+   says `Der Link konnte nicht kopiert werden. Markiere ihn und kopiere ihn von Hand.`
+   The visible text stays selectable throughout.

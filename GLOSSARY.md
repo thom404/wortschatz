@@ -75,9 +75,10 @@ zero is cosmetic. A pause has no deadline. See Tick.
 ## Deep link
 
 The absolute join URL for a room: `location.origin` + `/r/` + the uppercased
-**Room code**. The lobby shows it as text and encodes the same string as a QR
-code, so a phone camera can join. Both render from one value, so they never
-disagree. See [ADR-0008](docs/adr/0008-lobby-qr-invite.md).
+**Room code**. The lobby shows it as styled plain text, encodes the same string
+as a QR code so a phone camera can join, and its copy button writes that same
+string as `text/plain`. All three render from one value, so they never disagree.
+See [ADR-0008](docs/adr/0008-lobby-qr-invite.md).
 
 ## Display
 

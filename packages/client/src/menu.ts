@@ -27,6 +27,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: "0.1.2",
+    notes: ["Der Einladungslink lässt sich jetzt sauber kopieren."],
+  },
+  {
     version: "0.1.1",
     notes: ["Spielfeld und Zeitring werden wieder korrekt dargestellt."],
   },

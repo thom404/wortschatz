@@ -153,6 +153,97 @@ describe("mountable app", () => {
       const expected = `${location.origin}/r/${ROOM_CODE}`;
       expect(app!.root.querySelector<HTMLElement>("#join-link")!.textContent).toBe(expected);
       expect(qr.getAttribute("data-payload")).toBe(expected);
+      // The invite markup is plain text: no code styling and no word-break
+      // element to leak into a rich clipboard flavour.
+      expect(panel.querySelector("code")).toBeNull();
+      expect(panel.querySelector("wbr")).toBeNull();
+    });
+
+    it("copies the exact Deep link as plain text and confirms politely for two seconds", async () => {
+      typeInto(app!.root, "#mk-nick", "Lena");
+      click(app!.root, "#mk-btn");
+      app!.conn().feed(lobbySnapshot({ code: ROOM_CODE, nickname: "Lena" }));
+
+      const expected = `${location.origin}/r/${ROOM_CODE}`;
+      const link = app!.root.querySelector<HTMLElement>("#join-link")!;
+      const button = app!.root.querySelector<HTMLButtonElement>("#copy-link-btn")!;
+      expect(link.tagName).toBe("SPAN");
+      expect(link.textContent).toBe(expected);
+      expect(link.textContent).toBe(app!.root.querySelector("#qr")!.getAttribute("data-payload"));
+      expect(button.getAttribute("aria-label")).toBe(COPY.lobby.copy);
+      expect(button.getAttribute("data-tip")).toBe(COPY.lobby.copy);
+      expect(button.hasAttribute("aria-describedby")).toBe(false);
+      expect(button.querySelector("svg")!.getAttribute("aria-hidden")).toBe("true");
+      expect(button.querySelector("svg")!.getAttribute("stroke")).toBe("currentColor");
+
+      button.click();
+
+      await vi.waitFor(async () => {
+        expect(await navigator.clipboard.readText()).toBe(expected);
+      });
+      await vi.waitFor(() => {
+        expect(button.getAttribute("aria-label")).toBe(COPY.lobby.copied);
+      });
+      expect(button.getAttribute("data-tip")).toBe(COPY.lobby.copied);
+      const status = app!.root.querySelector<HTMLElement>("#copy-status")!;
+      expect(status.getAttribute("role")).toBe("status");
+      expect(status.getAttribute("aria-live")).toBe("polite");
+      expect(status.textContent).toBe(COPY.lobby.copied);
+      expect(status.classList.contains("visually-hidden")).toBe(true);
+    });
+
+    it("falls back to selecting the visible text when the Clipboard API rejects", async () => {
+      typeInto(app!.root, "#mk-nick", "Lena");
+      click(app!.root, "#mk-btn");
+      app!.conn().feed(lobbySnapshot({ code: ROOM_CODE, nickname: "Lena" }));
+
+      const expected = `${location.origin}/r/${ROOM_CODE}`;
+      const writeText = vi
+        .spyOn(navigator.clipboard, "writeText")
+        .mockRejectedValue(new Error("clipboard denied"));
+      const execCommand = vi.fn(() => true);
+      Object.defineProperty(document, "execCommand", { configurable: true, value: execCommand });
+      try {
+        app!.root.querySelector<HTMLButtonElement>("#copy-link-btn")!.click();
+        await vi.waitFor(() => {
+          expect(app!.root.querySelector("#copy-link-btn")!.getAttribute("aria-label")).toBe(
+            COPY.lobby.copied
+          );
+        });
+        expect(execCommand).toHaveBeenCalledWith("copy");
+        expect(window.getSelection()?.toString()).toBe(expected);
+      } finally {
+        writeText.mockRestore();
+        Reflect.deleteProperty(document, "execCommand");
+      }
+    });
+
+    it("shows the German hand-copy error when every copy path fails, leaving the link selectable", async () => {
+      typeInto(app!.root, "#mk-nick", "Lena");
+      click(app!.root, "#mk-btn");
+      app!.conn().feed(lobbySnapshot({ code: ROOM_CODE, nickname: "Lena" }));
+
+      const expected = `${location.origin}/r/${ROOM_CODE}`;
+      const writeText = vi
+        .spyOn(navigator.clipboard, "writeText")
+        .mockRejectedValue(new Error("clipboard denied"));
+      const execCommand = vi.fn(() => false);
+      Object.defineProperty(document, "execCommand", { configurable: true, value: execCommand });
+      try {
+        app!.root.querySelector<HTMLButtonElement>("#copy-link-btn")!.click();
+        await vi.waitFor(() => {
+          expect(noticeText(app!.root, "error")).toBe(COPY.lobby.copyFailed);
+        });
+        expect(execCommand).toHaveBeenCalledWith("copy");
+        const link = app!.root.querySelector<HTMLElement>("#join-link")!;
+        expect(link.isConnected).toBe(true);
+        expect(link.textContent).toBe(expected);
+        expect(window.getSelection()?.toString()).toBe(expected);
+        expect(app!.root.querySelector("#copy-link-btn")!.getAttribute("aria-label")).toBe(COPY.lobby.copy);
+      } finally {
+        writeText.mockRestore();
+        Reflect.deleteProperty(document, "execCommand");
+      }
     });
 
     it("the QR core keeps its literal dark-on-light colours under both skins", () => {

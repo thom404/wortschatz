@@ -3,7 +3,9 @@
 - paragraph: Scanne den Code mit der Kamera, um beizutreten.
 - img "QR-Code zum Beitreten"
 - paragraph:
-    - code: /http:\/\/\d+\.\d+\.0\.1:\d+\/r\/ABC12/
+    - text: /http:\/\/\d+\.\d+\.0\.1:\d+\/r\/ABC12/
+    - button "Link kopieren"
+- status
 - heading "Spieler" [level=2]
 - list:
     - listitem: 1. Lena Gastgeber
