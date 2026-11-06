@@ -38,3 +38,11 @@ export const leaveIcon = icon(`<path d="M19 12H5" /><path d="m11 6-6 6 6 6" />`)
 
 /** House: the outcome screens' one action, shown beside its visible text. */
 export const homeIcon = icon(`<path d="m3 11 9-8 9 8" /><path d="M6 10v10h12V10" />`);
+
+/** Two offset sheets: copy the invite link (ADR-0022). */
+export const copyIcon = icon(
+  `<rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" />`
+);
+
+/** Check mark: the copy control's two-second success feedback. */
+export const checkIcon = icon(`<path d="m5 12 4 4L19 6" />`);

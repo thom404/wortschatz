@@ -7,7 +7,7 @@ import {
   seat,
 } from "../packages/client/tests/fixtures.js";
 import { BOARD_DIGRAM, BOARD_DRAG, REVEAL } from "./scenarios.js";
-import { DESKTOP, FIXED_NOW, expect, openMenu, openPage, openScene, test } from "./support.js";
+import { BASE_URL, DESKTOP, FIXED_NOW, expect, openMenu, openPage, openScene, test } from "./support.js";
 
 /**
  * The core flows (#156), now including the app-owned Menü (ADR-0023): behavior through the real browser UI, asserted
@@ -31,6 +31,40 @@ test("create room → lobby", async ({ page }) => {
     type: "create-room",
     nickname: "Lena",
   });
+});
+
+test("lobby invite link copies as plain text", async ({ page }) => {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: BASE_URL });
+
+  await openScene(page, {
+    viewport: DESKTOP,
+    skin: "standard",
+    scene: {
+      entry: { mode: "create", nickname: "Lena" },
+      greeting: [lobbySnapshot({ code: ROOM_CODE, nickname: "Lena", seatId: 1, hostSeatId: 1 })],
+    },
+  });
+
+  const expected = `${BASE_URL}/r/${ROOM_CODE}`;
+  await expect(page.locator("#join-link")).toHaveText(expected);
+  await expect(page.locator(".panel.invite code")).toHaveCount(0);
+  await expect(page.locator(".panel.invite wbr")).toHaveCount(0);
+
+  await page.locator("#copy-link-btn").click();
+
+  const clipboard = await page.evaluate(async () => {
+    const items = await navigator.clipboard.read();
+    const result: { types: readonly string[]; text: string }[] = [];
+    for (const item of items) {
+      const text = item.types.includes("text/plain") ? await (await item.getType("text/plain")).text() : "";
+      result.push({ types: item.types, text });
+    }
+    return result;
+  });
+  expect(clipboard).toEqual([{ types: ["text/plain"], text: expected }]);
+  await expect(page.locator("#copy-link-btn")).toHaveAttribute("aria-label", COPY.lobby.copied);
+  await expect(page.locator("#copy-link-btn")).toHaveAttribute("data-tip", COPY.lobby.copied);
+  await expect(page.locator("#copy-status")).toHaveText(COPY.lobby.copied);
 });
 
 test("deep-link join", async ({ page }) => {
@@ -66,7 +100,7 @@ test("skin switch through the Menü survives reload", async ({ page }) => {
   await expect(page.locator("body")).toHaveAttribute("data-skin", "standard");
   await expect(page.locator("#menu-panel")).toBeHidden();
   await openMenu(page);
-  await expect(page.locator("#menu-panel .menu-version")).toHaveText(`Version 0.1.1`);
+  await expect(page.locator("#menu-panel .menu-version")).toHaveText(`Version 0.1.2`);
   await page.locator("#skin-select").selectOption("arcade");
   await expect(page.locator("body")).toHaveAttribute("data-skin", "arcade");
 
