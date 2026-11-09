@@ -120,13 +120,13 @@ function types(sent: ServerMessage[]): string[] {
 }
 
 describe("room phase", () => {
-  test("startRound takes the round deadline from the injected clock and announces it", () => {
+  test("beginRound takes the round deadline from the injected clock and announces it", () => {
     const h = makeHarness();
     const host = h.addSeat("Hansi");
     h.room.hostSeatId = host.seatId;
     h.clock.advance(1000);
 
-    h.logic.startRound(h.room);
+    h.logic.beginRound(h.room);
 
     expect(h.room.phase).toBe("playing");
     expect(h.room.deadline).toBe(2000); // now + roundMs
@@ -143,7 +143,7 @@ describe("room phase", () => {
   test("the round ends at the deadline: round-end only, with no pause clock", () => {
     const h = makeHarness();
     h.addSeat("Hansi");
-    h.logic.startRound(h.room); // t = 0, deadline 1000
+    h.logic.beginRound(h.room); // t = 0, deadline 1000
     h.sent.length = 0;
 
     h.clock.advance(1000);
@@ -157,7 +157,7 @@ describe("room phase", () => {
     const h = makeHarness();
     const host = h.addSeat("Hansi");
     h.room.hostSeatId = host.seatId;
-    h.logic.startRound(h.room); // t = 0, deadline 1000
+    h.logic.beginRound(h.room); // t = 0, deadline 1000
     h.clock.advance(1000); // intermission, no deadline
     h.sent.length = 0;
 
@@ -172,9 +172,9 @@ describe("room phase", () => {
     const h = makeHarness();
     const host = h.addSeat("Hansi");
     h.room.hostSeatId = host.seatId;
-    h.logic.startRound(h.room); // t = 0, deadline 1000
+    h.logic.beginRound(h.room); // t = 0, deadline 1000
     h.clock.advance(1000); // pause
-    h.logic.startRound(h.room); // t = 1000, deadline 2000
+    h.logic.beginRound(h.room); // t = 1000, deadline 2000
 
     expect(h.room.phase).toBe("playing");
     expect(h.room.roundNumber).toBe(2);
@@ -187,7 +187,7 @@ describe("room phase", () => {
     const spectator = h.addSeat("Sepp");
     spectator.role = "spectator";
 
-    h.logic.startRound(h.room);
+    h.logic.beginRound(h.room);
 
     expect(spectator.role).toBe("player");
     expect(h.promoted).toEqual([spectator]);
@@ -198,7 +198,7 @@ describe("room phase", () => {
     h.addSeat("Hansi");
     expect(h.logic.acceptsSubmissions(h.room)).toBe(false); // lobby
 
-    h.logic.startRound(h.room); // t = 0, deadline 1000
+    h.logic.beginRound(h.room); // t = 0, deadline 1000
     expect(h.logic.acceptsSubmissions(h.room)).toBe(true);
 
     h.clock.advance(1000); // the round has ended; intermission
@@ -595,6 +595,333 @@ describe("join", () => {
   });
 });
 
+describe("create", () => {
+  test("creates the creator's Seat, makes it host silently and marks the room active", () => {
+    const h = makeHarness();
+    h.clock.advance(42);
+
+    const verdict = h.logic.createSeat(h.room, { nickname: "  Hansi " });
+
+    expect(verdict.kind).toBe("created");
+    if (verdict.kind !== "created") throw new Error("expected a created verdict");
+    expect(verdict.seat.nickname).toBe("Hansi");
+    expect(h.room.hostSeatId).toBe(verdict.seat.seatId);
+    expect(h.room.seats.get(verdict.seat.seatId)).toBe(verdict.seat);
+    expect(h.room.lastActivity).toBe(42);
+    // Nobody else can hear the first host, so no host-changed is broadcast.
+    expect(h.sent).toEqual([]);
+  });
+
+  test("an invalid nickname is refused through the join rule, leaving no Room or Seat", () => {
+    const h = makeHarness();
+
+    const verdict = h.logic.createSeat(h.room, { nickname: "   " });
+
+    expect(verdict).toEqual({
+      kind: "rejected",
+      code: "invalid-message",
+      detail: "nickname invalid",
+    });
+    expect(h.room.seats.size).toBe(0);
+    expect(h.room.hostSeatId).toBe(-1);
+    expect(h.room.lastActivity).toBe(0);
+    expect(h.sent).toEqual([]);
+  });
+});
+
+describe("start-round command", () => {
+  test("a non-host is refused not-host without starting or marking activity", () => {
+    const h = makeHarness();
+    const host = h.addSeat("Hansi");
+    const other = h.addSeat("Gretl");
+    h.room.hostSeatId = host.seatId;
+    h.room.lastActivity = 7;
+
+    const verdict = h.logic.startRound(h.room, other);
+
+    expect(verdict).toEqual({ kind: "rejected", code: "not-host" });
+    expect(h.room.phase).toBe("lobby");
+    expect(h.room.roundNumber).toBe(0);
+    expect(h.room.lastActivity).toBe(7);
+    expect(h.sent).toEqual([]);
+  });
+
+  test("the host cannot start during a running Round: invalid-phase wins after the host check", () => {
+    const h = makeHarness();
+    const host = h.addSeat("Hansi");
+    h.room.hostSeatId = host.seatId;
+    h.logic.beginRound(h.room);
+    h.sent.length = 0;
+    const lastActivity = h.room.lastActivity;
+    const roundNumber = h.room.roundNumber;
+
+    const verdict = h.logic.startRound(h.room, host);
+
+    expect(verdict).toEqual({ kind: "rejected", code: "invalid-phase" });
+    expect(h.room.phase).toBe("playing");
+    expect(h.room.roundNumber).toBe(roundNumber);
+    expect(h.room.lastActivity).toBe(lastActivity);
+    expect(h.sent).toEqual([]);
+  });
+
+  test("the host can start from the Lobby and marks activity", () => {
+    const h = makeHarness();
+    const host = h.addSeat("Hansi");
+    h.room.hostSeatId = host.seatId;
+    h.clock.advance(15);
+
+    const verdict = h.logic.startRound(h.room, host);
+
+    expect(verdict).toEqual({ kind: "ok" });
+    expect(h.room.phase).toBe("playing");
+    expect(h.room.roundNumber).toBe(1);
+    expect(h.room.lastActivity).toBe(15);
+    expect(types(h.sent)).toContain("round-start");
+  });
+
+  test("the host can start the next Round from the Intermission", () => {
+    const h = makeHarness();
+    const host = h.addSeat("Hansi");
+    h.room.hostSeatId = host.seatId;
+    h.logic.beginRound(h.room); // t = 0, deadline 1000
+    h.clock.advance(1000); // pause
+    h.sent.length = 0;
+    h.clock.advance(5);
+
+    const verdict = h.logic.startRound(h.room, host);
+
+    expect(verdict).toEqual({ kind: "ok" });
+    expect(h.room.phase).toBe("playing");
+    expect(h.room.roundNumber).toBe(2);
+    expect(h.room.lastActivity).toBe(1005);
+    expect(types(h.sent)).toContain("round-start");
+  });
+});
+
+describe("kick command", () => {
+  function kickHarness() {
+    const h = makeHarness();
+    const host = h.addSeat("Hansi");
+    const target = h.addSeat("Gretl");
+    h.room.hostSeatId = host.seatId;
+    return { h, host, target };
+  }
+
+  test("a non-host is refused not-host before any target rule", () => {
+    const { h, target } = kickHarness();
+    const other = h.addSeat("Sepp");
+
+    const verdict = h.logic.kick(h.room, other, target.seatId);
+
+    expect(verdict).toEqual({ kind: "rejected", code: "not-host" });
+    expect(h.room.seats.has(target.seatId)).toBe(true);
+    expect(h.sent).toEqual([]);
+  });
+
+  test("the host cannot kick themselves: cannot kick the host wins before the target lookup", () => {
+    const { h, host } = kickHarness();
+
+    const verdict = h.logic.kick(h.room, host, host.seatId);
+
+    expect(verdict).toEqual({
+      kind: "rejected",
+      code: "invalid-message",
+      detail: "cannot kick the host",
+    });
+    expect(h.room.seats.has(host.seatId)).toBe(true);
+    expect(h.sent).toEqual([]);
+  });
+
+  test("a missing Seat is refused no such seat", () => {
+    const { h, host } = kickHarness();
+
+    const verdict = h.logic.kick(h.room, host, 999);
+
+    expect(verdict).toEqual({ kind: "rejected", code: "invalid-message", detail: "no such seat" });
+    expect(h.sent).toEqual([]);
+  });
+
+  test("an auto-released Seat is refused no such seat", () => {
+    const { h, host, target } = kickHarness();
+    target.autoReleased = true;
+
+    const verdict = h.logic.kick(h.room, host, target.seatId);
+
+    expect(verdict).toEqual({ kind: "rejected", code: "invalid-message", detail: "no such seat" });
+    expect(h.room.seats.has(target.seatId)).toBe(true);
+    expect(h.sent).toEqual([]);
+  });
+
+  test("a valid kick releases exactly the target Seat and returns it to close its sockets", () => {
+    const { h, host, target } = kickHarness();
+    const other = h.addSeat("Sepp");
+    h.room.lastActivity = 11;
+    h.sent.length = 0;
+
+    const verdict = h.logic.kick(h.room, host, target.seatId);
+
+    expect(verdict).toEqual({ kind: "released", seat: target });
+    expect(h.room.seats.has(target.seatId)).toBe(false);
+    expect(h.room.seats.has(host.seatId)).toBe(true);
+    expect(h.room.seats.has(other.seatId)).toBe(true);
+    expect(h.room.hostSeatId).toBe(host.seatId);
+    expect(target.autoReleased).toBe(true);
+    expect(types(h.sent)).toEqual(["player-left"]);
+    // Kick does not count as activity.
+    expect(h.room.lastActivity).toBe(11);
+  });
+});
+
+describe("transfer-host command", () => {
+  function transferHarness() {
+    const h = makeHarness();
+    const host = h.addSeat("Hansi");
+    const target = h.addSeat("Gretl");
+    h.room.hostSeatId = host.seatId;
+    return { h, host, target };
+  }
+
+  test("a non-host is refused not-host", () => {
+    const { h, target } = transferHarness();
+    const other = h.addSeat("Sepp");
+
+    const verdict = h.logic.transferHost(h.room, other, target.seatId);
+
+    expect(verdict).toEqual({ kind: "rejected", code: "not-host" });
+    expect(h.room.hostSeatId).not.toBe(target.seatId);
+    expect(h.sent).toEqual([]);
+  });
+
+  test("an absent Seat is refused as a target that is not a connected player", () => {
+    const { h, host } = transferHarness();
+
+    const verdict = h.logic.transferHost(h.room, host, 999);
+
+    expect(verdict).toEqual({
+      kind: "rejected",
+      code: "invalid-message",
+      detail: "target must be a connected player",
+    });
+    expect(h.sent).toEqual([]);
+  });
+
+  test("a Spectator is refused as a target that is not a connected player", () => {
+    const { h, host, target } = transferHarness();
+    target.role = "spectator";
+
+    const verdict = h.logic.transferHost(h.room, host, target.seatId);
+
+    expect(verdict).toEqual({
+      kind: "rejected",
+      code: "invalid-message",
+      detail: "target must be a connected player",
+    });
+    expect(h.sent).toEqual([]);
+  });
+
+  test("an absent player is refused as a target that is not a connected player", () => {
+    const { h, host, target } = transferHarness();
+    target.present = false;
+
+    const verdict = h.logic.transferHost(h.room, host, target.seatId);
+
+    expect(verdict).toEqual({
+      kind: "rejected",
+      code: "invalid-message",
+      detail: "target must be a connected player",
+    });
+    expect(h.sent).toEqual([]);
+  });
+
+  test("the current host is refused already host after the connected-player checks", () => {
+    const { h, host } = transferHarness();
+
+    const verdict = h.logic.transferHost(h.room, host, host.seatId);
+
+    expect(verdict).toEqual({ kind: "rejected", code: "invalid-message", detail: "already host" });
+    expect(h.sent).toEqual([]);
+  });
+
+  test("a valid transfer moves host duties immediately, announces host-changed and touches activity", () => {
+    const { h, host, target } = transferHarness();
+    h.clock.advance(20);
+    h.sent.length = 0;
+
+    const verdict = h.logic.transferHost(h.room, host, target.seatId);
+
+    expect(verdict).toEqual({ kind: "ok" });
+    expect(h.room.hostSeatId).toBe(target.seatId);
+    expect(h.room.lastActivity).toBe(20);
+    expect(h.sent).toEqual([{ type: "host-changed", hostSeatId: target.seatId }]);
+  });
+});
+
+describe("close-room command", () => {
+  test("a non-host is refused not-host without logging or marking activity", () => {
+    const h = makeHarness();
+    const host = h.addSeat("Hansi");
+    const other = h.addSeat("Gretl");
+    h.room.hostSeatId = host.seatId;
+    h.room.lastActivity = 3;
+
+    const verdict = h.logic.close(h.room, other);
+
+    expect(verdict).toEqual({ kind: "rejected", code: "not-host" });
+    expect(h.room.closing).toBe(false);
+    expect(h.room.lastActivity).toBe(3);
+    expect(h.expired).toEqual([]);
+  });
+
+  test("the host is authorized and the rule marks activity, leaving teardown to the adapter", () => {
+    const h = makeHarness();
+    const host = h.addSeat("Hansi");
+    h.room.hostSeatId = host.seatId;
+    h.clock.advance(30);
+
+    const verdict = h.logic.close(h.room, host);
+
+    expect(verdict).toEqual({ kind: "ok" });
+    expect(h.room.lastActivity).toBe(30);
+    expect(h.room.closing).toBe(false);
+    expect(h.expired).toEqual([]);
+    expect(h.sent).toEqual([]);
+  });
+});
+
+describe("leave command", () => {
+  test("always releases the leaving Seat and returns it without marking activity", () => {
+    const h = makeHarness();
+    const host = h.addSeat("Hansi");
+    const other = h.addSeat("Gretl");
+    h.room.hostSeatId = host.seatId;
+    h.room.lastActivity = 4;
+    h.sent.length = 0;
+
+    const verdict = h.logic.leave(h.room, other);
+
+    expect(verdict).toEqual({ kind: "released", seat: other });
+    expect(h.room.seats.has(other.seatId)).toBe(false);
+    expect(h.room.hostSeatId).toBe(host.seatId);
+    expect(h.room.lastActivity).toBe(4);
+    expect(types(h.sent)).toEqual(["player-left"]);
+  });
+
+  test("a leaving host announces the successor before the roster removal", () => {
+    const h = makeHarness();
+    const host = h.addSeat("Hansi");
+    h.clock.advance(10);
+    const successor = h.addSeat("Gretl");
+    h.room.hostSeatId = host.seatId;
+    h.sent.length = 0;
+
+    const verdict = h.logic.leave(h.room, host);
+
+    expect(verdict).toEqual({ kind: "released", seat: host });
+    expect(h.room.hostSeatId).toBe(successor.seatId);
+    expect(types(h.sent)).toEqual(["host-changed", "player-left"]);
+  });
+});
+
 describe("submission", () => {
   const BOARD = ["t", "e", "s", "t", "w", "o", "r", "t", "z", "z", "a", "a", "b", "b", "c", "c"];
 
@@ -607,7 +934,7 @@ describe("submission", () => {
     });
     const seat = h.addSeat("Hansi");
     h.room.hostSeatId = seat.seatId;
-    h.logic.startRound(h.room);
+    h.logic.beginRound(h.room);
     h.sent.length = 0;
     return { h, seat };
   }
@@ -934,7 +1261,7 @@ describe("reveal parity on generated choice boards", () => {
       });
       const seat = h.addSeat("Hansi");
       h.room.hostSeatId = seat.seatId;
-      h.logic.startRound(h.room);
+      h.logic.beginRound(h.room);
 
       for (const word of result.words) {
         const pair = readingPair(word, result.board);

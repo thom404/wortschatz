@@ -50,6 +50,28 @@ export interface JoinRequest {
   nickname: string;
 }
 
+/** A raw create request: the rule normalizes and checks the nickname itself,
+ *  so Create and Join cannot disagree. Server-wide capacity stays with the
+ *  adapter because it reads the room map, not a room. */
+export interface CreateRequest {
+  nickname: string;
+}
+
+/**
+ * What a room command decided. A refusal carries the shared error code and an
+ * optional verbatim detail; an acceptance carries only what the wire adapter
+ * needs to finish its work. No verdict sees a `reqId`, a socket or a token.
+ */
+export type CommandVerdict =
+  | { kind: "rejected"; code: ErrorCode; detail?: string }
+  | { kind: "ok" }
+  | { kind: "created"; seat: Seat }
+  | { kind: "released"; seat: Seat };
+
+type CreateVerdict = Extract<CommandVerdict, { kind: "created" | "rejected" }>;
+type ReleaseVerdict = Extract<CommandVerdict, { kind: "released" | "rejected" }>;
+type DoneVerdict = Extract<CommandVerdict, { kind: "ok" | "rejected" }>;
+
 /**
  * What the join rule decided. Only a refusal carries an error code; a
  * reconnect or join carries the seat and the rule's answer to whether the
@@ -375,6 +397,113 @@ export class RoomLogic {
   }
 
   /* ------------------------------------------------------------------ */
+  /* Room commands                                                       */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * The create decision, sharing the join nickname rule. The adapter has
+   * already refused server-wide capacity and minted the room; this rule
+   * normalizes and validates the nickname, creates the creator's Seat, makes
+   * it host silently (nobody else can hear an announcement) and marks the
+   * room active. A refusal leaves the adapter to discard the unused room.
+   */
+  createSeat(room: Room, request: CreateRequest): CreateVerdict {
+    const nickname = normalizeNickname(request.nickname);
+    if (!validNickname(nickname)) {
+      return { kind: "rejected", code: "invalid-message", detail: "nickname invalid" };
+    }
+    const seat = this.newSeat(room, nickname);
+    room.hostSeatId = seat.seatId;
+    this.touch(room);
+    return { kind: "created", seat };
+  }
+
+  /**
+   * The start-round command: host first, then phase. The host may begin from
+   * the Lobby or the pause; the rule touches the room and hands the actual
+   * phase transition to `beginRound`.
+   */
+  startRound(room: Room, seat: Seat): DoneVerdict {
+    if (!this.isHost(room, seat)) {
+      return { kind: "rejected", code: "not-host" };
+    }
+    if (room.phase !== "lobby" && room.phase !== "intermission") {
+      return { kind: "rejected", code: "invalid-phase" };
+    }
+    this.touch(room);
+    this.beginRound(room);
+    return { kind: "ok" };
+  }
+
+  /**
+   * The kick command: host first, then "cannot kick the host", then the target
+   * must exist and not have auto-released. The semantic `kick` log is emitted
+   * before the roster removal, preserving `kick` → `player-left`. The released
+   * verdict carries the target Seat so the adapter can close its sockets.
+   */
+  kick(room: Room, host: Seat, targetSeatId: number): ReleaseVerdict {
+    if (!this.isHost(room, host)) {
+      return { kind: "rejected", code: "not-host" };
+    }
+    if (targetSeatId === room.hostSeatId) {
+      return { kind: "rejected", code: "invalid-message", detail: "cannot kick the host" };
+    }
+    const target = room.seats.get(targetSeatId);
+    if (!target || target.autoReleased) {
+      return { kind: "rejected", code: "invalid-message", detail: "no such seat" };
+    }
+    this.deps.cfg.log.info({ event: "kick", room: room.code, seat: targetSeatId });
+    this.releaseSeat(room, target);
+    return { kind: "released", seat: target };
+  }
+
+  /**
+   * The host-transfer command: host first, then the target must be an existing,
+   * connected player, then it must not already be the host. The rule touches
+   * the room and `setHost` announces `host-changed` immediately.
+   */
+  transferHost(room: Room, host: Seat, targetSeatId: number): DoneVerdict {
+    if (!this.isHost(room, host)) {
+      return { kind: "rejected", code: "not-host" };
+    }
+    const target = room.seats.get(targetSeatId);
+    if (!target || !target.present || target.role !== "player") {
+      return { kind: "rejected", code: "invalid-message", detail: "target must be a connected player" };
+    }
+    if (targetSeatId === room.hostSeatId) {
+      return { kind: "rejected", code: "invalid-message", detail: "already host" };
+    }
+    this.touch(room);
+    this.setHost(room, targetSeatId);
+    return { kind: "ok" };
+  }
+
+  /**
+   * The close-room command: only the host may end the room. The rule logs and
+   * marks activity; the adapter owns the teardown (`endRoom`) because it sends
+   * `room-ended`, closes sockets and removes the room from its map.
+   */
+  close(room: Room, seat: Seat): DoneVerdict {
+    if (!this.isHost(room, seat)) {
+      return { kind: "rejected", code: "not-host" };
+    }
+    this.deps.cfg.log.info({ event: "room-closed", room: room.code, by: seat.seatId });
+    this.touch(room);
+    return { kind: "ok" };
+  }
+
+  /**
+   * The leave command: always releases the leaving Seat. The semantic `leave`
+   * log is emitted before the roster change; the adapter closes the returned
+   * seat's sockets. Leaving does not count as activity.
+   */
+  leave(room: Room, seat: Seat): Extract<CommandVerdict, { kind: "released" }> {
+    this.deps.cfg.log.info({ event: "leave", room: room.code, seat: seat.seatId });
+    this.releaseSeat(room, seat);
+    return { kind: "released", seat };
+  }
+
+  /* ------------------------------------------------------------------ */
   /* Expiry timers                                                       */
   /* ------------------------------------------------------------------ */
 
@@ -428,7 +557,9 @@ export class RoomLogic {
     return room.phase === "playing" && this.deps.clock.now() < room.deadline;
   }
 
-  startRound(room: Room): void {
+  /** The phase mechanism behind the `startRound` command: no host or phase
+   *  decision here, only the transition into a fresh playing round. */
+  beginRound(room: Room): void {
     room.roundNumber += 1;
     room.phase = "playing";
     const seed = this.deps.cfg.seedSource();
