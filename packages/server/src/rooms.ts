@@ -5,7 +5,7 @@ import { Connection, errorReply } from "./connection.js";
 import { Pinger } from "./hardening.js";
 import { makeRoom, makeRoomCode, makeToken, seatInfo, type Room, type Seat } from "./state.js";
 import { RoomLogic, systemClock, type Clock } from "./room-logic.js";
-import { normalizeCode, normalizeNickname, validNickname } from "./text.js";
+import { normalizeCode } from "./text.js";
 
 interface ConnState {
   conn: Connection;
@@ -82,28 +82,23 @@ export class Rooms {
       this.handleJoin(msg, ws);
       return;
     }
-    this.sendTo(ws, {
-      type: "error",
-      code: "invalid-message",
-      message: "first message must be create-room or join",
-    });
+    this.sendTo(ws, errorReply("invalid-message", "first message must be create-room or join"));
   }
   private handleCreateRoom(msg: Extract<ClientMessage, { type: "create-room" }>, ws: WebSocket): void {
     if (this.rooms.size >= this.cfg.maxRooms) {
       this.sendTo(ws, errorReply("server-full", "room capacity reached", msg.reqId));
       return;
     }
-    const nickname = normalizeNickname(msg.nickname);
-    if (!validNickname(nickname)) {
-      this.sendTo(ws, errorReply("invalid-message", "nickname invalid", msg.reqId));
-      return;
-    }
     const code = this.mintCode();
     const room = makeRoom(code);
     this.rooms.set(code, room);
-    this.logic.touch(room);
-    const seat = this.logic.newSeat(room, nickname);
-    room.hostSeatId = seat.seatId;
+    const verdict = this.logic.createSeat(room, { nickname: msg.nickname });
+    if (verdict.kind === "rejected") {
+      this.rooms.delete(code);
+      this.sendTo(ws, errorReply(verdict.code, verdict.detail, msg.reqId));
+      return;
+    }
+    const seat = verdict.seat;
     seat.token = makeToken();
     this.bindConn(ws, room, seat);
     this.logic.scheduleIdleCheck(room);
@@ -166,18 +161,13 @@ export class Rooms {
         this.authenticate(msg, ws);
         return;
       }
-      this.sendTo(ws, {
-        type: "error",
-        reqId: msg.reqId,
-        code: "invalid-message",
-        message: "not bound to a room",
-      });
+      this.sendTo(ws, errorReply("invalid-message", "not bound to a room", msg.reqId));
       return;
     }
     const room = this.rooms.get(state.roomId);
     const seat = room?.seats.get(state.seatId);
     if (!room || !seat) {
-      this.sendTo(ws, { type: "error", reqId: msg.reqId, code: "room-not-found" });
+      this.sendTo(ws, errorReply("room-not-found", undefined, msg.reqId));
       return;
     }
     switch (msg.type) {
@@ -204,12 +194,7 @@ export class Rooms {
         break;
       default:
         // Room-bound for its lifetime; switching rooms means a fresh socket.
-        this.sendTo(ws, {
-          type: "error",
-          reqId: msg.reqId,
-          code: "invalid-message",
-          message: "already bound to a room",
-        });
+        this.sendTo(ws, errorReply("invalid-message", "already bound to a room", msg.reqId));
         break;
     }
   }
@@ -234,74 +219,41 @@ export class Rooms {
     });
     this.logic.announceScores(room);
   }
-  private requireHost(room: Room, seat: Seat, reqId?: number): boolean {
-    if (!this.logic.isHost(room, seat)) {
-      this.sendToSeat(seat, { type: "error", reqId, code: "not-host" });
-      return false;
-    }
-    return true;
-  }
   private handleStartRound(room: Room, seat: Seat, reqId?: number): void {
-    if (!this.requireHost(room, seat, reqId)) return;
-    if (room.phase !== "lobby" && room.phase !== "intermission") {
-      this.sendToSeat(seat, { type: "error", reqId, code: "invalid-phase" });
-      return;
+    const verdict = this.logic.startRound(room, seat);
+    if (verdict.kind === "rejected") {
+      this.sendToSeat(seat, errorReply(verdict.code, verdict.detail, reqId));
     }
-    this.logic.touch(room);
-    this.logic.startRound(room);
   }
   private handleKick(room: Room, host: Seat, targetSeatId: number, reqId?: number): void {
-    if (!this.requireHost(room, host, reqId)) return;
-    if (targetSeatId === room.hostSeatId) {
-      this.sendToSeat(host, {
-        type: "error",
-        reqId,
-        code: "invalid-message",
-        message: "cannot kick the host",
-      });
+    const verdict = this.logic.kick(room, host, targetSeatId);
+    if (verdict.kind === "rejected") {
+      this.sendToSeat(host, errorReply(verdict.code, verdict.detail, reqId));
       return;
     }
-    const target = room.seats.get(targetSeatId);
-    if (!target || target.autoReleased) {
-      this.sendToSeat(host, { type: "error", reqId, code: "invalid-message", message: "no such seat" });
-      return;
-    }
-    this.cfg.log.info({ event: "kick", room: room.code, seat: targetSeatId });
-    const sockets = [...target.sockets];
-    this.logic.releaseSeat(room, target);
+    const sockets = [...verdict.seat.sockets];
     for (const sock of sockets) {
       this.sendTo(sock, { type: "kicked" });
       this.conns.get(sock)?.conn.close(1000, "kicked");
     }
   }
   private handleCloseRoom(room: Room, seat: Seat, reqId?: number): void {
-    if (!this.requireHost(room, seat, reqId)) return;
-    this.cfg.log.info({ event: "room-closed", room: room.code, by: seat.seatId });
+    const verdict = this.logic.close(room, seat);
+    if (verdict.kind === "rejected") {
+      this.sendToSeat(seat, errorReply(verdict.code, verdict.detail, reqId));
+      return;
+    }
     this.endRoom(room, "host-closed", 1000);
   }
   private handleTransferHost(room: Room, seat: Seat, targetSeatId: number, reqId?: number): void {
-    if (!this.requireHost(room, seat, reqId)) return;
-    const target = room.seats.get(targetSeatId);
-    if (!target || !target.present || target.role !== "player") {
-      this.sendToSeat(seat, {
-        type: "error",
-        reqId,
-        code: "invalid-message",
-        message: "target must be a connected player",
-      });
-      return;
+    const verdict = this.logic.transferHost(room, seat, targetSeatId);
+    if (verdict.kind === "rejected") {
+      this.sendToSeat(seat, errorReply(verdict.code, verdict.detail, reqId));
     }
-    if (targetSeatId === room.hostSeatId) {
-      this.sendToSeat(seat, { type: "error", reqId, code: "invalid-message", message: "already host" });
-      return;
-    }
-    this.logic.touch(room);
-    this.logic.setHost(room, targetSeatId);
   }
   private handleLeave(room: Room, seat: Seat): void {
-    this.cfg.log.info({ event: "leave", room: room.code, seat: seat.seatId });
-    const sockets = [...seat.sockets];
-    this.logic.releaseSeat(room, seat);
+    const { seat: leaving } = this.logic.leave(room, seat);
+    const sockets = [...leaving.sockets];
     for (const sock of sockets) {
       const st = this.conns.get(sock);
       if (st) {
