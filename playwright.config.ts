@@ -40,6 +40,9 @@ export default defineConfig({
     timezoneId: "Europe/Berlin",
     reducedMotion: "reduce",
     viewport: { width: 1280, height: 800 },
+    // Screenshot, ARIA, flow and responsive specs must never run against a
+    // stored shell. The offline spec alone opts back in (ADR-0029, #260).
+    serviceWorkers: "block",
     trace: "retain-on-failure",
   },
   webServer: {
