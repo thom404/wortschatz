@@ -1,0 +1,5 @@
+- region "Startbildschirm":
+    - heading "Startbildschirm" [level=2]
+    - paragraph: Öffne Wortschatz ohne Browserleiste.
+    - button "Installieren"
+    - button "Hinweis ausblenden": Später

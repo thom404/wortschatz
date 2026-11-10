@@ -50,12 +50,16 @@ at phone and desktop widths in both skins.
 6. **Viewports and skins.** Three viewports — 360×640, 390×844 and 1280×800 —
    and both Standard and Arcade for every scenario. Skin state uses the app's
    stored choice, never a test path.
-7. **Curated matrix.** Sixty-six full-page screenshots: 36 canonical (6 screens
-   × 2 skins × 3 viewports), 10 outcome (5 states × 2 skins × 390), and 20
-   targeted (10 states × 2 skins × 360). The targeted rows include the #154
-   long-name standings chip, low timer, error notice, spectator, both flat
-   reveal sortings, a full lobby, a local home error, a deep-link invitation
-   and a lobby guest.
+7. **Curated matrix.** One hundred and sixteen full-page screenshots: 64
+   canonical (8 screens × 2 skins × 4 viewports), 10 outcome (5 states × 2
+   skins × 390), 24 targeted (12 states × 2 skins × 360) and 18 installed
+   (3 states × 2 skins × 360, 390 and 1280). The targeted rows include the
+   #154 long-name standings chip, low timer, choice tile, rotation tooltip,
+   error notice, spectator, both flat reveal sortings, a full lobby, a local
+   home error, a deep-link invitation and a lobby guest. The installed rows
+   are the Home install card, the update notice and the offline Home; they
+   need a real **Service worker**, so they live in
+   `e2e/installable-visual.spec.ts`.
 8. **Determinism.** The page clock is frozen before navigation and deadlines
    derive from it; the low-timer row uses fixed time + 15 s. Screenshots run
    with `animations: "disabled"`, `caret: "hide"`, `locale: "de-DE"`,
@@ -77,11 +81,12 @@ test:visual` runs the suite.
     `npm test` are unchanged, so the Docker build and the issue agent stay
     browser-free. Workflow files are human-owned (ADR-0006 §5), so the job
     itself is applied by a human.
-12. **Semantics and flows.** Six ARIA snapshots (one per canonical screen, not
-    per skin or viewport) cover roles, names and reading order. Five flow tests
-    assert wire frames without screenshots: create room → lobby, deep-link
-    join, skin switch survives reload, drag → `submit-word`, and intermission →
-    `start-round`.
+12. **Semantics and flows.** Twelve ARIA snapshots (one per canonical screen,
+    not per skin or viewport, plus the Menü closed/open, the install card and
+    the update notice) cover roles, names and reading order. Seven flow tests
+    assert wire frames without screenshots: create room → lobby, invite-link
+    copy, deep-link join, skin switch survives reload, Menü over a running
+    round, drag → `submit-word`, and intermission → `start-round`.
 13. **#154 ordering.** The targeted overflow scenario is written now. While
     #154 is open it is `test.fixme` with a reference to the issue, so CI never
     baselines the broken layout. The fix removes the marker and commits the
@@ -115,7 +120,7 @@ test:visual` runs the suite.
 - The repository grows by the baseline images; the suite's runtime and the CI
   minutes grow separately from `npm test`.
 - A fix for #154 enables its two targeted rows and commits their baselines.
-- Extending the matrix is a later ticket; the curated 66 rows are intentionally
+- Extending the matrix is a later ticket; the curated 116 rows are intentionally
   not a full cross-product.
 
 ## Amendment (#175, 2026-10-22): a fourth viewport for canonical rows
@@ -126,7 +131,9 @@ takes effect, so the responsive claim had no pixel evidence behind it. A fourth
 viewport, **768×1024**, is added to canonical scenarios only: outcome and
 targeted rows stay on phones, because they exercise states rather than
 arrangements. The matrix becomes 8 canonical screens × 2 skins × 4 viewports =
-64 rows, plus the unchanged 10 outcome and 20 targeted rows — 94 in total.
+64 rows, plus the unchanged 10 outcome and 20 targeted rows — 94 rows at that
+amendment. (Two later targeted rows and #261's installed rows bring the current
+total to 116.)
 
 The same amendment adds the overflow assertions the responsive pass needs — no
 horizontal document overflow on any screen × viewport × skin, and the board fully
@@ -145,5 +152,20 @@ network disabled and showing `Du bist offline.`, a waiting worker announcing
 appearing, remembering `Später` and hiding after install. The spec drives only
 existing browser and wire boundaries; it adds no app seam, and the strict
 network guard still rejects any request outside the preview origin. The
-matrix, viewports and **Screenshot baselines** are unchanged; the new states'
-visual records are #261.
+matrix, viewports and **Screenshot baselines** were unchanged by #260; #261
+adds the new states' visual records in `e2e/installable-visual.spec.ts`.
+
+## Amendment (#261, 2026-11-10): visual records for the installed states
+
+The **Install card**, the **Update notice** and the offline **Home** now have
+**Screenshot baselines** in both skins at 360×640, 390×844 and 1280×800 (18
+rows), and the install card and update notice have ARIA snapshots. They live in
+`e2e/installable-visual.spec.ts`, the second spec that opts back into service
+workers beside `e2e/offline.spec.ts`, because the update notice and the offline
+Home need a real worker; the install card lives beside them so the installed
+states share one visual home. Every other screenshot, ARIA, flow and responsive
+spec keeps `serviceWorkers: "block"`. The install card uses the same dispatched
+`beforeinstallprompt` boundary as the behavior proof, the update notice waits
+for a real waiting worker, and the offline row reloads the stored shell with
+the network disabled. The matrix is therefore 116 rows, the semantics layer is
+12 ARIA snapshots and seven flow tests remain unchanged.

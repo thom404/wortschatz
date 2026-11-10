@@ -640,7 +640,7 @@ export const OUTCOME_SCENARIOS: readonly ScreenshotScenario[] = [
   connectionLost,
 ];
 
-/** 11 targeted states × 2 skins × 360 = 22. */
+/** 12 targeted states × 2 skins × 360 = 24. */
 export const TARGETED_SCENARIOS: readonly ScreenshotScenario[] = [
   overflowChip,
   lowTimer,
