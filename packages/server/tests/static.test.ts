@@ -4,7 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inflateSync } from "node:zlib";
-import { CONTENT_SECURITY_POLICY, MANIFEST_CONTENT_TYPE } from "../src/index.js";
+import {
+  CONTENT_SECURITY_POLICY,
+  ICON_CACHE_CONTROL,
+  IMMUTABLE_CACHE_CONTROL,
+  MANIFEST_CONTENT_TYPE,
+  NO_CACHE_CONTROL,
+  SERVICE_WORKER_PATH,
+} from "../src/index.js";
 import { createRoom, FAST_CLOCK, makeScene, type Scene } from "./scene.js";
 
 /** The committed public assets the Vite build copies to the origin root. */
@@ -55,15 +62,30 @@ describe("static SPA serving", () => {
     await mkdir(join(dir, "assets"));
     await writeFile(join(dir, "assets", "app.js"), "export {}");
     await writeFile(join(dir, "manifest.webmanifest"), "{}");
+    await writeFile(join(dir, "sw.js"), "self.addEventListener('install', () => {});");
+    await mkdir(join(dir, "icons"));
+    await writeFile(join(dir, "icons", "icon-192.png"), "png");
 
     const scene2 = await makeScene({ ...FAST_CLOCK, staticDir: dir });
     try {
       const base = `http://localhost:${scene2.handle.port}`;
 
-      for (const path of ["/", "/r/ABC12", "/assets/app.js", "/manifest.webmanifest", "/nope.txt"]) {
+      for (const path of [
+        "/",
+        "/r/ABC12",
+        "/assets/app.js",
+        "/manifest.webmanifest",
+        "/sw.js",
+        "/icons/icon-192.png",
+        "/nope.txt",
+      ]) {
         const res = await fetch(new URL(path, base));
         expect(res.headers.get("content-security-policy")).toBe(CONTENT_SECURITY_POLICY);
       }
+
+      const missing = await fetch(`${base}/icons/missing.png`);
+      expect(missing.status).toBe(404);
+      expect(missing.headers.get("content-security-policy")).toBe(CONTENT_SECURITY_POLICY);
     } finally {
       await scene2.stop();
     }
@@ -116,6 +138,77 @@ describe("static SPA serving", () => {
     } finally {
       await scene2.stop();
     }
+  });
+
+  // #256: the worker, manifest and icons are the app's own files. A missing
+  // one answers 404; the root and Deep link paths keep the Home fallback.
+  test("answers 404 for a missing worker, manifest or icon and keeps the Home fallback", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wordament-static-"));
+    await writeFile(join(dir, "index.html"), "<html>home document</html>");
+    await mkdir(join(dir, "assets"));
+    await writeFile(join(dir, "assets", "app.js"), "export {}");
+
+    const scene2 = await makeScene({ ...FAST_CLOCK, staticDir: dir });
+    try {
+      const base = `http://localhost:${scene2.handle.port}`;
+      for (const path of [
+        SERVICE_WORKER_PATH,
+        "/manifest.webmanifest",
+        "/icons/icon-192.png",
+        "/icons/icon-512.png",
+        "/icons/icon-512-maskable.png",
+        "/icons/apple-touch-icon.png",
+      ]) {
+        const res = await fetch(`${base}${path}`);
+        expect(res.status).toBe(404);
+        expect(await res.text()).toBe("not found");
+      }
+
+      for (const path of ["/", "/r/ABC12"]) {
+        const home = await fetch(`${base}${path}`);
+        expect(home.status).toBe(200);
+        expect(await home.text()).toContain("home document");
+      }
+    } finally {
+      await scene2.stop();
+    }
+    void scene;
+  });
+
+  // #256: the shell entry points revalidate every time; content-hashed build
+  // output is immutable for a year and icons expire after one week.
+  test("sets the app shell cache policy on every static file group", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wordament-static-"));
+    await cp(PUBLIC_DIR, dir, { recursive: true });
+    await writeFile(join(dir, "index.html"), "<html>home document</html>");
+    await mkdir(join(dir, "assets"));
+    await writeFile(join(dir, "assets", "app-abc123.js"), "export {}");
+    await writeFile(join(dir, "assets", "app-def456.css"), "body {}");
+    await writeFile(join(dir, "sw.js"), "self.addEventListener('install', () => {});");
+
+    const scene2 = await makeScene({ ...FAST_CLOCK, staticDir: dir });
+    try {
+      const base = `http://localhost:${scene2.handle.port}`;
+      const expected: [string, string][] = [
+        ["/", NO_CACHE_CONTROL],
+        ["/r/ABC12", NO_CACHE_CONTROL],
+        ["/index.html", NO_CACHE_CONTROL],
+        ["/sw.js", NO_CACHE_CONTROL],
+        ["/manifest.webmanifest", NO_CACHE_CONTROL],
+        ["/assets/app-abc123.js", IMMUTABLE_CACHE_CONTROL],
+        ["/assets/app-def456.css", IMMUTABLE_CACHE_CONTROL],
+        ["/icons/icon-192.png", ICON_CACHE_CONTROL],
+        ["/icons/icon-512-maskable.png", ICON_CACHE_CONTROL],
+      ];
+      for (const [path, cacheControl] of expected) {
+        const res = await fetch(`${base}${path}`);
+        expect(res.status).toBe(200);
+        expect(res.headers.get("cache-control")).toBe(cacheControl);
+      }
+    } finally {
+      await scene2.stop();
+    }
+    void scene;
   });
 
   // #255: four committed rasters exist at the manifest's sizes, and the
