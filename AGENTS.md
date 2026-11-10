@@ -35,7 +35,7 @@ full-page screenshots against committed baselines; it never runs as part of
 [ADR-0020](docs/adr/0020-browser-visual-regression-seam.md).
 
 - `npm run test:visual` — build and serve the production client, then run the
-  66-row screenshot matrix, six ARIA snapshots and five flow tests.
+  116-row screenshot matrix, twelve ARIA snapshots and seven flow tests.
 - `npm run test:visual:update` — accept intended visual changes. Run this only
   for a deliberate UI change and review the changed PNGs in the pull request;
   never run it just to make a red job green.

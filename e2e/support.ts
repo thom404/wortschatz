@@ -174,6 +174,62 @@ export async function openScene(page: Page, opts: OpenSceneOptions): Promise<Wir
   return wire;
 }
 
+/** Waits for the production worker to activate, then reloads once so the
+ *  current document is controlled by the stored shell (ADR-0029). */
+export async function activateServiceWorker(page: Page): Promise<void> {
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload();
+}
+
+/** Dispatches the browser's install-prompt event through the real window
+ *  boundary; Chromium does not offer it in headless mode. */
+export async function offerInstallPrompt(
+  page: Page,
+  outcome: "accepted" | "dismissed" = "dismissed"
+): Promise<void> {
+  await page.evaluate((choice) => {
+    const event = new Event("beforeinstallprompt", { cancelable: true }) as Event & {
+      prompt(): Promise<void>;
+      readonly userChoice: Promise<{ outcome: string; platform: string }>;
+    };
+    Object.defineProperties(event, {
+      prompt: { value: async () => {} },
+      userChoice: { value: Promise.resolve({ outcome: choice, platform: "web" }) },
+    });
+    window.dispatchEvent(event);
+  }, outcome);
+}
+
+/** Serves a byte-different worker on a second registration URL, then asks
+ *  the browser to install it beside the controlling worker and waits for it
+ *  to reach `waiting`. */
+export async function waitForWaitingWorker(page: Page): Promise<void> {
+  const context = page.context();
+  let serveUpdate = false;
+  await context.route("**/sw.js*", async (route) => {
+    if (!serveUpdate) {
+      await route.continue();
+      return;
+    }
+    const response = await route.fetch();
+    const body = await response.text();
+    await route.fulfill({ response, body: `${body}\n// update proof ${Date.now()}\n` });
+  });
+  try {
+    serveUpdate = true;
+    await page.evaluate(async () => {
+      await navigator.serviceWorker.register(`/sw.js?update-proof=${Date.now()}`);
+    });
+    await expect
+      .poll(async () =>
+        page.evaluate(async () => Boolean((await navigator.serviceWorker.getRegistration())?.waiting))
+      )
+      .toBe(true);
+  } finally {
+    await context.unroute("**/sw.js*");
+  }
+}
+
 /**
  * Fails the test if the production bundle requests anything outside the
  * preview origin — an unexpected external dependency would make screenshots

@@ -143,8 +143,10 @@ The production-build browser suite now proves the installed app from outside in
 `e2e/offline.spec.ts`: a stored shell opens after one online visit with the
 network disabled and shows `Du bist offline.`, a waiting worker produces the
 **Update notice** only after the **Round**, and the **Install card** appears,
-remembers `Später` and hides after install. This is the one spec that allows
-service workers; every other screenshot, ARIA, flow and responsive spec blocks
-them, so the **Screenshot baselines** stay deterministic. The spec uses the
-existing frozen clock, German locale, **Wire protocol** fixtures and strict
-network guard, and adds no test-only boot hook or app seam.
+remembers `Später` and hides after install. This is the behavior spec that
+allows service workers; every other screenshot, ARIA, flow and responsive spec
+blocks them, except #261's installed-state visual records in
+`e2e/installable-visual.spec.ts`, so the **Screenshot baselines** stay
+deterministic. The spec uses the existing frozen clock, German locale,
+**Wire protocol** fixtures and strict network guard, and adds no test-only boot
+hook or app seam.
