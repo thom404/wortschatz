@@ -317,6 +317,17 @@ root, can be switched from the **Menu** (ADR-0023), applies app-wide instantly, 
 persists in localStorage. No component style branches on a skin beyond tokens, and
 adding one cannot break layout. See [ADR-0002](docs/adr/0002-game-screen-layout-and-skins.md).
 
+## Screen
+
+One of the seven render targets — Home, Create, Join, Lobby (the Wait room),
+Game, Intermission and Outcome — owning its template, ids, live regions, event
+wiring, document title, Menu key and the helpers only it uses. A screen is a
+module exporting a `paint` function; the shell installs the resulting
+`ScreenPaint` into `#screen`, owns the rebuild, and gives the screen only the
+narrow screen context. The connection, timers, history internals and Menu are
+never reachable from a screen. See
+[ADR-0030](docs/adr/0030-one-module-per-screen-behind-one-shell.md).
+
 ## Screenshot baseline
 
 A committed full-page PNG of one curated scenario, skin and viewport in

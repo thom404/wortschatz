@@ -96,3 +96,12 @@ View state stays in memory; a reload starts fresh and nothing goes to
   local to one browser session and must not surprise a returning player.
 - **Add a wire message for view state.** Rejected: it is player-local and must
   leave the Room and the other players unaffected.
+
+## Amendment (ADR-0030, 2026-11-10): the drag margin moves beside the Gesture
+
+[ADR-0030](0030-one-module-per-screen-behind-one-shell.md) moves the
+`clearHitMargin` measured after a board render into the app-lifetime Game drag
+module, where the hit-test that reads it lives. Live regions likewise move
+onto the installed screen paint. This ADR's view-state decision is unchanged:
+the reveal order, Board rotation and Gesture still belong to `ViewState` with
+the same reset table.
