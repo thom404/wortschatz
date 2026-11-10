@@ -65,6 +65,14 @@ leave a browser on a stale shell.
    arrive through `no-cache` entry points and a fresh versioned cache; it never
    calls `skipWaiting` or reloads the page. The update notice that waits for a
    safe phase owns the user-facing reload in its own slice.
+10. **A documented server flag is the worker kill switch.** With
+    `WORTSCHATZ_SERVICE_WORKER_KILL_SWITCH=1` (or `true`), the worker path
+    answers with a replacement worker that takes over, deletes every cache and
+    unregisters itself; with the flag unset or false the real build worker is
+    served byte for byte. This is the one deliberate exception to §9's no-
+    `skipWaiting` rule: an operator explicitly neutralises a bad worker with no
+    browser change, and the worker still never reloads the page. Every other
+    static response is unchanged.
 
 ## Consequences
 
@@ -78,6 +86,9 @@ leave a browser on a stale shell.
   baselines stay deterministic; the offline behavior is covered at the client
   and static seams, and the built artifact is checked for its exact precache
   set.
+- A bad worker can be neutralised by an operator setting one environment flag,
+  without a browser or container change; players fall back to the online site
+  after that worker has cleaned itself up.
 
 ## Suppressed alternatives
 

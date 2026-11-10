@@ -205,3 +205,33 @@ Until both secrets exist, a run fails immediately and the failure step applies
 `ready-for-human`. Smoke-test the workflow with
 `gh workflow run "Issue agent" --field issue=<n>` (the manual trigger accepts
 an issue number and does not require the `agent-run` label).
+
+## 9. Service-worker kill switch (#259, ADR-0029)
+
+A bad service worker can be neutralised without shipping a browser change.
+Set the documented flag on the `wortschatz` service in the server-side
+`compose.yaml` (the deployment copy, not this repo's mold) and recreate the
+container:
+
+```yaml
+environment:
+  - PORT=3000
+  - WORTSCHATZ_SERVICE_WORKER_KILL_SWITCH=1
+```
+
+`true` works as well; any other value or an unset variable leaves the real
+build worker in place. Then run the standard refresh:
+
+```sh
+docker compose pull
+docker compose up -d
+```
+
+The auto-deploy poller only rewrites the `image:` pin, so the flag stays set
+across deploys until you remove it. On their next visit the browser fetches
+the replacement worker, which deletes every cache and unregisters itself. The
+player sees no message: the app keeps working as an online website, but the
+installed app no longer opens offline — without a network the player gets the
+browser's error page instead of Home. Remove the variable and recreate the
+container to serve the real worker again; every player's app registers it
+again on the next visit.

@@ -262,6 +262,14 @@ versioned one. Non-GET requests, the health endpoint and **Wire protocol**
 frames are never stored. See
 [ADR-0029](docs/adr/0029-offline-app-shell-and-static-cache-policy.md).
 
+## Service-worker kill switch
+
+The documented `WORTSCHATZ_SERVICE_WORKER_KILL_SWITCH` environment flag that
+makes the server answer the **Service worker** path with a replacement worker
+which deletes every cache and unregisters itself. It neutralises a bad worker
+without a browser change; with the flag unset the real build worker is served.
+See [ADR-0029](docs/adr/0029-offline-app-shell-and-static-cache-policy.md).
+
 ## Session token
 
 The opaque, server-issued token persisted client-side that reclaims a player's seat
