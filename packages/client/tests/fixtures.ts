@@ -137,6 +137,7 @@ export const COPY = {
     rotate: "Das Spielfeld lässt sich in 90°-Schritten drehen.",
     cspFix: "Spielfeld und Zeitring werden wieder korrekt dargestellt.",
     inviteCopy: "Der Einladungslink lässt sich jetzt sauber kopieren.",
+    install: "Wortschatz lässt sich jetzt auf dem Startbildschirm installieren.",
     rules: "Spielanleitung",
     rulesIntro: "So spielst du:",
     rulesUmlauts: "Ä, ö, ü und ß gelten als echte Buchstaben.",

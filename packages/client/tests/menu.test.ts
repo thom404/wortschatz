@@ -234,29 +234,34 @@ describe("Menü entries (spec #194)", () => {
   });
 
   it("ships the newest-first changelog and tags the running build", () => {
-    expect(CHANGELOG).toHaveLength(3);
-    expect(CHANGELOG[0]!.version).toBe("0.1.2");
-    expect(CHANGELOG[0]!.notes).toEqual([COPY.menu.inviteCopy]);
-    expect(CHANGELOG[1]!.version).toBe("0.1.1");
-    expect(CHANGELOG[1]!.notes).toEqual([COPY.menu.cspFix]);
-    expect(CHANGELOG[2]!.version).toBe("0.1.0");
+    expect(CHANGELOG).toHaveLength(4);
+    expect(CHANGELOG[0]!.version).toBe("0.1.3");
+    expect(CHANGELOG[0]!.notes).toEqual([COPY.menu.install]);
+    expect(CHANGELOG[1]!.version).toBe("0.1.2");
+    expect(CHANGELOG[1]!.notes).toEqual([COPY.menu.inviteCopy]);
+    expect(CHANGELOG[2]!.version).toBe("0.1.1");
+    expect(CHANGELOG[2]!.notes).toEqual([COPY.menu.cspFix]);
+    expect(CHANGELOG[3]!.version).toBe("0.1.0");
     const ranks = CHANGELOG.map((entry) => versionNumber(entry.version));
     expect(ranks).toEqual([...ranks].sort((a, b) => b - a));
 
     openMenu();
     toggleFor("menu-changelog").click();
     const blocks = bodyFor("menu-changelog").querySelectorAll(".menu-changelog-entry");
-    expect(blocks).toHaveLength(3);
-    expect(blocks[0]!.querySelector("h3")!.textContent).toContain(COPY.menu.version("0.1.2"));
+    expect(blocks).toHaveLength(4);
+    expect(blocks[0]!.querySelector("h3")!.textContent).toContain(COPY.menu.version("0.1.3"));
     expect(blocks[0]!.querySelector(".menu-current")!.textContent).toBe(COPY.menu.current);
-    expect(blocks[0]!.textContent).toContain(COPY.menu.inviteCopy);
-    expect(blocks[1]!.querySelector("h3")!.textContent).toContain(COPY.menu.version("0.1.1"));
+    expect(blocks[0]!.textContent).toContain(COPY.menu.install);
+    expect(blocks[1]!.querySelector("h3")!.textContent).toContain(COPY.menu.version("0.1.2"));
     expect(blocks[1]!.querySelector(".menu-current")).toBeNull();
-    expect(blocks[1]!.textContent).toContain(COPY.menu.cspFix);
-    expect(blocks[2]!.querySelector("h3")!.textContent).toContain(COPY.menu.version("0.1.0"));
+    expect(blocks[1]!.textContent).toContain(COPY.menu.inviteCopy);
+    expect(blocks[2]!.querySelector("h3")!.textContent).toContain(COPY.menu.version("0.1.1"));
     expect(blocks[2]!.querySelector(".menu-current")).toBeNull();
-    expect(blocks[2]!.textContent).toContain(COPY.menu.changelog);
-    expect(blocks[2]!.textContent).toContain(COPY.menu.rotate);
+    expect(blocks[2]!.textContent).toContain(COPY.menu.cspFix);
+    expect(blocks[3]!.querySelector("h3")!.textContent).toContain(COPY.menu.version("0.1.0"));
+    expect(blocks[3]!.querySelector(".menu-current")).toBeNull();
+    expect(blocks[3]!.textContent).toContain(COPY.menu.changelog);
+    expect(blocks[3]!.textContent).toContain(COPY.menu.rotate);
   });
 
   it("keeps the skin switcher working while the changelog is expanded", () => {

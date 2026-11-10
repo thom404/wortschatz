@@ -54,7 +54,8 @@ npm start                             # http://localhost:3000
 
 The production client build also emits an installable manifest, four icons and
 one service worker. After one successful online visit the installed app opens
-without a network and shows **Home** with `Du bist offline.`; gameplay always
+without a network and shows **Home** with `Du bist offline.`; a first visit
+without a network still ends in the browser's error page, and gameplay always
 needs the server. When a new build is waiting, Home or the pause after a round
 offers `Neue Version verfügbar.` with `Neu laden`, and it never reloads a running
 round. The committed icon rasters are generated from the vector source by

@@ -164,6 +164,16 @@ installed, and stays hidden after `Später`. One client install-state module own
 the browser APIs; screens only read its state. See
 [ADR-0029](docs/adr/0029-offline-app-shell-and-static-cache-policy.md).
 
+## Installability
+
+The property that Wortschatz can be added to a device's home screen and open as
+a standalone app: a web app manifest named `Wortschatz`, four committed icons and
+the **App shell** served by the **Service worker**. It is offered through the
+**Install card** where the browser supports it — Chromium's prompt or Safari's
+manual add-to-home-screen instructions on iOS — while the app keeps working as an
+ordinary browser tab everywhere. Installability never implies offline gameplay.
+See [ADR-0029](docs/adr/0029-offline-app-shell-and-static-cache-policy.md).
+
 ## Update notice
 
 The app-owned floating notice that announces a waiting **Service worker** with

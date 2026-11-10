@@ -27,6 +27,10 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: readonly ChangelogEntry[] = [
   {
+    version: "0.1.3",
+    notes: ["Wortschatz lässt sich jetzt auf dem Startbildschirm installieren."],
+  },
+  {
     version: "0.1.2",
     notes: ["Der Einladungslink lässt sich jetzt sauber kopieren."],
   },
