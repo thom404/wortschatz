@@ -56,3 +56,12 @@ the in-place refresh.
   source, and a region can be present on a screen the phase alone cannot name.
 - **Pass the scoreboard mode as a literal from each screen.** Rejected: it
   lets each screen's first paint disagree with the in-place refresh.
+
+## Amendment (ADR-0030, 2026-11-10): the declarations travel on the paint
+
+[ADR-0030](0030-one-module-per-screen-behind-one-shell.md) keeps this
+declaration model unchanged. The declarations now travel on the installed
+`ScreenPaint` instead of a standalone app-record field, and each region's
+updater receives the narrow screen context instead of the whole app record.
+The shell still installs the current screen's declarations and the play-time
+path still walks exactly those, skipping absent elements.
