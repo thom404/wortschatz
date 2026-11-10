@@ -693,7 +693,8 @@ input:focus-visible {
 }
 button#leave-btn,
 button#home-btn,
-button#back-btn {
+button#back-btn,
+button#install-dismiss-btn {
   background: transparent;
   color: var(--ink);
   border-color: var(--border);

@@ -154,6 +154,16 @@ in an accessible name and a tooltip that are the same German string. Primary
 actions keep visible text. See
 [ADR-0022](docs/adr/0022-icon-only-controls-and-tooltips.md).
 
+## Install card
+
+The Home-only card that lets a player add Wortschatz to the home screen: the
+browser's `Installieren` prompt where it exists, or Safari's manual
+add-to-home-screen instructions on iOS. It is never a dead action — it appears
+only when one of those affordances applies, disappears once the app is already
+installed, and stays hidden after `Später`. One client install-state module owns
+the browser APIs; screens only read its state. See
+[ADR-0029](docs/adr/0029-offline-app-shell-and-static-cache-policy.md).
+
 ## Intermission
 
 The host-paced pause between rounds. It has no clock and never advances on its
