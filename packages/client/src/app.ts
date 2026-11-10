@@ -31,6 +31,7 @@ import {
 import { qrSvg } from "./qr.js";
 import { applySkin, loadSkin } from "./skins.js";
 import { menuHtml, wireMenu, type MenuSurface } from "./menu.js";
+import { InstallState } from "./install-state.js";
 import { ViewState, type RevealOrder } from "./view-state.js";
 import type {
   PlayerInfo,
@@ -101,6 +102,9 @@ interface App {
   /** The app-owned Menü surface (ADR-0023), created once outside the screen
    *  markup so a rebuild can neither remove it nor lose its wiring. */
   menu: MenuSurface;
+  /** The one owner of install state (ADR-0029): Home reads it, and only this
+   *  module touches the browser's install APIs. */
+  install: InstallState;
   unsub: Unsubscribe | null;
   /** Client-only view state (ADR-0024): the reveal order, the Board
    *  rotation and the live Gesture, together with their reset rules. */
@@ -133,6 +137,14 @@ const TRACE_HINT = "Wische über die Felder, um ein Wort zu bilden.";
 
 /** The one offline line (ADR-0029): the Notification layer's status slot. */
 const OFFLINE_NOTICE = "Du bist offline.";
+
+/** The install card's German copy (ADR-0029, #257). */
+const INSTALL_TITLE = "Startbildschirm";
+const INSTALL_BROWSER_BODY = "Öffne Wortschatz ohne Browserleiste.";
+const INSTALL_IOS_BODY = "Tippe in Safari auf Teilen und dann auf „Zum Startbildschirm“.";
+const INSTALL_ACTION = "Installieren";
+const INSTALL_DISMISS = "Später";
+const INSTALL_DISMISS_LABEL = "Hinweis ausblenden";
 
 /** The German points phrase for a tile: singular at one point, an `oder`
  *  pair when the spellings differ, plural otherwise (issue #142). Equal
@@ -277,6 +289,7 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
     noticeStatus: rootEl.querySelector<HTMLElement>("#notice-status")!,
     noticeError: rootEl.querySelector<HTMLElement>("#notice-error")!,
     menu: wireMenu(rootEl),
+    install: new InstallState(),
     unsub: null,
     view: new ViewState(),
     roomCode: "",
@@ -295,6 +308,11 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
   const refreshNotices = () => renderNotices(app);
   window.addEventListener("online", refreshNotices);
   window.addEventListener("offline", refreshNotices);
+  // The browser may offer its install prompt after Home first painted. Only
+  // Home owns the card, so only a Home render reads the fresh state.
+  const unsubscribeInstall = app.install.subscribe(() => {
+    if (!app.inRoom && app.screen === "home") home(app);
+  });
   app.stopDrag = wireDrag(app);
   // The skin choice is page-level (ADR-0002): the restored selection
   // rides on the root attribute before the first screen renders, so a
@@ -318,6 +336,8 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
     teardown(app);
     app.stopDrag();
     app.menu.dispose();
+    app.install.dispose();
+    unsubscribeInstall();
     if (app.conn) {
       app.conn.stop();
       app.conn = null;
@@ -334,9 +354,27 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
 /* Home / routes                                                       */
 /* ------------------------------------------------------------------ */
 
+/** The Home-only install card (ADR-0029, #257): a labelled section whose
+ *  action is either the browser's real install prompt or Safari's manual
+ *  instructions. Without either affordance it renders nothing, so it never
+ *  offers a dead action. */
+function installCardHtml(install: InstallState): string {
+  if (!install.visible) return "";
+  const body = install.canInstall ? INSTALL_BROWSER_BODY : INSTALL_IOS_BODY;
+  const action = install.canInstall ? `<button id="install-btn">${INSTALL_ACTION}</button>` : "";
+  return `
+    <section class="panel install-card" aria-labelledby="install-title">
+      <h2 id="install-title">${INSTALL_TITLE}</h2>
+      <p class="note">${body}</p>
+      ${action}
+      <button id="install-dismiss-btn" aria-label="${INSTALL_DISMISS_LABEL}">${INSTALL_DISMISS}</button>
+    </section>`;
+}
+
 /** The landing (ADR-0021): the app name, the tagline and exactly two
  *  actions. It carries no form and no skin switcher — that moved into the
- *  app-owned Menü (ADR-0023). */
+ *  app-owned Menü (ADR-0023). The install card sits below the actions and
+ *  appears only while this module says it is available. */
 function home(app: App): void {
   app.screen = "home";
   app.screenFromHome = false;
@@ -353,9 +391,14 @@ function home(app: App): void {
         <button id="create-btn">Raum erstellen</button>
         <button id="join-btn">Raum beitreten</button>
       </div>
+      ${installCardHtml(app.install)}
     </div>`;
   app.root.querySelector<HTMLButtonElement>("#create-btn")!.onclick = () => openCreate(app);
   app.root.querySelector<HTMLButtonElement>("#join-btn")!.onclick = () => openJoin(app);
+  const install = app.root.querySelector<HTMLButtonElement>("#install-btn");
+  if (install) install.onclick = () => void app.install.requestInstall();
+  const dismiss = app.root.querySelector<HTMLButtonElement>("#install-dismiss-btn");
+  if (dismiss) dismiss.onclick = () => app.install.dismiss();
   renderNotices(app);
 }
 
