@@ -1,9 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { mkdtemp, writeFile, mkdir } from "node:fs/promises";
+import { cp, mkdtemp, writeFile, mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CONTENT_SECURITY_POLICY } from "../src/index.js";
+import { fileURLToPath } from "node:url";
+import { inflateSync } from "node:zlib";
+import { CONTENT_SECURITY_POLICY, MANIFEST_CONTENT_TYPE } from "../src/index.js";
 import { createRoom, FAST_CLOCK, makeScene, type Scene } from "./scene.js";
+
+/** The committed public assets the Vite build copies to the origin root. */
+const PUBLIC_DIR = fileURLToPath(new URL("../../client/public/", import.meta.url));
 
 let scene: Scene;
 beforeEach(async () => {
@@ -49,12 +54,13 @@ describe("static SPA serving", () => {
     await writeFile(join(dir, "index.html"), "<html>wordament</html>");
     await mkdir(join(dir, "assets"));
     await writeFile(join(dir, "assets", "app.js"), "export {}");
+    await writeFile(join(dir, "manifest.webmanifest"), "{}");
 
     const scene2 = await makeScene({ ...FAST_CLOCK, staticDir: dir });
     try {
       const base = `http://localhost:${scene2.handle.port}`;
 
-      for (const path of ["/", "/r/ABC12", "/assets/app.js", "/nope.txt"]) {
+      for (const path of ["/", "/r/ABC12", "/assets/app.js", "/manifest.webmanifest", "/nope.txt"]) {
         const res = await fetch(new URL(path, base));
         expect(res.headers.get("content-security-policy")).toBe(CONTENT_SECURITY_POLICY);
       }
@@ -62,6 +68,112 @@ describe("static SPA serving", () => {
       await scene2.stop();
     }
     void scene;
+  });
+
+  // #255: the installed app's identity is one manifest and four icons served
+  // from the origin root, with the manifest content type.
+  test("serves the manifest with its content type and leaves the root and deep links on Home", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wordament-static-"));
+    await cp(PUBLIC_DIR, dir, { recursive: true });
+    await writeFile(join(dir, "index.html"), "<html>home document</html>");
+
+    const scene2 = await makeScene({ ...FAST_CLOCK, staticDir: dir });
+    try {
+      const base = `http://localhost:${scene2.handle.port}`;
+      const manifest = await fetch(`${base}/manifest.webmanifest`);
+      expect(manifest.status).toBe(200);
+      expect(manifest.headers.get("content-type")).toBe(MANIFEST_CONTENT_TYPE);
+      expect(await manifest.json()).toEqual({
+        name: "Wortschatz",
+        short_name: "Wortschatz",
+        lang: "de",
+        dir: "ltr",
+        start_url: "/",
+        scope: "/",
+        display: "standalone",
+        orientation: "any",
+        theme_color: "#f4f7fb",
+        background_color: "#f4f7fb",
+        icons: [
+          { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          {
+            src: "/icons/icon-512-maskable.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable",
+          },
+          { src: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png", purpose: "any" },
+        ],
+      });
+
+      for (const path of ["/", "/r/ABC12"]) {
+        const home = await fetch(`${base}${path}`);
+        expect(home.status).toBe(200);
+        expect(home.headers.get("content-type")).toBe("text/html; charset=utf-8");
+        expect(await home.text()).toContain("home document");
+      }
+    } finally {
+      await scene2.stop();
+    }
+  });
+
+  // #255: four committed rasters exist at the manifest's sizes, and the
+  // favicon request receives a real icon rather than the Home document.
+  test("serves the four committed icons at their declared sizes", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wordament-static-"));
+    await cp(PUBLIC_DIR, dir, { recursive: true });
+    await writeFile(join(dir, "index.html"), "<html>home document</html>");
+
+    const scene2 = await makeScene({ ...FAST_CLOCK, staticDir: dir });
+    try {
+      const base = `http://localhost:${scene2.handle.port}`;
+      const icons = [
+        ["/icons/icon-192.png", 192],
+        ["/icons/icon-512.png", 512],
+        ["/icons/icon-512-maskable.png", 512],
+        ["/icons/apple-touch-icon.png", 180],
+      ] as const;
+      for (const [path, size] of icons) {
+        const res = await fetch(`${base}${path}`);
+        expect(res.status).toBe(200);
+        expect(res.headers.get("content-type")).toBe("image/png");
+        const png = Buffer.from(await res.arrayBuffer());
+        expect(png.subarray(1, 4).toString("ascii")).toBe("PNG");
+        expect(png.readUInt32BE(16)).toBe(size);
+        expect(png.readUInt32BE(20)).toBe(size);
+        expect(png.includes("<html")).toBe(false);
+      }
+    } finally {
+      await scene2.stop();
+    }
+  });
+
+  // #255: the maskable glyph stays inside the standard inner safe zone, so
+  // every platform mask still shows the letter mark.
+  test("keeps the maskable glyph inside the inner safe zone", async () => {
+    const png = await readFile(join(PUBLIC_DIR, "icons", "icon-512-maskable.png"));
+    const decoded = decodeRgbaPng(png);
+    const background = [0xf4, 0xf7, 0xfb];
+    // The safe zone is the centred circle of diameter 80% of the icon. The
+    // glyph must not reach the outer 10% band on any side.
+    const inset = Math.round(decoded.size * 0.1);
+    let paintedOutsideSafeZone = false;
+    outer: for (let y = 0; y < decoded.size; y++) {
+      for (let x = 0; x < decoded.size; x++) {
+        if (x >= inset && x < decoded.size - inset && y >= inset && y < decoded.size - inset) continue;
+        const offset = (y * decoded.size + x) * 4;
+        if (
+          decoded.pixels[offset] !== background[0] ||
+          decoded.pixels[offset + 1] !== background[1] ||
+          decoded.pixels[offset + 2] !== background[2]
+        ) {
+          paintedOutsideSafeZone = true;
+          break outer;
+        }
+      }
+    }
+    expect(paintedOutsideSafeZone).toBe(false);
   });
 
   test("healthz works without any static dir", async () => {
@@ -84,3 +196,24 @@ describe("static SPA serving", () => {
     }
   });
 });
+
+/** Decode the RGBA PNGs this repository's icon script emits: non-interlaced,
+ *  8-bit RGBA with filter type 0 on each row. */
+function decodeRgbaPng(png: Buffer): { size: number; pixels: Buffer } {
+  const size = png.readUInt32BE(16);
+  const idat: Buffer[] = [];
+  for (let offset = 8; offset < png.length;) {
+    const length = png.readUInt32BE(offset);
+    const type = png.subarray(offset + 4, offset + 8).toString("ascii");
+    if (type === "IDAT") idat.push(png.subarray(offset + 8, offset + 8 + length));
+    offset += 12 + length;
+  }
+  const raw = inflateSync(Buffer.concat(idat));
+  const rowLength = size * 4 + 1;
+  const pixels = Buffer.alloc(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    expect(raw[y * rowLength]).toBe(0);
+    raw.copy(pixels, y * size * 4, y * rowLength + 1, (y + 1) * rowLength);
+  }
+  return { size, pixels };
+}

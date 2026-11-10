@@ -9,8 +9,18 @@ import { escapeHtml } from "./escape.js";
  * so returning players find the app set up for them.
  */
 export const SKINS = [
-  { id: "standard", label: "Standard (hell)" },
-  { id: "arcade", label: "Arcade (dunkel)" },
+  {
+    id: "standard",
+    label: "Standard (hell)",
+    /** The page background token in style.css, used as the manifest and
+     *  theme-colour fallback when no stylesheet is available (tests). */
+    pageBackground: "#f4f7fb",
+  },
+  {
+    id: "arcade",
+    label: "Arcade (dunkel)",
+    pageBackground: "#0b0f1c",
+  },
 ] as const;
 
 export type SkinId = (typeof SKINS)[number]["id"];
@@ -33,10 +43,37 @@ export function loadSkin(): SkinId {
   }
 }
 
+/** The page background of a Skin (ADR-0002): read from its CSS token when a
+ *  stylesheet is present, otherwise from the registry entry (the DOM test
+ *  environment loads no stylesheet). */
+export function pageBackground(id: SkinId): string {
+  try {
+    const token = getComputedStyle(document.body).getPropertyValue("--surface").trim();
+    if (token) return token;
+  } catch {
+    /* no layout engine — fall through to the registry value */
+  }
+  return SKINS.find((s) => s.id === id)?.pageBackground ?? SKINS[0]!.pageBackground;
+}
+
+/** Mirrors the active Skin's page background into the document's theme
+ *  colour, so an installed window's status bar agrees with the page on boot
+ *  and after every Skin change (the manifest carries the Standard value). */
+function applyThemeColor(id: SkinId): void {
+  let meta = document.head.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  if (!meta) {
+    meta = document.createElement("meta");
+    meta.setAttribute("name", "theme-color");
+    document.head.append(meta);
+  }
+  meta.setAttribute("content", pageBackground(id));
+}
+
 /** Applies the choice to the whole app: the root attribute carries it
  *  into every screen's tokens; storage persists it across visits. */
 export function applySkin(id: SkinId): void {
   document.body.dataset.skin = id;
+  applyThemeColor(id);
   try {
     localStorage.setItem(STORAGE_KEY, id);
   } catch {
