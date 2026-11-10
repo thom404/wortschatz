@@ -10,6 +10,7 @@ import {
   IMMUTABLE_CACHE_CONTROL,
   MANIFEST_CONTENT_TYPE,
   NO_CACHE_CONTROL,
+  SERVICE_WORKER_KILL_SWITCH_ENV,
   SERVICE_WORKER_PATH,
 } from "../src/index.js";
 import { createRoom, FAST_CLOCK, makeScene, type Scene } from "./scene.js";
@@ -207,6 +208,73 @@ describe("static SPA serving", () => {
       }
     } finally {
       await scene2.stop();
+    }
+    void scene;
+  });
+
+  // #259: with the documented flag unset, the worker path is the real build
+  // worker, byte for byte.
+  test("serves the real build worker when the kill switch is off", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wordament-static-"));
+    const realWorker = "self.addEventListener('install', () => {});";
+    await writeFile(join(dir, "index.html"), "<html>home document</html>");
+    await writeFile(join(dir, "sw.js"), realWorker);
+
+    const scene2 = await makeScene({ ...FAST_CLOCK, staticDir: dir });
+    try {
+      const res = await fetch(`http://localhost:${scene2.handle.port}${SERVICE_WORKER_PATH}`);
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe(realWorker);
+    } finally {
+      await scene2.stop();
+    }
+    void scene;
+  });
+
+  // #259: one environment flag neutralises a bad worker without a browser
+  // change. The worker path returns a worker that unregisters itself and
+  // deletes all caches; every other static response stays untouched.
+  test("serves a self-unregistering kill-switch worker when the flag is set", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "wordament-static-"));
+    const realWorker = "self.addEventListener('install', () => {});";
+    await cp(PUBLIC_DIR, dir, { recursive: true });
+    await writeFile(join(dir, "index.html"), "<html>home document</html>");
+    await mkdir(join(dir, "assets"));
+    await writeFile(join(dir, "assets", "app.js"), "export {}");
+    await writeFile(join(dir, "sw.js"), realWorker);
+
+    vi.stubEnv(SERVICE_WORKER_KILL_SWITCH_ENV, "1");
+    const scene2 = await makeScene({ ...FAST_CLOCK, staticDir: dir });
+    try {
+      const base = `http://localhost:${scene2.handle.port}`;
+      const worker = await fetch(`${base}${SERVICE_WORKER_PATH}`);
+      expect(worker.status).toBe(200);
+      expect(worker.headers.get("content-type")).toBe("text/javascript; charset=utf-8");
+      expect(worker.headers.get("cache-control")).toBe(NO_CACHE_CONTROL);
+      expect(worker.headers.get("content-security-policy")).toBe(CONTENT_SECURITY_POLICY);
+      const body = await worker.text();
+      expect(body).not.toBe(realWorker);
+      expect(body).toContain("self.skipWaiting()");
+      expect(body).toContain("self.registration.unregister()");
+      expect(body).toContain("caches.keys()");
+      expect(body).toContain("caches.delete(");
+
+      const unchanged = await Promise.all([
+        fetch(`${base}/`),
+        fetch(`${base}/r/ABC12`),
+        fetch(`${base}/assets/app.js`),
+        fetch(`${base}/manifest.webmanifest`),
+        fetch(`${base}/icons/icon-192.png`),
+      ]);
+      expect(await unchanged[0]!.text()).toContain("home document");
+      expect(await unchanged[1]!.text()).toContain("home document");
+      expect(await unchanged[2]!.text()).toBe("export {}");
+      expect(unchanged[3]!.headers.get("content-type")).toBe(MANIFEST_CONTENT_TYPE);
+      expect(unchanged[4]!.headers.get("content-type")).toBe("image/png");
+      for (const res of unchanged) expect(res.status).toBe(200);
+    } finally {
+      await scene2.stop();
+      vi.unstubAllEnvs();
     }
     void scene;
   });

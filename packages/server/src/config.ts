@@ -51,11 +51,17 @@ export interface Logger {
   error(obj: Record<string, unknown>): void;
 }
 
+/** The documented environment flag that neutralises a bad service worker. */
+export const SERVICE_WORKER_KILL_SWITCH_ENV = "WORTSCHATZ_SERVICE_WORKER_KILL_SWITCH";
+
 export interface ServerConfig {
   port: number;
   host?: string;
   /** Absolute path of the SPA build to serve at `/` (deep links included). */
   staticDir?: string;
+  /** Answer the worker path with a self-unregistering, cache-deleting worker
+   *  instead of the build worker (issue #259, ADR-0029). */
+  serviceWorkerKillSwitch?: boolean;
 
   /** Injectable domain seams. */
   dictionary: DictionaryLike;
@@ -104,6 +110,7 @@ export type ServerConfigResolved = Required<
     | "maxPlayers"
     | "maxRooms"
     | "roomCodeLength"
+    | "serviceWorkerKillSwitch"
   >
 > & {
   host?: string;
@@ -124,11 +131,18 @@ function envPort(): number {
   return Number.isFinite(n) && n > 0 ? n : 3000;
 }
 
+/** The flag is on for the documented `1`/`true` values, off otherwise. */
+function envServiceWorkerKillSwitch(): boolean {
+  const raw = process.env[SERVICE_WORKER_KILL_SWITCH_ENV]?.trim().toLowerCase();
+  return raw === "1" || raw === "true";
+}
+
 export function resolveConfig(overrides: ServerConfig): ServerConfigResolved {
   return {
     port: overrides.port ?? envPort(),
     ...(overrides.host !== undefined ? { host: overrides.host } : {}),
     ...(overrides.staticDir !== undefined ? { staticDir: overrides.staticDir } : {}),
+    serviceWorkerKillSwitch: overrides.serviceWorkerKillSwitch ?? envServiceWorkerKillSwitch(),
     dictionary: overrides.dictionary,
     generateBoard: overrides.generateBoard,
     scoreWord: overrides.scoreWord,

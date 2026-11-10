@@ -22,11 +22,12 @@ export async function startServer(cfg: ServerConfig): Promise<ServerHandle> {
 }
 
 export type { ServerConfig } from "./config.js";
-export { resolveConfig, type ServerConfigResolved } from "./config.js";
+export { resolveConfig, type ServerConfigResolved, SERVICE_WORKER_KILL_SWITCH_ENV } from "./config.js";
 export { normalizeCode, normalizeWord } from "./text.js";
 export {
   CONTENT_SECURITY_POLICY,
   MANIFEST_CONTENT_TYPE,
+  SERVICE_WORKER_KILL_SWITCH,
   SERVICE_WORKER_PATH,
   NO_CACHE_CONTROL,
   IMMUTABLE_CACHE_CONTROL,
