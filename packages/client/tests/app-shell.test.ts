@@ -2,13 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 import {
   APP_SHELL_CACHE_PREFIX,
   NAVIGATION_TIMEOUT_MS,
+  SKIP_WAITING_MESSAGE,
   appShellCacheName,
   deleteOtherCaches,
   isAppShellRequest,
   precacheAppShell,
   respondTo,
+  serveAppShell,
   type AppShellEnvironment,
   type PrecacheEntry,
+  type ServiceWorkerScopeLike,
 } from "../src/app-shell.js";
 
 const ORIGIN = "https://wortschatz.test";
@@ -242,5 +245,41 @@ describe("app shell service worker", () => {
     await deleteOtherCaches(env);
 
     expect(await caches.keys()).toEqual([appShellCacheName(VERSION)]);
+  });
+
+  it("takes over only when the update notice sends the one command", async () => {
+    const listeners = new Map<string, Set<(event: unknown) => void>>();
+    const skipWaiting = vi.fn(async () => {});
+    const scope: ServiceWorkerScopeLike = {
+      location: { origin: ORIGIN },
+      skipWaiting,
+      addEventListener(type: string, listener: (event: never) => void) {
+        const set = listeners.get(type) ?? new Set();
+        set.add(listener as (event: unknown) => void);
+        listeners.set(type, set);
+      },
+    };
+    const { env } = environments();
+    serveAppShell(scope, {
+      version: env.version,
+      manifest: env.manifest,
+      caches: env.caches,
+      fetch: env.fetch,
+    });
+
+    const dispatch = (data: unknown) => {
+      const event = { data, waitUntil: vi.fn() };
+      for (const listener of listeners.get("message") ?? []) listener(event);
+      return event;
+    };
+
+    const ignored = dispatch({ type: "something-else" });
+    expect(ignored.waitUntil).not.toHaveBeenCalled();
+    expect(skipWaiting).not.toHaveBeenCalled();
+
+    const command = dispatch({ type: SKIP_WAITING_MESSAGE });
+    expect(command.waitUntil).toHaveBeenCalledTimes(1);
+    await command.waitUntil.mock.calls[0]![0];
+    expect(skipWaiting).toHaveBeenCalledTimes(1);
   });
 });

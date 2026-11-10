@@ -13,5 +13,5 @@ import type { ConnFactory } from "./connection.js";
 const connect: ConnFactory = ({ greet, listener, onStatus, onClose }) =>
   new RoomConnection({ greet, listener, onStatus, onClose });
 
-registerServiceWorker();
-mount(document.getElementById("app")!, connect);
+const registration = registerServiceWorker();
+mount(document.getElementById("app")!, connect, { registration });

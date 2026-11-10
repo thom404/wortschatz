@@ -164,6 +164,18 @@ installed, and stays hidden after `Später`. One client install-state module own
 the browser APIs; screens only read its state. See
 [ADR-0029](docs/adr/0029-offline-app-shell-and-static-cache-policy.md).
 
+## Update notice
+
+The app-owned floating notice that announces a waiting **Service worker** with
+`Neue Version verfügbar.` and its one action `Neu laden`. It is suppressed while
+the room phase is playing and otherwise appears on **Home** and every
+non-playing screen, so a reload can never destroy a running **Round**. It never
+reloads on its own: the action lets the waiting worker take over and reloads
+exactly once, leaving the stored **Skin** and **Session token** intact. The
+notice lives beside the **Notification layer**, outside screen markup, and is
+not a second status surface. See
+[ADR-0029](docs/adr/0029-offline-app-shell-and-static-cache-policy.md).
+
 ## Intermission
 
 The host-paced pause between rounds. It has no clock and never advances on its

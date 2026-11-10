@@ -55,8 +55,10 @@ npm start                             # http://localhost:3000
 The production client build also emits an installable manifest, four icons and
 one service worker. After one successful online visit the installed app opens
 without a network and shows **Home** with `Du bist offline.`; gameplay always
-needs the server. The committed icon rasters are generated from the vector
-source by `npm run icons`. The caching and offline limit are recorded in
+needs the server. When a new build is waiting, Home or the pause after a round
+offers `Neue Version verfügbar.` with `Neu laden`, and it never reloads a running
+round. The committed icon rasters are generated from the vector source by
+`npm run icons`. The caching, update and offline limits are recorded in
 [ADR-0029](docs/adr/0029-offline-app-shell-and-static-cache-policy.md).
 
 Prefer Docker? The local compose harness builds and runs the same image the

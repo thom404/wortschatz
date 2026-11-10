@@ -38,6 +38,11 @@ export const HOME_DOCUMENT_PATH = "/index.html";
 /** How long a navigation waits for the network before using the stored shell. */
 export const NAVIGATION_TIMEOUT_MS = 3000;
 
+/** The one client→worker message that lets a waiting update take over. The
+ *  update notice sends it only after the player pressed `Neu laden`; the
+ *  worker itself never calls `skipWaiting` on its own (ADR-0029). */
+export const SKIP_WAITING_MESSAGE = "SKIP_WAITING";
+
 /** The one versioned cache name; a deploy cannot reuse an older generation. */
 export function appShellCacheName(version: string): string {
   return `${APP_SHELL_CACHE_PREFIX}${version}`;
@@ -143,11 +148,24 @@ export interface FetchEventLike extends ExtendableEventLike {
   respondWith(response: Response | Promise<Response>): void;
 }
 
+export interface MessageEventLike extends ExtendableEventLike {
+  readonly data: unknown;
+}
+
 export interface ServiceWorkerScopeLike {
   readonly location: { readonly origin: string };
   addEventListener(type: "install", listener: (event: ExtendableEventLike) => void): void;
   addEventListener(type: "activate", listener: (event: ExtendableEventLike) => void): void;
   addEventListener(type: "fetch", listener: (event: FetchEventLike) => void): void;
+  addEventListener(type: "message", listener: (event: MessageEventLike) => void): void;
+  skipWaiting?(): Promise<void>;
+}
+
+/** Whether a message is the update notice's one command to take over. */
+function isSkipWaitingMessage(data: unknown): boolean {
+  return (
+    typeof data === "object" && data !== null && (data as { type?: unknown }).type === SKIP_WAITING_MESSAGE
+  );
 }
 
 /** Bind the app-shell policy to one service worker scope. */
@@ -180,5 +198,9 @@ export function serveAppShell(
   scope.addEventListener("fetch", (event) => {
     if (!isAppShellRequest(event.request, env.origin)) return;
     event.respondWith(respondTo(event.request, env).then((response) => response ?? Response.error()));
+  });
+  scope.addEventListener("message", (event) => {
+    if (!isSkipWaitingMessage(event.data)) return;
+    event.waitUntil(scope.skipWaiting?.() ?? Promise.resolve());
   });
 }
