@@ -48,9 +48,8 @@ The binding strings from the #50 copy pass, as a sample of the voice:
 
 | String                    | Copy                                                              |
 | ------------------------- | ----------------------------------------------------------------- |
-| Home tagline              | `Ein Wörterspiel für allein oder zu mehreren.`                    |
-| Solo action               | `Allein spielen`                                                  |
-| Solo note                 | `Funktioniert ohne Netz.`                                         |
+| Home tagline              | `Ein Mehrspieler-Wörterspiel.`                                    |
+| Solo action               | `Offline-Modus (Solo)`                                            |
 | Solo loading              | `Wörterbuch wird geladen …`                                       |
 | Solo load error           | `Das Wörterbuch konnte nicht geladen werden. Versuche es erneut.` |
 | Solo pause summary        | `Deine Punkte`                                                    |

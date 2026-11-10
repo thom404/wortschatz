@@ -59,11 +59,10 @@ export const NO_WORDS: RevealPayload = { groups: [] };
 export const COPY = {
   home: {
     title: "Wortschatz",
-    tagline: "Ein Wörterspiel für allein oder zu mehreren.",
+    tagline: "Ein Mehrspieler-Wörterspiel.",
     create: "Raum erstellen",
     join: "Raum beitreten",
-    solo: "Allein spielen",
-    soloNote: "Funktioniert ohne Netz.",
+    solo: "Offline-Modus (Solo)",
   },
   create: {
     title: "Raum erstellen",

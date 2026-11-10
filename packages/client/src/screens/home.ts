@@ -29,11 +29,10 @@ function installCardHtml(install: InstallState): string {
     </section>`;
 }
 
-/** The landing (ADR-0021, amended ADR-0031): the app name, a tagline covering
- *  both ways to play and three actions. It carries no form and no skin
- *  switcher — that moved into the app-owned Menü (ADR-0023). The install card
- *  sits below the actions and appears only while the install state says it is
- *  available. */
+/** The landing (ADR-0021, amended ADR-0031): the app name, a tagline and three
+ *  actions. It carries no form and no skin switcher — that moved into the
+ *  app-owned Menü (ADR-0023). The install card sits below the actions and
+ *  appears only while the install state says it is available. */
 export function paint(ctx: ScreenContext): ScreenPaint {
   return {
     title: APP_NAME,
@@ -41,12 +40,11 @@ export function paint(ctx: ScreenContext): ScreenPaint {
     html: `
     <div class="sheet">
       <h1>${APP_NAME}</h1>
-      <p class="dim">Ein Wörterspiel für allein oder zu mehreren.</p>
+      <p class="dim">Ein Mehrspieler-Wörterspiel.</p>
       <div class="home-actions">
         <button id="create-btn">Raum erstellen</button>
         <button id="join-btn">Raum beitreten</button>
-        <button id="solo-btn" class="solo-btn">Allein spielen</button>
-        <p class="note solo-note">Funktioniert ohne Netz.</p>
+        <button id="solo-btn" class="solo-btn">Offline-Modus (Solo)</button>
       </div>
       ${installCardHtml(ctx.install)}
     </div>`,

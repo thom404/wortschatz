@@ -137,11 +137,10 @@ travels inside a join greeting's first frame, never in the WebSocket URL. See
 ## Home
 
 The app's landing screen and its only entry point: it offers three actions,
-`Raum erstellen`, `Raum beitreten` and `Allein spielen`, and carries no form.
-The solo action carries the note `Funktioniert ohne Netz.` The tagline is
-`Ein Wörterspiel für allein oder zu mehreren.` The skin switcher lives in the
-**Menu**, not here. It leads to the **Create screen**, the **Join screen** or a
-**Solo mode** session; a deep link skips it and lands on Join. See
+`Raum erstellen`, `Raum beitreten` and `Offline-Modus (Solo)`, and carries no
+form. The tagline is `Ein Mehrspieler-Wörterspiel.` The skin switcher lives in
+the **Menu**, not here. It leads to the **Create screen**, the **Join screen**
+or a **Solo mode** session; a deep link skips it and lands on Join. See
 [ADR-0021](docs/adr/0021-create-and-join-screens.md),
 [ADR-0023](docs/adr/0023-app-owned-menu-surface.md) and
 [ADR-0031](docs/adr/0031-offline-solo-mode-and-local-authority.md).
@@ -359,7 +358,7 @@ deltas; everything else is a delta.
 ## Solo mode
 
 The one-player game that runs entirely inside the installed client: a third
-**Home** action, `Allein spielen`, with no **Room**, room code, WebSocket,
+**Home** action, `Offline-Modus (Solo)`, with no **Room**, room code, WebSocket,
 lobby, nickname, session token, roster or host. The local authority generates
 the same boards, applies the same **Valid word** rules and uses the same
 Scrabble arithmetic as multiplayer, owns an absolute local **Deadline** and

@@ -672,8 +672,8 @@ h2 {
 /* Forms / buttons                                                     */
 /* ------------------------------------------------------------------ */
 
-/* The landing's two actions (ADR-0021): the app's primary choices, stacked
- * on a phone and side by side once there is room. Tokens only. */
+/* The landing's three actions (ADR-0021): the app's primary choices, stacked
+ * on a phone and three equal columns once there is room. Tokens only. */
 .home-actions {
   display: grid;
   gap: var(--gap-s);
@@ -684,7 +684,7 @@ h2 {
 }
 @media (min-width: 600px) {
   .home-actions {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr;
   }
 }
 label {
