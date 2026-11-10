@@ -159,6 +159,7 @@ describe("static SPA serving", () => {
         "/icons/icon-512.png",
         "/icons/icon-512-maskable.png",
         "/icons/apple-touch-icon.png",
+        "/data/dawg.bin",
       ]) {
         const res = await fetch(`${base}${path}`);
         expect(res.status).toBe(404);
@@ -186,6 +187,8 @@ describe("static SPA serving", () => {
     await writeFile(join(dir, "assets", "app-abc123.js"), "export {}");
     await writeFile(join(dir, "assets", "app-def456.css"), "body {}");
     await writeFile(join(dir, "sw.js"), "self.addEventListener('install', () => {});");
+    await mkdir(join(dir, "data"), { recursive: true });
+    await writeFile(join(dir, "data", "dawg.bin"), "0\n0|");
 
     const scene2 = await makeScene({ ...FAST_CLOCK, staticDir: dir });
     try {
@@ -200,12 +203,15 @@ describe("static SPA serving", () => {
         ["/assets/app-def456.css", IMMUTABLE_CACHE_CONTROL],
         ["/icons/icon-192.png", ICON_CACHE_CONTROL],
         ["/icons/icon-512-maskable.png", ICON_CACHE_CONTROL],
+        ["/data/dawg.bin", NO_CACHE_CONTROL],
       ];
       for (const [path, cacheControl] of expected) {
         const res = await fetch(`${base}${path}`);
         expect(res.status).toBe(200);
         expect(res.headers.get("cache-control")).toBe(cacheControl);
       }
+      const artifact = await fetch(`${base}/data/dawg.bin`);
+      expect(artifact.headers.get("content-type")).toBe("application/octet-stream");
     } finally {
       await scene2.stop();
     }

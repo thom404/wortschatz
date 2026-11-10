@@ -11,6 +11,7 @@ const PRECACHE_PATTERNS = [
   "index.html",
   "assets/*.js",
   "assets/*.css",
+  "data/dawg.bin",
   "manifest.webmanifest",
   "icons/icon-192.png",
   "icons/icon-512.png",
@@ -30,6 +31,9 @@ export default defineConfig({
       injectManifest: {
         injectionPoint: "__WORT_SCHATZ_PRECACHE__",
         globPatterns: PRECACHE_PATTERNS,
+        // The dictionary artifact is ~2.6 MB; the default 2 MiB cap would
+        // silently drop it from the precache set (ADR-0031).
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         rollupFormat: "iife",
         minify: false,
       },

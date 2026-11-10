@@ -23,6 +23,7 @@ const MANIFEST: PrecacheEntry[] = [
   { url: "assets/index-def.css", revision: null },
   { url: "manifest.webmanifest", revision: "manifest" },
   { url: "icons/icon-192.png", revision: "icon" },
+  { url: "data/dawg.bin", revision: null },
 ];
 
 /** A minimal in-memory Cache Storage: enough of the API for one worker. */
@@ -129,6 +130,7 @@ describe("app shell service worker", () => {
     expect(stored.map((request) => request.url).sort()).toEqual([
       `${ORIGIN}/assets/index-abc.js`,
       `${ORIGIN}/assets/index-def.css`,
+      `${ORIGIN}/data/dawg.bin`,
       `${ORIGIN}/icons/icon-192.png`,
       `${ORIGIN}/index.html`,
       `${ORIGIN}/manifest.webmanifest`,
@@ -188,6 +190,18 @@ describe("app shell service worker", () => {
     expect(await response!.text()).toBe("stored home");
   });
 
+  it("serves the dictionary artifact cache-first without touching the network", async () => {
+    const fetch = vi.fn(async () => new Response("network data"));
+    const { caches, env } = environments({ fetch });
+    const cache = await caches.open(appShellCacheName(VERSION));
+    await cache.put(`${ORIGIN}/data/dawg.bin`, new Response("cached data"));
+
+    const response = await respondTo(assetRequest("/data/dawg.bin"), env);
+
+    expect(await response!.text()).toBe("cached data");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("serves a hashed asset cache-first without touching the network", async () => {
     const fetch = vi.fn(async () => new Response("network asset"));
     const { caches, env } = environments({ fetch });
@@ -218,6 +232,7 @@ describe("app shell service worker", () => {
 
     expect(isAppShellRequest(new Request(`${ORIGIN}/assets/app.js`), ORIGIN)).toBe(true);
     expect(isAppShellRequest(new Request(`${ORIGIN}/assets/app.js`, { method: "POST" }), ORIGIN)).toBe(false);
+    expect(isAppShellRequest(new Request(`${ORIGIN}/data/dawg.bin`), ORIGIN)).toBe(true);
     expect(isAppShellRequest(new Request(`${ORIGIN}/healthz`), ORIGIN)).toBe(false);
     expect(isAppShellRequest(new Request(`${ORIGIN}/ws`), ORIGIN)).toBe(false);
     expect(isAppShellRequest(new Request("https://other.test/assets/app.js"), ORIGIN)).toBe(false);

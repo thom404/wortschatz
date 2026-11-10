@@ -4,10 +4,12 @@
 and the round timer](e2e/__screenshots__/game-digram-standard-1280x800.png)
 
 A real-time multiplayer word-hunt game in German, in the style of Microsoft
-Wordament: every player gets the same generated 4×4 board at the same time, has
-two minutes to drag out as many valid words as possible, and the host paces the
-rounds with a shared reveal in between. All in-game text is German; rooms hold
-up to 8 players, with no accounts and nothing to install beyond Node.
+Wordament, with a one-player **Solo mode** that runs in the installed app even
+with no network: every multiplayer player gets the same generated 4×4 board at
+the same time, has two minutes to drag out as many valid words as possible, and
+the host paces the rounds with a shared reveal in between. All in-game text is
+German; rooms hold up to 8 players, with no accounts and nothing to install
+beyond Node.
 
 Play the live instance at <https://wortschatz.phanthom.cc> — a self-hosted
 homelab deployment without an uptime promise. This repository holds the game
@@ -16,17 +18,20 @@ tests that keep them honest.
 
 ## How to play
 
-- **Get into a room.** Create one from the home screen or join with a short room
-  code, deep link or QR invite ([ADR-0008](docs/adr/0008-lobby-qr-invite.md)).
-  Rooms hold at most 8 players; a room code is enough — no registration.
+- **Play alone or in a room.** `Allein spielen` starts a one-player session
+  immediately; it needs no room, nickname or network after the app is installed
+  ([ADR-0031](docs/adr/0031-offline-solo-mode-and-local-authority.md)). Create
+  a room from Home or join with a short room code, deep link or QR invite
+  ([ADR-0008](docs/adr/0008-lobby-qr-invite.md)). Rooms hold at most 8 players;
+  a room code is enough — no registration.
 - **The host paces the game.** Each round is a fresh board and a 2-minute clock,
   owned by the server. Between rounds the host holds the intermission open for
   as long as they like ([ADR-0016](docs/adr/0016-host-paced-intermission.md)).
 - **Build words by dragging.** Start anywhere, then step to adjacent tiles in 8
   directions and never reuse a tile within a word. At least 3 letters per word.
 - **Sixteen tiles, one special.** Every board is 15 single letters plus exactly
-  one special tile: a digram (`sch`), a prefix (`un-`), a suffix (`-ung`) or an
-  either/or tile with two spellings (`e/ä`)
+  one position-free special tile: a digram (`sch`) or an either/or tile with
+  two spellings (`e/ä`)
   ([ADR-0003](docs/adr/0003-board-generation-and-tile-inventory.md)).
 - **Score is Scrabble arithmetic.** A word is worth the sum of the German
   Scrabble values of its letters, so the number in a tile's corner always agrees
@@ -35,9 +40,11 @@ tests that keep them honest.
   `ä/ö/ü/ß` match as real characters, and a reviewed exclusion list keeps proper
   nouns and abbreviations out ([ADR-0001](docs/adr/0001-word-list-source-and-packaging.md)).
 - **Every round ends in a reveal.** The intermission shows every word placeable
-  on the board, linked to Wiktionary
+  on the board, linked to Wiktionary in multiplayer
   ([ADR-0017](docs/adr/0017-wiktionary-links-in-the-reveal.md)), plus the
-  session standings. Rounds continue until the host closes the room.
+  session standings. Solo shows the same reveal with a `Deine Punkte` summary
+  and `Nächste Runde`; no link points at a dead offline action. Rounds continue
+  until the host closes the room or the solo player leaves.
 - **Losing the page loses nothing.** A reconnect reclaims your seat and score
   without an account; a departed host is replaced mid-game.
 
@@ -48,19 +55,22 @@ dictionary index is built once on your machine and never committed.
 
 ```sh
 npm install
-npm run build && npm run build-dawg   # build client, server and dictionary
-npm start                             # http://localhost:3000
+npm run build   # engine, server, dictionary artifact, then client
+npm start       # http://localhost:3000
 ```
 
 The production client build also emits an installable manifest, four icons and
 one service worker. After one successful online visit the installed app opens
-without a network and shows **Home** with `Du bist offline.`; a first visit
-without a network still ends in the browser's error page, and gameplay always
-needs the server. When a new build is waiting, Home or the pause after a round
-offers `Neue Version verfügbar.` with `Neu laden`, and it never reloads a running
+without a network, shows **Home** with `Du bist offline.` and can play **Solo
+mode** offline: the service worker keeps the shell and the build-generated
+dictionary artifact at `/data/dawg.bin`. A first visit without a network still
+ends in the browser's error page, and multiplayer gameplay still needs the
+server. When a new build is waiting, Home or the pause after a round offers
+`Neue Version verfügbar.` with `Neu laden`, and it never reloads a running
 round. The committed icon rasters are generated from the vector source by
-`npm run icons`. The caching, update and offline limits are recorded in
-[ADR-0029](docs/adr/0029-offline-app-shell-and-static-cache-policy.md).
+`npm run icons`. The caching, update, solo and offline limits are recorded in
+[ADR-0029](docs/adr/0029-offline-app-shell-and-static-cache-policy.md) and
+[ADR-0031](docs/adr/0031-offline-solo-mode-and-local-authority.md).
 
 Prefer Docker? The local compose harness builds and runs the same image the
 deployment uses (the image build runs the typecheck and the full test suite as
@@ -72,13 +82,14 @@ docker compose -f compose.local.yaml up --build
 
 ## What lives where
 
-| Path              | Contents                                                                                                   |
-| ----------------- | ---------------------------------------------------------------------------------------------------------- |
-| `packages/client` | The web client: TypeScript, no framework, Vite build.                                                      |
-| `packages/server` | The authoritative game server: WebSocket protocol, rooms, board generation and the DAWG-backed dictionary. |
-| `packages/shared` | Types and rules both sides rely on, such as the wire protocol.                                             |
-| `e2e`             | The browser visual-regression layer and its committed screenshot baselines.                                |
-| `words`           | The vendored German word list, pinned and checksum-verified.                                               |
+| Path              | Contents                                                                                               |
+| ----------------- | ------------------------------------------------------------------------------------------------------ |
+| `packages/client` | The web client: TypeScript, no framework, Vite build.                                                  |
+| `packages/server` | The authoritative multiplayer server: WebSocket protocol, rooms and the room lifecycle.                |
+| `packages/engine` | The pure shared game rules: board generation, DAWG dictionary, submission verdict, scoring and reveal. |
+| `packages/shared` | Types and rules both sides rely on, such as the wire protocol, board geometry and tile inventory.      |
+| `e2e`             | The browser visual-regression layer and its committed screenshot baselines.                            |
+| `words`           | The vendored German word list, pinned and checksum-verified.                                           |
 
 ## Development
 

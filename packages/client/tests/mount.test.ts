@@ -1979,12 +1979,13 @@ describe("mountable app", () => {
   });
 
   describe("entry screens (#53, #173)", () => {
-    it("Home is the landing: tagline, exactly two actions and no form — the skin switcher lives in the Menü", () => {
+    it("Home is the landing: tagline, three actions and no form — the skin switcher lives in the Menü", () => {
       expect(app!.root.querySelector("h1")!.textContent).toBe(COPY.home.title);
       expect(app!.root.querySelector(".sheet > p.dim")!.textContent).toBe(COPY.home.tagline);
 
       const actions = [...app!.root.querySelectorAll<HTMLButtonElement>(".home-actions button")];
-      expect(actions.map((b) => b.textContent)).toEqual([COPY.home.create, COPY.home.join]);
+      expect(actions.map((b) => b.textContent)).toEqual([COPY.home.create, COPY.home.join, COPY.home.solo]);
+      expect(app!.root.querySelector(".solo-note")!.textContent).toBe(COPY.home.soloNote);
       expect(app!.root.querySelector("#screen #skin-select")).toBeNull();
       expect(app!.root.querySelector("#menu-panel #skin-select")).toBeTruthy();
       expect(app!.root.querySelectorAll("input")).toHaveLength(0);

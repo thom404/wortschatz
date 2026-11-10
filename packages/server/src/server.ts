@@ -53,6 +53,7 @@ const MIME: Record<string, string> = {
   ".map": "application/json",
   ".txt": "text/plain; charset=utf-8",
   ".woff2": "font/woff2",
+  ".bin": "application/octet-stream",
   ".webmanifest": MANIFEST_CONTENT_TYPE,
 };
 
@@ -242,6 +243,8 @@ function isAppOwnedFile(pathname: string): boolean {
     pathname === SERVICE_WORKER_PATH ||
     pathname === "/manifest.webmanifest" ||
     pathname === "/icons" ||
-    pathname.startsWith("/icons/")
+    pathname.startsWith("/icons/") ||
+    pathname === "/data" ||
+    pathname.startsWith("/data/")
   );
 }

@@ -59,9 +59,11 @@ export const NO_WORDS: RevealPayload = { groups: [] };
 export const COPY = {
   home: {
     title: "Wortschatz",
-    tagline: "Ein Mehrspieler-Wörterspiel.",
+    tagline: "Ein Wörterspiel für allein oder zu mehreren.",
     create: "Raum erstellen",
     join: "Raum beitreten",
+    solo: "Allein spielen",
+    soloNote: "Funktioniert ohne Netz.",
   },
   create: {
     title: "Raum erstellen",
@@ -90,6 +92,7 @@ export const COPY = {
     host: "Gastgeber",
     away: "unterbrochen",
     leave: "Raum verlassen",
+    soloLeave: "Spiel beenden",
   },
   game: {
     title: (round: number) => `Runde ${round}`,
@@ -106,6 +109,8 @@ export const COPY = {
     title: "Pause",
     round: (round: number) => `Runde ${round}`,
     nextRound: "Nächste Runde starten",
+    soloNextRound: "Nächste Runde",
+    soloPoints: "Deine Punkte",
     hostStarts: "Der Gastgeber startet die nächste Runde.",
     total: "Es zählt das Gesamtergebnis der Sitzung.",
     results: "Ergebnisse",

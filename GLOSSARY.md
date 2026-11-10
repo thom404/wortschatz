@@ -6,10 +6,12 @@ here; code, docs, tickets and tests use them as written.
 ## App shell
 
 The cached production client shell: the Home document, every hashed script and
-style asset from the build, the web app manifest and the four icons. It is what
-the installed app can render after one successful online visit with no network;
-it never holds game data, and gameplay stays online. See
-[ADR-0029](docs/adr/0029-offline-app-shell-and-static-cache-policy.md).
+style asset from the build, the web app manifest, the four icons and the one
+build-generated dictionary artifact at `/data/dawg.bin`. It is what the
+installed app can render and play **Solo mode** from after one successful
+online visit with no network. Multiplayer still needs the server. See
+[ADR-0029](docs/adr/0029-offline-app-shell-and-static-cache-policy.md) and
+[ADR-0031](docs/adr/0031-offline-solo-mode-and-local-authority.md).
 
 ## Board enumeration
 
@@ -75,10 +77,11 @@ expires. Contrast a per-round score, which is shown in the round breakdown.
 
 ## Deadline
 
-The server-owned absolute end time (epoch ms) of the current round — the 2-minute
-round clock, and the only clock in a room. Clients render their countdown by
-interpolating against it, but the deadline is authoritative and the client's local
-zero is cosmetic. A pause has no deadline. See Tick.
+The absolute end time (epoch ms) of the current round — the 2-minute round
+clock. In multiplayer the server owns it and it is the only clock in a room;
+clients render their countdown by interpolating against it, and the client's
+local zero is cosmetic. **Solo mode** owns an absolute local deadline in the
+same shape. A pause has no deadline. See Tick.
 
 ## Deep link
 
@@ -133,12 +136,15 @@ travels inside a join greeting's first frame, never in the WebSocket URL. See
 
 ## Home
 
-The app's landing screen and its only entry point: it offers exactly two actions,
-`Raum erstellen` and `Raum beitreten`, and carries no form. The skin switcher
-lives in the **Menu**, not here. It leads to the **Create screen** or the
-**Join screen**; a deep link skips it and lands on Join. See
-[ADR-0021](docs/adr/0021-create-and-join-screens.md) and
-[ADR-0023](docs/adr/0023-app-owned-menu-surface.md).
+The app's landing screen and its only entry point: it offers three actions,
+`Raum erstellen`, `Raum beitreten` and `Allein spielen`, and carries no form.
+The solo action carries the note `Funktioniert ohne Netz.` The tagline is
+`Ein Wörterspiel für allein oder zu mehreren.` The skin switcher lives in the
+**Menu**, not here. It leads to the **Create screen**, the **Join screen** or a
+**Solo mode** session; a deep link skips it and lands on Join. See
+[ADR-0021](docs/adr/0021-create-and-join-screens.md),
+[ADR-0023](docs/adr/0023-app-owned-menu-surface.md) and
+[ADR-0031](docs/adr/0031-offline-solo-mode-and-local-authority.md).
 
 ## Host
 
@@ -280,19 +286,24 @@ holder has missed a full round plus intermission; a voluntary leave releases it 
 
 ## Server authority
 
-The property that the single server process owns the game: it generates the board,
-owns the clock and computes all scores, while clients only render and send input. There
-is no client-side clock, score, or word-trust.
+The property of every multiplayer **Room**: the single server process owns the
+game. It generates the board, owns the clock and computes all scores, while
+clients only render and send input. There is no multiplayer client-side clock,
+score or word-trust. **Solo mode** is the one explicit local exception: a
+single-player session owns its own board, clock, word rule and score in the
+browser. It is not a room and does not change multiplayer authority.
 
 ## Service worker
 
-The production-only browser worker that stores and serves the **App shell**. It
-registers once from the built client and never from the Vite dev server. A
-navigation is network-first with a short timeout and the stored Home fallback;
-hashed assets are cache-first; activation deletes every cache except the current
+The production-only browser worker that stores and serves the **App shell**,
+including the dictionary artifact at `/data/dawg.bin`. It registers once from
+the built client and never from the Vite dev server. A navigation is
+network-first with a short timeout and the stored Home fallback; hashed assets
+and `/data/` are cache-first; activation deletes every cache except the current
 versioned one. Non-GET requests, the health endpoint and **Wire protocol**
 frames are never stored. See
-[ADR-0029](docs/adr/0029-offline-app-shell-and-static-cache-policy.md).
+[ADR-0029](docs/adr/0029-offline-app-shell-and-static-cache-policy.md) and
+[ADR-0031](docs/adr/0031-offline-solo-mode-and-local-authority.md).
 
 ## Service-worker kill switch
 
@@ -344,6 +355,19 @@ server sends on join, on every
 reconnect, on `resync`, and — without being asked — to every seat promoted from
 spectator to player at round start. The client never reconstructs state from
 deltas; everything else is a delta.
+
+## Solo mode
+
+The one-player game that runs entirely inside the installed client: a third
+**Home** action, `Allein spielen`, with no **Room**, room code, WebSocket,
+lobby, nickname, session token, roster or host. The local authority generates
+the same boards, applies the same **Valid word** rules and uses the same
+Scrabble arithmetic as multiplayer, owns an absolute local **Deadline** and
+emits the existing **Wire protocol** message shapes to the existing store and
+screens. A session is a sequence of rounds with a cumulative score; leaving,
+reloading or closing the app discards it. It is not a second multiplayer mode
+and changes no multiplayer rule. See
+[ADR-0031](docs/adr/0031-offline-solo-mode-and-local-authority.md).
 
 ## Spectator
 
@@ -430,5 +454,9 @@ and a typed `error` reply for every rejected action. See Snapshot.
 
 The game's dictionary of accepted words: `enz/german-wordlist` (CC0-1.0), pinned per
 [ADR-0001](docs/adr/0001-word-list-source-and-packaging.md), lowercased and NFC-normalized
-at load, trimmed to a minimum length of 3, and held server-side in a DAWG that answers
-both membership and board enumeration. The browser never holds the word list.
+at load, trimmed to a minimum length of 3, and held in a DAWG that answers both
+membership and board enumeration. The server holds the raw list and builds the
+authoritative dictionary. The installed client fetches only the build-generated
+DAWG artifact at `/data/dawg.bin`, lazily, for **Solo mode**; it never reads the
+raw list. See
+[ADR-0031](docs/adr/0031-offline-solo-mode-and-local-authority.md).

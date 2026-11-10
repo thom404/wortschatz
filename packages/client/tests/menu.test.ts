@@ -140,7 +140,7 @@ describe("Menü (ADR-0023)", () => {
 
   it("renders the version constant exactly and no skin select on Home", () => {
     expect(app!.root.querySelector("#screen #skin-select")).toBeNull();
-    expect(app!.root.querySelectorAll(".home-actions button")).toHaveLength(2);
+    expect(app!.root.querySelectorAll(".home-actions button")).toHaveLength(3);
 
     openMenu();
     expect(panel().querySelector(".menu-version")!.textContent).toBe(`Version ${APP_VERSION}`);

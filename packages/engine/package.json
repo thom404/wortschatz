@@ -1,0 +1,43 @@
+{
+  "name": "@wortschatz/engine",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./boardgen": {
+      "types": "./dist/boardgen/index.d.ts",
+      "import": "./dist/boardgen/index.js"
+    },
+    "./dictionary": {
+      "types": "./dist/dictionary/index.d.ts",
+      "import": "./dist/dictionary/index.js"
+    },
+    "./dawg": {
+      "types": "./dist/dictionary/dawg.d.ts",
+      "import": "./dist/dictionary/dawg.js"
+    },
+    "./dawg-blob": {
+      "types": "./dist/dictionary/dawg-blob.d.ts",
+      "import": "./dist/dictionary/dawg-blob.js"
+    },
+    "./reveal": {
+      "types": "./dist/reveal.d.ts",
+      "import": "./dist/reveal.js"
+    },
+    "./submission": {
+      "types": "./dist/submission.d.ts",
+      "import": "./dist/submission.js"
+    },
+    "./text": {
+      "types": "./dist/text.d.ts",
+      "import": "./dist/text.js"
+    }
+  },
+  "dependencies": {
+    "@wortschatz/shared": "*"
+  }
+}

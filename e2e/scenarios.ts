@@ -229,7 +229,7 @@ const home: ScreenshotScenario = {
   viewports: VIEWPORTS,
   ready: async (page) => {
     await expect(page.locator("#screen h1")).toHaveText(COPY.home.title);
-    await expect(page.locator(".home-actions button")).toHaveCount(2);
+    await expect(page.locator(".home-actions button")).toHaveCount(3);
   },
 };
 

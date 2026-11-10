@@ -27,7 +27,7 @@ import {
   type ConnStatus,
   type RoomConn,
 } from "../src/connection.js";
-import { mount } from "../src/app.js";
+import { mount, type SoloFactory } from "../src/app.js";
 import type { InstallStateOptions } from "../src/install-state.js";
 
 /**
@@ -186,30 +186,49 @@ export interface Mounted {
   unmount(): void;
 }
 
-/** Mounts the real app into a fresh root div on `document.body`. */
-export function mountHarness(installOptions: InstallStateOptions = {}): Mounted {
+/** Mounts the real app into a fresh root div on `document.body`. A solo
+ *  factory can be supplied as the second argument, or alone as the first. */
+export function mountHarness(
+  installOptions: InstallStateOptions | SoloFactory = {},
+  soloFactory?: SoloFactory
+): Mounted {
+  if (typeof installOptions === "function") {
+    soloFactory = installOptions;
+    installOptions = {};
+  }
   installBoardGap();
   document.body.textContent = "";
   const root = document.createElement("div");
   document.body.append(root);
 
-  const connections: ScriptedConnection[] = [];
+  const connections: RoomConn[] = [];
   const factory: ConnFactory = (opts) => {
     const conn = new ScriptedConnection(opts);
     connections.push(conn);
     return conn;
   };
-  const unmount = mount(root, factory, installOptions);
+  const solo: SoloFactory | undefined = soloFactory
+    ? async () => {
+        const supplied = soloFactory as unknown as (...args: unknown[]) => unknown;
+        const inner = supplied.length > 0 ? supplied : await supplied();
+        return (opts) => {
+          const conn = (inner as ConnFactory)(opts);
+          connections.push(conn);
+          return conn;
+        };
+      }
+    : undefined;
+  const unmount = mount(root, factory, installOptions, solo);
 
   return {
     root,
     conn() {
       const latest = connections[connections.length - 1];
       if (!latest) throw new Error("no room was opened yet");
-      return latest;
+      return latest as ScriptedConnection;
     },
     connections() {
-      return [...connections];
+      return [...connections] as ScriptedConnection[];
     },
     unmount,
   };

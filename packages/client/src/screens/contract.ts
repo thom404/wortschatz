@@ -30,6 +30,8 @@ export interface ScreenContext {
   store: GameStore;
   view: ViewState;
   roomCode: string;
+  /** True while the one local solo session is mounted (ADR-0031). */
+  readonly solo: boolean;
   drag: GameDrag;
   /** The Home-only install state (ADR-0029, #257). It is app state beside the
    *  notices, not a shell internal: Home reads it and calls its commands. */
@@ -40,6 +42,7 @@ export interface ScreenContext {
   };
   actions: {
     startRoom(nickname: string, greet: GreetFn): void;
+    startSolo(): void;
     startRound(): void;
     leaveRoom(): void;
     exitToHome(): void;

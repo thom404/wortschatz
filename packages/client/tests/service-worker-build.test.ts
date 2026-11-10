@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile, mkdir, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,8 @@ import { APP_SHELL_CACHE_PREFIX } from "../src/app-shell.js";
 
 const CLIENT_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const VERSION = readAppVersion();
+const DAWG_PUBLIC_PATH = join(CLIENT_ROOT, "public", "data", "dawg.bin");
+let createdDawg = false;
 
 let outDir: string;
 let files: string[];
@@ -27,6 +29,15 @@ async function listFiles(dir: string, prefix = ""): Promise<string[]> {
 }
 
 beforeAll(async () => {
+  // The artifact is a build product and never committed. Materialise a
+  // fixture one so this test proves the dictionary is in the precache set.
+  try {
+    await access(DAWG_PUBLIC_PATH);
+  } catch {
+    await mkdir(join(CLIENT_ROOT, "public", "data"), { recursive: true });
+    await writeFile(DAWG_PUBLIC_PATH, "0\n0|", "utf8");
+    createdDawg = true;
+  }
   outDir = await mkdtemp(join(tmpdir(), "wortschatz-client-build-"));
   await build({
     root: CLIENT_ROOT,
@@ -43,12 +54,14 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (outDir) await rm(outDir, { recursive: true, force: true });
+  if (createdDawg) await rm(DAWG_PUBLIC_PATH, { force: true });
 });
 
 describe("production app shell build", () => {
   it("emits the Home document, hashed scripts and styles, manifest, four icons and one worker", () => {
     expect(files).toContain("index.html");
     expect(files).toContain("manifest.webmanifest");
+    expect(files).toContain("data/dawg.bin");
     expect(files).toContain("sw.js");
     expect(files.filter((path) => path.startsWith("assets/") && path.endsWith(".js"))).toHaveLength(1);
     expect(files.filter((path) => path.startsWith("assets/") && path.endsWith(".css"))).toHaveLength(1);
@@ -75,6 +88,7 @@ describe("production app shell build", () => {
         "icons/icon-512.png",
         "icons/icon-512-maskable.png",
         "icons/apple-touch-icon.png",
+        "data/dawg.bin",
         ...hashedAssets,
       ].sort()
     );

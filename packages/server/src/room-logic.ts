@@ -7,9 +7,9 @@
  */
 import type { ErrorCode, RoomEndReason, ScoreEntry, ServerMessage } from "@wortschatz/shared";
 import type { ServerConfigResolved } from "./config.js";
-import { isFormable } from "./boardgen/index.js";
+import { submissionVerdict } from "@wortschatz/engine";
 import { seatInfo, type Room, type Seat } from "./state.js";
-import { fold, normalizeNickname, normalizeWord, validNickname } from "./text.js";
+import { fold, normalizeNickname, validNickname } from "./text.js";
 
 /** Injectable time source. Production uses `Date.now` and the Node timers;
  *  tests drive a manual clock and never wait on a real timer. */
@@ -330,59 +330,24 @@ export class RoomLogic {
     if (seat.role === "spectator") {
       return { kind: "rejected", code: "not-playing" };
     }
-    const word = normalizeWord(rawWord);
-    if (word.length < 3) {
-      return { kind: "rejected", code: "invalid-word", detail: "too short" };
-    }
-    const candidates = this.resolveCandidates(room, seat.seatId, word, rawAlternate);
-    const best = candidates[0];
-    if (!best) {
-      if (!isFormable(word, room.board)) {
-        return { kind: "rejected", code: "invalid-word", detail: "not placeable" };
-      }
-      return { kind: "rejected", code: "invalid-word", detail: word };
-    }
+    const verdict = submissionVerdict({
+      word: rawWord,
+      ...(rawAlternate !== undefined ? { alternate: rawAlternate } : {}),
+      board: room.board,
+      dictionary: this.deps.cfg.dictionary,
+      foundWords: seat.roundWords,
+      points: (word) => this.deps.cfg.scoreWord(word, seat.seatId),
+    });
+    if (verdict.kind === "rejected") return verdict;
     // Duplicate identity is the resolved word, not the path or the client's
     // primary reading: the same find reached another way stays one find.
-    if (seat.roundWords.has(best.word)) {
-      return { kind: "rejected", code: "word-duplicate", detail: best.word };
-    }
-    seat.roundWords.add(best.word);
-    seat.roundScore += best.points;
-    seat.cumulativeScore += best.points;
+    seat.roundWords.add(verdict.word);
+    seat.roundScore += verdict.points;
+    seat.cumulativeScore += verdict.points;
     const list = room.wordsBySeat.get(seat.seatId);
-    if (list) list.push(best.word);
+    if (list) list.push(verdict.word);
     this.touch(room);
-    return { kind: "accepted", word: best.word, points: best.points };
-  }
-
-  /**
-   * The deterministic reading of a submission (ADR-0027): normalize and
-   * dedupe both readings, keep the formable list words, then rank by points,
-   * length and alphabetical word — a pure function of the candidates.
-   */
-  private resolveCandidates(
-    room: Room,
-    seatId: number,
-    word: string,
-    rawAlternate?: string
-  ): { word: string; points: number }[] {
-    const readings = new Set([word]);
-    if (rawAlternate !== undefined) readings.add(normalizeWord(rawAlternate));
-    return [...readings]
-      .filter(
-        (candidate) =>
-          candidate.length >= 3 &&
-          isFormable(candidate, room.board) &&
-          this.deps.cfg.dictionary.isValid(candidate)
-      )
-      .map((candidate) => ({ word: candidate, points: this.deps.cfg.scoreWord(candidate, seatId) }))
-      .sort(
-        (a, b) =>
-          b.points - a.points ||
-          b.word.length - a.word.length ||
-          (a.word < b.word ? -1 : a.word > b.word ? 1 : 0)
-      );
+    return { kind: "accepted", word: verdict.word, points: verdict.points };
   }
 
   /** The one room-wide scoreboard projection: the moved `score-update` fan-out. */

@@ -38,6 +38,16 @@ import "./style.css";
 
 type Unsubscribe = () => void;
 
+/** How solo begins: the production factory loads the dictionary first and
+ *  then returns the connection factory; tests can return a scripted one. A
+ *  bare `ConnFactory` is accepted too when the caller already has a dictionary. */
+export type SoloFactory = () => ConnFactory | Promise<ConnFactory>;
+export type SoloFactoryInput = SoloFactory | ConnFactory;
+export interface SoloFactoryOptions {
+  solo?: SoloFactoryInput;
+  soloFactory?: SoloFactoryInput;
+}
+
 /** The three entry screens (ADR-0021): Home routes to Create or Join, both
  *  in memory. The history entry carries the screen it names, never a route. */
 type EntryScreen = "home" | "create" | "join";
@@ -59,6 +69,10 @@ interface App {
   conn: RoomConn | null;
   renderTimer: ReturnType<typeof setInterval> | null;
   inRoom: boolean;
+  /** True while the local solo session owns the screen (ADR-0031). */
+  soloMode: boolean;
+  /** True while the solo dictionary is loading and Home must stay put. */
+  soloLoading: boolean;
   /** The live connection attempt, or `null` when no attempt exists (the idle
    *  start screen). `open` is also the absence of a notice. */
   connStatus: ConnStatus | null;
@@ -95,6 +109,10 @@ interface App {
 /** The one offline line (ADR-0029): the Notification layer's status slot. */
 const OFFLINE_NOTICE = "Du bist offline.";
 
+/** Solo loading and failure copy (ADR-0031). */
+const SOLO_LOADING = "Wörterbuch wird geladen …";
+const SOLO_LOAD_ERROR = "Das Wörterbuch konnte nicht geladen werden. Versuche es erneut.";
+
 /** The update notice's German copy (ADR-0029, #258). */
 const UPDATE_NOTICE = "Neue Version verfügbar.";
 const UPDATE_ACTION = "Neu laden";
@@ -115,8 +133,14 @@ function deepLinkCode(): string | null {
 export function mount(
   rootEl: HTMLElement,
   connect: ConnFactory,
-  installOptions: InstallStateOptions = {}
+  installOptions: InstallStateOptions = {},
+  soloInput?: SoloFactoryInput | SoloFactoryOptions
 ): () => void {
+  const optionsInput = installOptions as InstallStateOptions & SoloFactoryOptions;
+  const soloFactory: SoloFactoryInput | undefined =
+    typeof soloInput === "function"
+      ? soloInput
+      : (soloInput?.soloFactory ?? soloInput?.solo ?? optionsInput.soloFactory ?? optionsInput.solo);
   // The app root is a shell (ADR-0018): one screen container that every
   // render replaces, beside the app-owned Menü (ADR-0023) and the one
   // notification layer created here once. The update notice is a sibling of
@@ -142,6 +166,8 @@ export function mount(
     conn: null,
     renderTimer: null,
     inRoom: false,
+    soloMode: false,
+    soloLoading: false,
     connStatus: null,
     localError: null,
     noticeStatus: rootEl.querySelector<HTMLElement>("#notice-status")!,
@@ -185,6 +211,9 @@ export function mount(
     get roomCode() {
       return app.roomCode;
     },
+    get solo() {
+      return app.soloMode;
+    },
     drag,
     install: app.install,
     notices: {
@@ -193,6 +222,7 @@ export function mount(
     },
     actions: {
       startRoom: (nickname, greet) => startRoom(nickname, greet),
+      startSolo: () => void startSolo(),
       startRound: () => {
         clearError(app);
         app.conn?.request({ type: "start-round" });
@@ -289,6 +319,58 @@ export function mount(
     app.connStatus = null;
   }
 
+  /* ---- solo shell ------------------------------------------------- */
+
+  /** Home's third action (ADR-0031): keep Home on screen while the dictionary
+   *  loads, guard against a double start, then hand the session to the local
+   *  connection. A failure is the existing assertive error slot and the same
+   *  action retries. */
+  async function startSolo(): Promise<void> {
+    if (app.soloLoading || app.inRoom) return;
+    if (!soloFactory) {
+      setLocalError(app, SOLO_LOAD_ERROR);
+      return;
+    }
+    app.soloLoading = true;
+    app.localError = null;
+    app.store.lastError = null;
+    renderNotices(app);
+    try {
+      const supplied = soloFactory as unknown as (...args: unknown[]) => unknown;
+      // A factory that takes connection options is already the connection
+      // factory; an argument-less one is the async dictionary-loading seam.
+      const factory = supplied.length > 0 ? supplied : await supplied();
+      if (typeof factory !== "function") throw new Error("solo factory missing");
+      app.soloLoading = false;
+      startSoloRoom(factory as ConnFactory);
+    } catch {
+      app.soloLoading = false;
+      setLocalError(app, SOLO_LOAD_ERROR);
+    }
+  }
+
+  /** Mount one local session through the same connection seam and render
+   *  path as a room. The address bar never claims `/r/<code>`. */
+  function startSoloRoom(factory: ConnFactory): void {
+    app.inRoom = true;
+    app.soloMode = true;
+    app.roomCode = "";
+    app.view.reset();
+    app.conn = factory({
+      greet: () => null,
+      listener: (msg) => onMessage(msg),
+      onStatus: (status) => onStatus(status),
+      onClose: (outcome) => onClose(outcome),
+    });
+    if (app.unsub) app.unsub();
+    app.unsub = app.store.subscribe((kind) => render(app, kind));
+    clearError(app);
+    app.conn.start();
+    render(app);
+    if (app.renderTimer) clearInterval(app.renderTimer);
+    app.renderTimer = setInterval(() => currentPaint?.tick?.(ctx), 250);
+  }
+
   /* ---- room shell ------------------------------------------------- */
 
   function startRoom(nickname: string, greet: GreetFn): void {
@@ -340,7 +422,9 @@ export function mount(
     // stays a frame-driven outcome: the server only emits it when the room
     // is gone (bad join, a room the seat outlived) — never as a transient
     // mid-game verdict.
-    if (msg.type === "error" && msg.code === "room-not-found") return showOutcome({ kind: "room-not-found" });
+    if (!app.soloMode && msg.type === "error" && msg.code === "room-not-found") {
+      return showOutcome({ kind: "room-not-found" });
+    }
   }
 
   /** A greeting rejection: an `error` frame that arrives while the join is
@@ -348,7 +432,7 @@ export function mount(
    *  state a rejected greeting must be told apart by, distinct from an
    *  in-room error (a room is known) and a close outcome. */
   function isGreetingRejection(msg: ServerMessage): msg is ServerErrorMsg {
-    return app.inRoom && !app.store.code && msg.type === "error";
+    return app.inRoom && !app.soloMode && !app.store.code && msg.type === "error";
   }
 
   /** Rejected greeting (join/create): stop the connection so a retry starts
@@ -376,7 +460,7 @@ export function mount(
   /** The address bar tells the room's real deep link — but only once a
    *  snapshot has named the room; a rejected greeting never claims it. */
   function syncRoomUrl(app: App): void {
-    if (!app.store.code) return;
+    if (app.soloMode || !app.store.code) return;
     const want = `/r/${app.store.code}`;
     if (location.pathname !== want) window.history.replaceState({}, "", want);
   }
@@ -412,6 +496,7 @@ export function mount(
   }
 
   function leaveRoom(): void {
+    if (app.soloMode) return exitToHome();
     if (app.conn) app.conn.request({ type: "leave" });
     exitToHome();
   }
@@ -423,6 +508,8 @@ export function mount(
       app.conn = null;
     }
     app.inRoom = false;
+    app.soloMode = false;
+    app.soloLoading = false;
     teardown(app);
     app.store.reset();
     window.history.pushState({}, "", "/");
@@ -492,6 +579,7 @@ export function mount(
   /* ---- notices ---------------------------------------------------- */
 
   function statusNoticeText(app: App): string {
+    if (app.soloLoading) return SOLO_LOADING;
     if (navigator.onLine === false) return OFFLINE_NOTICE;
     if (app.connStatus === "connecting") return "Verbinde …";
     if (app.connStatus === "retrying") return "Verbindung wird wiederhergestellt …";

@@ -3,7 +3,7 @@ import { displayWord } from "../display.js";
 import { escapeHtml } from "../escape.js";
 import { TRACE_HINT } from "../game-drag.js";
 import { boardHtml, boardRotationHtml, measureBoardGap, wireBoardRotation } from "../presentation/board.js";
-import { leaveButtonHtml } from "../presentation/controls.js";
+import { leaveButtonHtml, soloLeaveButtonHtml } from "../presentation/controls.js";
 import { SCOREBOARD_REGION, scoreboardHtml } from "../presentation/scoreboard.js";
 import type { GameStore } from "../store.js";
 import { APP_NAME } from "./home.js";
@@ -105,6 +105,11 @@ const FOUND_REGION: LiveRegion = { selector: "#found", update: updateFound };
  *  the private found-word chips (absent for a spectator, and skipped then). */
 const GAME_LIVE_REGIONS: readonly LiveRegion[] = [TIMER_REGION, SCOREBOARD_REGION, FOUND_REGION];
 
+/** Solo has no multiplayer scoreboard; the timer still shows the round score. */
+function liveRegionsFor(ctx: ScreenContext): readonly LiveRegion[] {
+  return ctx.solo ? [TIMER_REGION, FOUND_REGION] : GAME_LIVE_REGIONS;
+}
+
 export function paint(ctx: ScreenContext): ScreenPaint {
   const board = ctx.store.round?.board ?? [];
   const spectating = ctx.store.self.role === "spectator";
@@ -133,14 +138,18 @@ export function paint(ctx: ScreenContext): ScreenPaint {
                  <ul id="found" class="chips">${foundHtml(ctx.store)}</ul>
                </section>`
         }
-        <section class="panel area-score">
-          <h2>Punkte</h2>
-          <ul id="players" class="chips">${scoreboardHtml(ctx.store)}</ul>
-        </section>
+        ${
+          ctx.solo
+            ? ""
+            : `<section class="panel area-score">
+                 <h2>Punkte</h2>
+                 <ul id="players" class="chips">${scoreboardHtml(ctx.store)}</ul>
+               </section>`
+        }
       </div>
-      ${leaveButtonHtml()}
+      ${ctx.solo ? soloLeaveButtonHtml() : leaveButtonHtml()}
     </div>`,
-    liveRegions: GAME_LIVE_REGIONS,
+    liveRegions: liveRegionsFor(ctx),
     wire(root) {
       // Post-render order: seed the timer through CSSOM, measure the gap,
       // wire rotation and leave, then rehydrate a live drag's trace.

@@ -120,3 +120,13 @@ the list now gets a **reviewed curation step** — without changing the source.
   concatenations and wrecks fairness.
 - **Sorted blob + offset index / `Set<string>`.** Rejected: membership-only, no practical
   enumeration (blob) or ~30 MB and no enumeration (`Set`).
+
+## Amendment (#284, 2026-11-10): one artifact, two authorities
+
+Decision 4's "server-only — the browser never holds the list" remains true for
+multiplayer and for the raw word list. **Solo mode**
+([ADR-0031](0031-offline-solo-mode-and-local-authority.md)) adds one deliberate
+exception: the same build-generated DAWG artifact is fetched lazily by the
+installed client and kept in memory for the app's lifetime. The browser never
+reads the committed raw list; the artifact is never committed; the pinned
+checksum and exclusion discipline are unchanged.
