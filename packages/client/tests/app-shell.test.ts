@@ -15,7 +15,7 @@ import {
 } from "../src/app-shell.js";
 
 const ORIGIN = "https://wortschatz.test";
-const VERSION = "0.1.2";
+const VERSION = "0.1.3";
 
 const MANIFEST: PrecacheEntry[] = [
   { url: "index.html", revision: "home" },

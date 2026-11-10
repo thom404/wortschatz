@@ -100,7 +100,7 @@ test("skin switch through the Menü survives reload", async ({ page }) => {
   await expect(page.locator("body")).toHaveAttribute("data-skin", "standard");
   await expect(page.locator("#menu-panel")).toBeHidden();
   await openMenu(page);
-  await expect(page.locator("#menu-panel .menu-version")).toHaveText(`Version 0.1.2`);
+  await expect(page.locator("#menu-panel .menu-version")).toHaveText(`Version 0.1.3`);
   await page.locator("#skin-select").selectOption("arcade");
   await expect(page.locator("body")).toHaveAttribute("data-skin", "arcade");
 

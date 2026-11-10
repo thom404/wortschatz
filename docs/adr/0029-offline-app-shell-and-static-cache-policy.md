@@ -2,7 +2,8 @@
 
 - Status: Accepted
 - Date: 2026-11-10
-- Ticket: [#256](https://github.com/thom404/wortschatz/issues/256), part of the
+- Ticket: [#256](https://github.com/thom404/wortschatz/issues/256),
+  [#262](https://github.com/thom404/wortschatz/issues/262), part of the
   installable app shell spec [#254](https://github.com/thom404/wortschatz/issues/254)
 - Related: [ADR-0018](0018-floating-notification-layer.md) (the one status
   slot), [ADR-0020](0020-browser-visual-regression-seam.md) (the browser seam),
