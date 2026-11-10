@@ -97,3 +97,15 @@ it.
 short note `Funktioniert ohne Netz.` It keeps Home on screen while the
 dictionary loads. Create and Join, their history rules and the deep-link entry
 are unchanged.
+
+## Amendment (#295, 2026-11-10): the Home solo action names the offline mode
+
+The #284 wording is reversed for Home copy. The third action now reads
+`Offline-Modus (Solo)`, the `Funktioniert ohne Netz.` note is removed entirely
+(no tooltip, description or replacement hint), and the tagline returns to
+`Ein Mehrspieler-Wörterspiel.` Home describes the multiplayer core again; the
+solo path names its own offline mode. The three actions stay one row of three
+equal columns from 600 px and stack below that width. The solo button's id,
+handler and primary styling are unchanged, as is the entry order Erstellen →
+Beitreten → Solo. The **Home** and **Solo mode** glossary entries and the copy
+records were updated with it.

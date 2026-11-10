@@ -18,7 +18,7 @@ tests that keep them honest.
 
 ## How to play
 
-- **Play alone or in a room.** `Allein spielen` starts a one-player session
+- **Play alone or in a room.** `Offline-Modus (Solo)` starts a one-player session
   immediately; it needs no room, nickname or network after the app is installed
   ([ADR-0031](docs/adr/0031-offline-solo-mode-and-local-authority.md)). Create
   a room from Home or join with a short room code, deep link or QR invite

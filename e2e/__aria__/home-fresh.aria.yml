@@ -1,9 +1,8 @@
 - heading "Wortschatz" [level=1]
-- paragraph: Ein Wörterspiel für allein oder zu mehreren.
+- paragraph: Ein Mehrspieler-Wörterspiel.
 - button "Raum erstellen"
 - button "Raum beitreten"
-- button "Allein spielen"
-- paragraph: Funktioniert ohne Netz.
+- button "Offline-Modus (Solo)"
 - button "Menü"
 - status
 - alert

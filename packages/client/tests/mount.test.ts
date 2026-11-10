@@ -1985,7 +1985,7 @@ describe("mountable app", () => {
 
       const actions = [...app!.root.querySelectorAll<HTMLButtonElement>(".home-actions button")];
       expect(actions.map((b) => b.textContent)).toEqual([COPY.home.create, COPY.home.join, COPY.home.solo]);
-      expect(app!.root.querySelector(".solo-note")!.textContent).toBe(COPY.home.soloNote);
+      expect(app!.root.querySelector(".solo-note")).toBeNull();
       expect(app!.root.querySelector("#screen #skin-select")).toBeNull();
       expect(app!.root.querySelector("#menu-panel #skin-select")).toBeTruthy();
       expect(app!.root.querySelectorAll("input")).toHaveLength(0);
