@@ -9,6 +9,7 @@ WORKDIR /app
 ARG GIT_SHA="dev"
 COPY package.json package-lock.json tsconfig.base.json vitest.config.ts ./
 COPY packages/shared packages/shared
+COPY packages/engine packages/engine
 COPY packages/server packages/server
 COPY packages/client packages/client
 # The root typecheck compiles the Playwright layer too (#219); the image build
