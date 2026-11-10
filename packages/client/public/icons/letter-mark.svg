@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Wortschatz letter mark: the source for every committed raster icon.
+       The glyph is drawn in the Standard Skin's accent colour on its page
+       background; run `npm run generate-icons` after editing it. -->
+  <rect width="512" height="512" fill="#f4f7fb" />
+  <path
+    d="M 128 136 L 224 376 L 256 248 L 288 376 L 384 136"
+    fill="none"
+    stroke="#2563eb"
+    stroke-width="56"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

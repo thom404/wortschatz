@@ -6,6 +6,9 @@ import type { RoomEndReason } from "@wortschatz/shared";
 import { resolveConfig, type ServerConfig } from "./config.js";
 import { Rooms } from "./rooms.js";
 
+/** The web app manifest's registered content type (issue #255). */
+export const MANIFEST_CONTENT_TYPE = "application/manifest+json";
+
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -17,6 +20,7 @@ const MIME: Record<string, string> = {
   ".map": "application/json",
   ".txt": "text/plain; charset=utf-8",
   ".woff2": "font/woff2",
+  ".webmanifest": MANIFEST_CONTENT_TYPE,
 };
 
 /**
