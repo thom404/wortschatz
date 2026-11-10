@@ -2,3 +2,5 @@ node_modules
 dist
 words
 COPYING
+# Vendored third-party skills; keep them byte-identical to upstream.
+.agents

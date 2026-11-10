@@ -62,6 +62,10 @@ full-page screenshots against committed baselines; it never runs as part of
 
 ## Agent skills
 
+Skills are vendored here, not installed globally: `.agents/skills/` holds the
+skill files and `skills-lock.json` pins their source and hashes. Refresh with
+`npx skills update` and commit the diff.
+
 ### Issue tracker
 
 Issues and specs live as GitHub issues in `thom404/wortschatz`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
