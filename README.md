@@ -52,6 +52,13 @@ npm run build && npm run build-dawg   # build client, server and dictionary
 npm start                             # http://localhost:3000
 ```
 
+The production client build also emits an installable manifest, four icons and
+one service worker. After one successful online visit the installed app opens
+without a network and shows **Home** with `Du bist offline.`; gameplay always
+needs the server. The committed icon rasters are generated from the vector
+source by `npm run icons`. The caching and offline limit are recorded in
+[ADR-0029](docs/adr/0029-offline-app-shell-and-static-cache-policy.md).
+
 Prefer Docker? The local compose harness builds and runs the same image the
 deployment uses (the image build runs the typecheck and the full test suite as
 quality gates):

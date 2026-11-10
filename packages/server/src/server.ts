@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { readFile, stat } from "node:fs/promises";
-import { extname, join, normalize, resolve } from "node:path";
+import { extname, join, normalize, relative, resolve } from "node:path";
 import { WebSocketServer } from "ws";
 import type { RoomEndReason } from "@wortschatz/shared";
 import { resolveConfig, type ServerConfig } from "./config.js";
@@ -8,6 +8,18 @@ import { Rooms } from "./rooms.js";
 
 /** The web app manifest's registered content type (issue #255). */
 export const MANIFEST_CONTENT_TYPE = "application/manifest+json";
+
+/** The production service worker's stable public path (ADR-0029). */
+export const SERVICE_WORKER_PATH = "/sw.js";
+
+/** No-cache for the Home document, the worker and the manifest (ADR-0029). */
+export const NO_CACHE_CONTROL = "no-cache";
+
+/** Content-hashed build output may be cached for a year without revalidation. */
+export const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+
+/** Icons are versionless, so they revalidate weekly rather than yearly. */
+export const ICON_CACHE_CONTROL = "public, max-age=604800";
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -136,7 +148,12 @@ export class WordamentServer {
     }
     const dir = this.config.staticDir;
     if (!dir) {
-      res.writeHead(404, { "content-type": "text/plain" }).end("not found");
+      res
+        .writeHead(404, {
+          "content-type": "text/plain",
+          "content-security-policy": CONTENT_SECURITY_POLICY,
+        })
+        .end("not found");
       return;
     }
     try {
@@ -144,11 +161,28 @@ export class WordamentServer {
       res.writeHead(200, {
         "content-type": MIME[extname(body.path)] ?? "application/octet-stream",
         "content-security-policy": CONTENT_SECURITY_POLICY,
+        "cache-control": this.cacheControlFor(dir, body.path),
       });
       res.end(body.content);
     } catch {
-      res.writeHead(404, { "content-type": "text/plain" }).end("not found");
+      res
+        .writeHead(404, {
+          "content-type": "text/plain",
+          "content-security-policy": CONTENT_SECURITY_POLICY,
+        })
+        .end("not found");
     }
+  }
+
+  /** The cache policy of one served file (ADR-0029): shell entry points
+   *  revalidate, hashed assets are immutable and versionless icons expire
+   *  after a week. */
+  private cacheControlFor(dir: string, path: string): string {
+    const root = resolve(dir);
+    const relativePath = relative(root, path).replaceAll("\\", "/");
+    if (relativePath.startsWith("assets/")) return IMMUTABLE_CACHE_CONTROL;
+    if (relativePath.startsWith("icons/")) return ICON_CACHE_CONTROL;
+    return NO_CACHE_CONTROL;
   }
 
   private async serveStatic(dir: string, pathname: string): Promise<{ path: string; content: Buffer }> {
@@ -162,9 +196,22 @@ export class WordamentServer {
       if (s.isFile()) return { path: candidate, content: await readFile(candidate) };
       throw new Error("not a file");
     } catch {
-      // SPA fallback: any unmatched path renders the app (deep links).
+      // The app's own files must never masquerade as the Home document: a
+      // missing worker, manifest or icon is a broken deploy and answers 404.
+      // The root and Deep link paths keep the SPA fallback.
+      if (isAppOwnedFile(pathname)) throw new Error("missing app file");
       const index = join(root, "index.html");
       return { path: index, content: await readFile(index) };
     }
   }
+}
+
+/** Files the static server stops masking with the Home-document fallback. */
+function isAppOwnedFile(pathname: string): boolean {
+  return (
+    pathname === SERVICE_WORKER_PATH ||
+    pathname === "/manifest.webmanifest" ||
+    pathname === "/icons" ||
+    pathname.startsWith("/icons/")
+  );
 }

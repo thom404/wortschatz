@@ -1,7 +1,40 @@
 import { defineConfig } from "vite";
+import { VitePWA } from "vite-plugin-pwa";
 import { readAppVersion } from "./app-version.js";
 
+/**
+ * The precache set is exactly the production shell: the Home document, the
+ * build's hashed script and style assets, the manifest and the four icons.
+ * The vector source and the worker itself are deliberately absent.
+ */
+const PRECACHE_PATTERNS = [
+  "index.html",
+  "assets/*.js",
+  "assets/*.css",
+  "manifest.webmanifest",
+  "icons/icon-192.png",
+  "icons/icon-512.png",
+  "icons/icon-512-maskable.png",
+  "icons/apple-touch-icon.png",
+];
+
 export default defineConfig({
+  plugins: [
+    VitePWA({
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.ts",
+      injectRegister: false,
+      manifest: false,
+      devOptions: { enabled: false },
+      injectManifest: {
+        injectionPoint: "__WORT_SCHATZ_PRECACHE__",
+        globPatterns: PRECACHE_PATTERNS,
+        rollupFormat: "iife",
+        minify: false,
+      },
+    }),
+  ],
   server: {
     // Dev: Vite fronts the SPA and proxies the game server on :3000.
     proxy: {

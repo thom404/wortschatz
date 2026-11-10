@@ -131,6 +131,9 @@ const APP_NAME = "Wortschatz";
 /** The one sentence the drag surface shows between words. */
 const TRACE_HINT = "Wische über die Felder, um ein Wort zu bilden.";
 
+/** The one offline line (ADR-0029): the Notification layer's status slot. */
+const OFFLINE_NOTICE = "Du bist offline.";
+
 /** The German points phrase for a tile: singular at one point, an `oder`
  *  pair when the spellings differ, plural otherwise (issue #142). Equal
  *  either/or variants collapse exactly as the visible number does. */
@@ -289,6 +292,9 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
     liveRegions: [],
   };
   window.addEventListener("popstate", app.onPopState);
+  const refreshNotices = () => renderNotices(app);
+  window.addEventListener("online", refreshNotices);
+  window.addEventListener("offline", refreshNotices);
   app.stopDrag = wireDrag(app);
   // The skin choice is page-level (ADR-0002): the restored selection
   // rides on the root attribute before the first screen renders, so a
@@ -318,6 +324,8 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
     }
     if (app.unsub) app.unsub();
     window.removeEventListener("popstate", app.onPopState);
+    window.removeEventListener("online", refreshNotices);
+    window.removeEventListener("offline", refreshNotices);
     rootEl.textContent = "";
   };
 }
@@ -1351,6 +1359,7 @@ function paintTrace(app: App): void {
 /* ------------------------------------------------------------------ */
 
 function statusNoticeText(app: App): string {
+  if (navigator.onLine === false) return OFFLINE_NOTICE;
   if (app.connStatus === "connecting") return "Verbinde …";
   if (app.connStatus === "retrying") return "Verbindung wird wiederhergestellt …";
   return "";

@@ -3,6 +3,14 @@
 Shared vocabulary for the German multiplayer Wordament clone. Terms are defined once
 here; code, docs, tickets and tests use them as written.
 
+## App shell
+
+The cached production client shell: the Home document, every hashed script and
+style asset from the build, the web app manifest and the four icons. It is what
+the installed app can render after one successful online visit with no network;
+it never holds game data, and gameplay stays online. See
+[ADR-0029](docs/adr/0029-offline-app-shell-and-static-cache-policy.md).
+
 ## Board enumeration
 
 Walking a fixed 4×4 board to find **every** valid word placeable on it, honouring
@@ -243,6 +251,16 @@ holder has missed a full round plus intermission; a voluntary leave releases it 
 The property that the single server process owns the game: it generates the board,
 owns the clock and computes all scores, while clients only render and send input. There
 is no client-side clock, score, or word-trust.
+
+## Service worker
+
+The production-only browser worker that stores and serves the **App shell**. It
+registers once from the built client and never from the Vite dev server. A
+navigation is network-first with a short timeout and the stored Home fallback;
+hashed assets are cache-first; activation deletes every cache except the current
+versioned one. Non-GET requests, the health endpoint and **Wire protocol**
+frames are never stored. See
+[ADR-0029](docs/adr/0029-offline-app-shell-and-static-cache-policy.md).
 
 ## Session token
 
