@@ -132,3 +132,18 @@ The same amendment adds the overflow assertions the responsive pass needs — no
 horizontal document overflow on any screen × viewport × skin, and the board fully
 visible without vertical scrolling at 1280×800 — to this suite rather than to
 `npm test`, so the browser-free layers stay browser-free.
+
+## Amendment (#260, 2026-11-10): service workers blocked except the offline spec
+
+The production build now registers a **Service worker** (ADR-0029). Screenshot,
+ARIA, flow and responsive specs must never measure a stored shell or a cached
+asset, so the Playwright `use` block sets `serviceWorkers: "block"`. One new
+`e2e/offline.spec.ts` opts back in with `test.use({ serviceWorkers: "allow" })`
+and proves the installed app from outside: the stored shell opening with the
+network disabled and showing `Du bist offline.`, a waiting worker announcing
+`Neue Version verfügbar.` only after the **Round**, and the **Install card**
+appearing, remembering `Später` and hiding after install. The spec drives only
+existing browser and wire boundaries; it adds no app seam, and the strict
+network guard still rejects any request outside the preview origin. The
+matrix, viewports and **Screenshot baselines** are unchanged; the new states'
+visual records are #261.

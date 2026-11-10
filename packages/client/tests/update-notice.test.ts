@@ -90,11 +90,15 @@ interface FakeRegistration extends UpdateRegistration {
   dispatch(type: string): void;
 }
 
-function fakeRegistration(waiting: UpdateWorker | null = null): FakeRegistration {
+function fakeRegistration(
+  waiting: UpdateWorker | null = null,
+  active: UpdateWorker | null = fakeWorker()
+): FakeRegistration {
   const target = eventListeners();
   return {
     waiting,
     installing: null,
+    active,
     addEventListener: target.addEventListener,
     removeEventListener: target.removeEventListener,
     dispatch: target.dispatch,
@@ -154,6 +158,15 @@ describe("update notice (#258)", () => {
     expect(notice().textContent).toContain(COPY.text);
     expect(reloadButton().textContent).toBe(COPY.action);
     expect(notice().querySelectorAll("button")).toHaveLength(1);
+  });
+
+  it("does not announce the first install when no active worker exists", () => {
+    // The first worker passes through `installing` with no active worker;
+    // the browser promotes it straight to active, so no update is waiting.
+    const registration = fakeRegistration(fakeWorker(), null);
+    mountWithUpdate({ registration });
+
+    expect(updateVisible()).toBe(false);
   });
 
   it("lives outside the screen markup beside the notification layer, not as a status slot", () => {

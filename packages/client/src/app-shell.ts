@@ -181,7 +181,10 @@ export function serveAppShell(
 ): void {
   const env: AppShellEnvironment = {
     caches: options.caches ?? caches,
-    fetch: options.fetch ?? fetch,
+    // Call the global through a wrapper: a bare `fetch` reference loses its
+    // worker-global `this` when invoked as `env.fetch` and throws "Illegal
+    // invocation" (caught by the production browser suite).
+    fetch: options.fetch ?? ((input, init) => fetch(input, init)),
     origin: scope.location.origin,
     version: options.version,
     manifest: options.manifest,

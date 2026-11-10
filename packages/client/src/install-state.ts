@@ -58,6 +58,10 @@ export interface UpdateWorker {
 export interface UpdateRegistration {
   readonly waiting: UpdateWorker | null;
   readonly installing?: UpdateWorker | null;
+  /** The worker currently controlling the app. A worker is only a *waiting*
+   *  update beside one; the first install briefly passes through `installing`
+   *  with no active worker and must not be announced as an update. */
+  readonly active?: UpdateWorker | null;
   addEventListener(type: string, listener: EventListener): void;
   removeEventListener(type: string, listener: EventListener): void;
 }
@@ -305,6 +309,10 @@ export class InstallState {
     if (this.applying || this.disposed) return;
     const waiting = registration.waiting;
     if (!waiting || waiting === this.waiting) return;
+    // Only an additional worker beside an active one is a waiting update.
+    // The very first install has no active worker; the browser promotes that
+    // worker straight to active and no update exists to announce.
+    if (!registration.active || registration.active === waiting) return;
     this.waiting = waiting;
     this.notifyUpdate();
   }
