@@ -9,7 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@wortschatz/shared": "*"
+    "@wortschatz/shared": "*",
+    "@wortschatz/engine": "*"
   },
   "devDependencies": {
     "vite": "^5.4.0",

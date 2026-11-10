@@ -3,7 +3,7 @@ import { displayWord } from "../display.js";
 import { escapeHtml } from "../escape.js";
 import { sortAlphabetIcon, sortLengthIcon, sortPointsIcon } from "../icons.js";
 import { boardHtml, boardRotationHtml, measureBoardGap, wireBoardRotation } from "../presentation/board.js";
-import { iconButtonHtml, leaveButtonHtml } from "../presentation/controls.js";
+import { iconButtonHtml, leaveButtonHtml, soloLeaveButtonHtml } from "../presentation/controls.js";
 import { SCOREBOARD_REGION, scoreboardHtml } from "../presentation/scoreboard.js";
 import type { GameStore } from "../store.js";
 import type { RevealOrder } from "../view-state.js";
@@ -35,14 +35,14 @@ function revealWordCount(reveal: RevealPayload): number {
  * visible — dimmed, without invented credit. No tile paths, no first-finder
  * marks.
  */
-function revealHtml(store: GameStore, mode: RevealOrder): string {
+function revealHtml(store: GameStore, mode: RevealOrder, solo = false): string {
   const reveal = store.finishedRound?.reveal;
   if (!reveal || revealWordCount(reveal) === 0) return "<dt>Ergebnisse</dt><dd>—</dd>";
   if (mode === "length") {
     return reveal.groups
       .map(
         (g) =>
-          `<dt>${g.length} Buchstaben</dt><dd>${g.words.map((w) => revealWordHtml(store, w)).join(" ")}</dd>`
+          `<dt>${g.length} Buchstaben</dt><dd>${g.words.map((w) => revealWordHtml(store, w, solo)).join(" ")}</dd>`
       )
       .join("");
   }
@@ -51,20 +51,20 @@ function revealHtml(store: GameStore, mode: RevealOrder): string {
     mode === "points"
       ? [...words].sort((a, b) => b.points - a.points || germanCompare(a, b))
       : [...words].sort(germanCompare);
-  return `<dd class="reveal-flat">${ordered.map((w) => revealWordHtml(store, w)).join(" ")}</dd>`;
+  return `<dd class="reveal-flat">${ordered.map((w) => revealWordHtml(store, w, solo)).join(" ")}</dd>`;
 }
 
 /** One word in every reveal mode: its points, one found-by chip per finder
  *  and the dimmed treatment for a word nobody found. A word with a resolved
  *  Wiktionary entry carries a quiet outbound link after the word itself. */
-function revealWordHtml(store: GameStore, w: RevealWord): string {
+function revealWordHtml(store: GameStore, w: RevealWord, solo = false): string {
   const by = w.foundBy
     .map((id) => store.players.find((p) => p.seatId === id)?.nickname)
     .filter((n): n is string => Boolean(n))
     .map((n) => `<span class="fby">${escapeHtml(n)}</span>`)
     .join("");
   const missed = w.foundBy.length === 0 ? " missed" : "";
-  const url = store.wikiLinks.get(w.word);
+  const url = solo ? undefined : store.wikiLinks.get(w.word);
   const link = url
     ? `<a class="rw-link" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" aria-label="${WIKTIONARY_LABEL}" title="${WIKTIONARY_LABEL}">↗</a>`
     : "";
@@ -106,7 +106,7 @@ function wireRevealOrder(root: HTMLElement, ctx: ScreenContext): void {
       if (!mode || mode === ctx.view.revealOrder) return;
       ctx.view.revealOrder = mode;
       const reveal = root.querySelector<HTMLElement>("#reveal");
-      if (reveal) reveal.innerHTML = revealHtml(ctx.store, ctx.view.revealOrder);
+      if (reveal) reveal.innerHTML = revealHtml(ctx.store, ctx.view.revealOrder, ctx.solo);
       for (const other of root.querySelectorAll<HTMLButtonElement>("#reveal-sort button")) {
         const pressed = other.dataset.sort === ctx.view.revealOrder;
         other.setAttribute("aria-pressed", String(pressed));
@@ -142,22 +142,31 @@ export function paint(ctx: ScreenContext): ScreenPaint {
         <section class="panel area-reveal">
           <h2>Gefundene Wörter</h2>
           ${hasRevealWords ? revealSortHtml(ctx.view.revealOrder) : ""}
-          <dl id="reveal">${revealHtml(ctx.store, ctx.view.revealOrder)}</dl>
+          <dl id="reveal">${revealHtml(ctx.store, ctx.view.revealOrder, ctx.solo)}</dl>
         </section>
-        <section class="panel area-score">
-          <h2>Punkte</h2>
-          <ul id="players" class="chips">${scoreboardHtml(ctx.store)}</ul>
-          <p class="dim">Es zählt das Gesamtergebnis der Sitzung.</p>
-        </section>
+        ${
+          ctx.solo
+            ? `<section class="panel area-score">
+                 <h2>Deine Punkte</h2>
+                 <p class="solo-scores"><span class="solo-round">Runde ${ctx.store.selfRoundScore} P</span><span class="solo-total">Gesamt ${ctx.store.self.cumulativeScore} P</span></p>
+               </section>`
+            : `<section class="panel area-score">
+                 <h2>Punkte</h2>
+                 <ul id="players" class="chips">${scoreboardHtml(ctx.store)}</ul>
+                 <p class="dim">Es zählt das Gesamtergebnis der Sitzung.</p>
+               </section>`
+        }
       </div>
       ${
-        ctx.store.isHost
-          ? `<button id="start-btn">Nächste Runde starten</button>`
-          : `<p class="dim next-round-hint">Der Gastgeber startet die nächste Runde.</p>`
+        ctx.solo
+          ? `<button id="start-btn">Nächste Runde</button>`
+          : ctx.store.isHost
+            ? `<button id="start-btn">Nächste Runde starten</button>`
+            : `<p class="dim next-round-hint">Der Gastgeber startet die nächste Runde.</p>`
       }
-      ${leaveButtonHtml()}
+      ${ctx.solo ? soloLeaveButtonHtml() : leaveButtonHtml()}
     </div>`,
-    liveRegions: INTERMISSION_LIVE_REGIONS,
+    liveRegions: ctx.solo ? [] : INTERMISSION_LIVE_REGIONS,
     wire(root) {
       // Post-render order: measure the gap, wire the reveal sort, wire
       // rotation, then the start/leave controls.
@@ -170,7 +179,7 @@ export function paint(ctx: ScreenContext): ScreenPaint {
     },
     lateLinks(root) {
       const el = root.querySelector<HTMLElement>("#reveal");
-      if (el) el.innerHTML = revealHtml(ctx.store, ctx.view.revealOrder);
+      if (el) el.innerHTML = revealHtml(ctx.store, ctx.view.revealOrder, ctx.solo);
     },
   };
 }

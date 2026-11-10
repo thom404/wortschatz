@@ -29,10 +29,11 @@ function installCardHtml(install: InstallState): string {
     </section>`;
 }
 
-/** The landing (ADR-0021): the app name, the tagline and exactly two
- *  actions. It carries no form and no skin switcher — that moved into the
- *  app-owned Menü (ADR-0023). The install card sits below the actions and
- *  appears only while the install state says it is available. */
+/** The landing (ADR-0021, amended ADR-0031): the app name, a tagline covering
+ *  both ways to play and three actions. It carries no form and no skin
+ *  switcher — that moved into the app-owned Menü (ADR-0023). The install card
+ *  sits below the actions and appears only while the install state says it is
+ *  available. */
 export function paint(ctx: ScreenContext): ScreenPaint {
   return {
     title: APP_NAME,
@@ -40,10 +41,12 @@ export function paint(ctx: ScreenContext): ScreenPaint {
     html: `
     <div class="sheet">
       <h1>${APP_NAME}</h1>
-      <p class="dim">Ein Mehrspieler-Wörterspiel.</p>
+      <p class="dim">Ein Wörterspiel für allein oder zu mehreren.</p>
       <div class="home-actions">
         <button id="create-btn">Raum erstellen</button>
         <button id="join-btn">Raum beitreten</button>
+        <button id="solo-btn" class="solo-btn">Allein spielen</button>
+        <p class="note solo-note">Funktioniert ohne Netz.</p>
       </div>
       ${installCardHtml(ctx.install)}
     </div>`,
@@ -51,6 +54,7 @@ export function paint(ctx: ScreenContext): ScreenPaint {
     wire(root) {
       root.querySelector<HTMLButtonElement>("#create-btn")!.onclick = () => ctx.actions.openCreate();
       root.querySelector<HTMLButtonElement>("#join-btn")!.onclick = () => ctx.actions.openJoin();
+      root.querySelector<HTMLButtonElement>("#solo-btn")!.onclick = () => ctx.actions.startSolo();
       const install = root.querySelector<HTMLButtonElement>("#install-btn");
       if (install) install.onclick = () => void ctx.install.requestInstall();
       const dismiss = root.querySelector<HTMLButtonElement>("#install-dismiss-btn");

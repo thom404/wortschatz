@@ -3,11 +3,13 @@
  * policy, kept apart from the worker entry so the rules are exercised in the
  * ordinary DOM test environment.
  *
- * The worker stores exactly the build's shell — the Home document, hashed
- * scripts and styles, the manifest and the four icons — and never game data.
- * A navigation is network-first with a short timeout and falls back to the
- * stored Home document; hashed assets are cache-first. A non-GET request, the
- * health endpoint and the Wire protocol socket are never handled or stored.
+ * The worker stores the build's shell — the Home document, hashed scripts and
+ * styles, the manifest and the four icons — plus the one dictionary artifact
+ * at `/data/dawg.bin` so solo mode works offline. A navigation is
+ * network-first with a short timeout and falls back to the stored Home
+ * document; hashed assets and dictionary data are cache-first. A non-GET
+ * request, the health endpoint and the Wire protocol socket are never handled
+ * or stored.
  */
 
 /** One Workbox `injectManifest` entry injected by the build. */
@@ -54,16 +56,17 @@ export function precacheUrls(env: Pick<AppShellEnvironment, "origin" | "manifest
 }
 
 /**
- * Whether the worker answers this request: same-origin GET navigations and
- * same-origin `/assets/` reads. Everything else — non-GET, `/healthz`, the
- * WebSocket upgrade — stays outside the worker and is never stored.
+ * Whether the worker answers this request: same-origin GET navigations,
+ * same-origin `/assets/` reads and same-origin `/data/` reads. Everything
+ * else — non-GET, `/healthz`, the WebSocket upgrade — stays outside the
+ * worker and is never stored.
  */
 export function isAppShellRequest(request: Request, origin: string): boolean {
   if (request.method !== "GET") return false;
   const url = new URL(request.url);
   if (url.origin !== origin) return false;
   if (request.mode === "navigate") return true;
-  return url.pathname.startsWith("/assets/");
+  return url.pathname.startsWith("/assets/") || url.pathname.startsWith("/data/");
 }
 
 /** Store exactly the injected shell entries in this version's cache. */

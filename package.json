@@ -11,14 +11,14 @@
     "packages/*"
   ],
   "scripts": {
-    "typecheck": "tsc -b packages/shared packages/server && tsc -p packages/client && tsc -p e2e",
-    "build": "tsc -b packages/shared packages/server && cd packages/client && npx vite build",
+    "typecheck": "tsc -b packages/shared packages/engine packages/server && tsc -p packages/client && tsc -p e2e",
+    "build": "tsc -b packages/shared packages/engine packages/server && npm run build-dawg && cd packages/client && npx vite build",
     "generate-icons": "node packages/client/scripts/generate-icons.mjs",
     "icons": "node packages/client/scripts/generate-icons.mjs",
-    "build-dawg": "node --experimental-strip-types packages/server/scripts/build-dawg.ts",
+    "build-dawg": "node --experimental-strip-types packages/engine/scripts/build-dawg.ts",
     "audit-words": "node --experimental-strip-types packages/server/scripts/audit-word-list.ts",
     "start": "node packages/server/dist/main.js",
-    "pretest": "tsc -b packages/shared",
+    "pretest": "tsc -b packages/shared packages/engine",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:visual": "playwright test",

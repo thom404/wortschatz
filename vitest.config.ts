@@ -8,6 +8,7 @@ export default defineConfig({
   test: {
     include: [
       "packages/shared/tests/**/*.test.ts",
+      "packages/engine/tests/**/*.test.ts",
       "packages/server/tests/**/*.test.ts",
       "packages/client/tests/**/*.test.ts",
     ],

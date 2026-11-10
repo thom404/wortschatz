@@ -46,17 +46,24 @@ the vocabulary in [`GLOSSARY.md`](../GLOSSARY.md).
 
 The binding strings from the #50 copy pass, as a sample of the voice:
 
-| String                    | Copy                                                     |
-| ------------------------- | -------------------------------------------------------- |
-| Home tagline              | `Ein Mehrspieler-Wörterspiel.`                           |
-| Create button             | `Raum erstellen`                                         |
-| Player count              | `N von 8 verbunden`                                      |
-| Trace hint                | `Wische über die Felder, um ein Wort zu bilden.`         |
-| Spectator note            | `Du schaust zu. Ab der nächsten Runde bist du dabei.`    |
-| Intermission scoring note | `Es zählt das Gesamtergebnis der Sitzung.`               |
-| Pause hint                | `Der Gastgeber startet die nächste Runde.`               |
-| Duplicate-word error      | `Das Wort hast du schon.`                                |
-| Taken-name error          | `Dieser Name ist bereits vergeben. Wähle einen anderen.` |
+| String                    | Copy                                                              |
+| ------------------------- | ----------------------------------------------------------------- |
+| Home tagline              | `Ein Wörterspiel für allein oder zu mehreren.`                    |
+| Solo action               | `Allein spielen`                                                  |
+| Solo note                 | `Funktioniert ohne Netz.`                                         |
+| Solo loading              | `Wörterbuch wird geladen …`                                       |
+| Solo load error           | `Das Wörterbuch konnte nicht geladen werden. Versuche es erneut.` |
+| Solo pause summary        | `Deine Punkte`                                                    |
+| Solo next round           | `Nächste Runde`                                                   |
+| Solo leave                | `Spiel beenden`                                                   |
+| Create button             | `Raum erstellen`                                                  |
+| Player count              | `N von 8 verbunden`                                               |
+| Trace hint                | `Wische über die Felder, um ein Wort zu bilden.`                  |
+| Spectator note            | `Du schaust zu. Ab der nächsten Runde bist du dabei.`             |
+| Intermission scoring note | `Es zählt das Gesamtergebnis der Sitzung.`                        |
+| Pause hint                | `Der Gastgeber startet die nächste Runde.`                        |
+| Duplicate-word error      | `Das Wort hast du schon.`                                         |
+| Taken-name error          | `Dieser Name ist bereits vergeben. Wähle einen anderen.`          |
 
 ## Related
 

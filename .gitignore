@@ -1,5 +1,6 @@
 node_modules/
 packages/*/dist/
+packages/client/public/data/*.bin
 packages/client/dist_test/
 *.tsbuildinfo
 .vite/

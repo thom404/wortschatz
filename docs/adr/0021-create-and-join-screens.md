@@ -87,3 +87,13 @@ the final consequence bullet above no longer hold. Home remains the landing with
 exactly two actions and no form; skin switching is app-global and reachable from
 every screen. The GLOSSARY.md **Home** and **Skin** entries were updated with
 it.
+
+## Amendment (#284, 2026-11-10): the third Home action
+
+[ADR-0031](0031-offline-solo-mode-and-local-authority.md) adds **Solo mode**.
+**Home** now offers three actions — `Raum erstellen`, `Raum beitreten` and
+`Allein spielen` — and its tagline covers both ways to play
+(`Ein Wörterspiel für allein oder zu mehreren.`). The solo action carries the
+short note `Funktioniert ohne Netz.` It keeps Home on screen while the
+dictionary loads. Create and Join, their history rules and the deep-link entry
+are unchanged.

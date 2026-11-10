@@ -151,3 +151,26 @@ blocks them, except #261's installed-state visual records in
 deterministic. The spec uses the existing frozen clock, German locale,
 **Wire protocol** fixtures and strict network guard, and adds no test-only boot
 hook or app seam.
+
+## Amendment (#284, 2026-11-10): one dictionary exception for solo mode
+
+[ADR-0031](0031-offline-solo-mode-and-local-authority.md) adds an explicitly
+local **Solo mode**. Its build-generated dictionary artifact is the one game
+datum the installed app stores.
+
+1. **The precache set gains `/data/dawg.bin`.** It is still an exact set: the
+   shell entries plus the one generated dictionary artifact, which the build
+   emits before the client build and never commits. The Workbox per-file cap
+   is raised above the artifact's size.
+2. **`/data/` is served cache-first** beside hashed assets. Navigations remain
+   network-first with the stored Home fallback; non-GET requests, `/healthz`
+   and the WebSocket path are still never stored.
+3. **The artifact is an app-owned static file.** A missing `/data/dawg.bin`
+   answers 404 rather than the Home document and is served as
+   `application/octet-stream` with `no-cache`.
+4. **The cache is still versioned and cleaned on activation.** A deploy cannot
+   mix an old dictionary with a new shell.
+5. **The offline promise is widened for solo only.** After one successful
+   online visit the installed app can play solo with no network. Multiplayer
+   gameplay still needs the server; a first-ever launch with no network still
+   ends in the browser's error page.

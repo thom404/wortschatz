@@ -1,23 +1,24 @@
 /**
- * DAWG artifact generation (ADR-0001 §7): consumes the committed raw word
- * list plus the reviewed exclusion list, emits the artifact the runtime
- * loader reads instantly. Run from the build (Docker) or locally:
+ * DAWG artifact generation for both authorities (ADR-0001, ADR-0031): the
+ * committed raw word list plus the reviewed exclusion list produce one
+ * artifact. The default run writes it to the client's stable public path
+ * `/data/dawg.bin` and to the server's artifact-first loader path; it is never
+ * committed.
  *
- *   node --experimental-strip-types packages/server/scripts/build-dawg.ts \
+ *   node --experimental-strip-types packages/engine/scripts/build-dawg.ts \
  *        [--words <path>] [--exclusions <path>] [--out <path>]
- *
- * The artifact is never committed; the raw list stays the single source of
- * truth and the build asserts list invariants up front.
  */
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildDawg, serializeDawg, walk } from "../dist/dictionary/dawg-blob.js";
-import { rawLinesToWords } from "../dist/dictionary/index.js";
-import { normalizeWord } from "../dist/text.js";
+import { buildDawg, serializeDawg, walk } from "../../engine/dist/dictionary/dawg-blob.js";
+import { rawLinesToWords } from "../../engine/dist/dictionary/index.js";
+import { normalizeWord } from "../../engine/dist/text.js";
 
-const here = dirname(fileURLToPath(import.meta.url)); // packages/server/scripts
+const here = dirname(fileURLToPath(import.meta.url)); // packages/engine/scripts
+const repo = resolve(join(here, "..", "..", ".."));
 const argv = process.argv.slice(2);
+const explicitOut = argv.includes("--out");
 const arg = (name: string, fallback: string): string => {
   const i = argv.indexOf(name);
   return i >= 0 && argv[i + 1] ? resolve(argv[i + 1]!) : resolve(join(here, fallback));
@@ -25,7 +26,7 @@ const arg = (name: string, fallback: string): string => {
 
 const wordsPath = arg("--words", "../../../words");
 const exclusionsPath = arg("--exclusions", "../word-exclusions.txt");
-const outPath = arg("--out", "../dist/dawg.bin");
+const outPath = arg("--out", "../../client/public/data/dawg.bin");
 
 const lines = readFileSync(wordsPath, "utf8")
   .split("\n")
@@ -57,3 +58,11 @@ const blob = serializeDawg(dictionary);
 mkdirSync(dirname(outPath), { recursive: true });
 writeFileSync(outPath, blob, "utf8");
 console.log(`build-dawg: wrote ${outPath} (${blob.length} bytes)`);
+
+// One artifact, two loaders: the server keeps its instant artifact-first path.
+if (!explicitOut) {
+  const serverOut = resolve(join(repo, "packages/server/dist/dawg.bin"));
+  mkdirSync(dirname(serverOut), { recursive: true });
+  writeFileSync(serverOut, blob, "utf8");
+  console.log(`build-dawg: wrote ${serverOut} (${blob.length} bytes)`);
+}

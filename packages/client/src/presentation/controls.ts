@@ -8,6 +8,9 @@ import { leaveIcon } from "../icons.js";
  *  name and its tooltip, so the two can never drift (ADR-0022). */
 const LEAVE_LABEL = "Raum verlassen";
 
+/** Solo leaves Discard the session and return Home (ADR-0031). */
+const SOLO_LEAVE_LABEL = "Spiel beenden";
+
 /** One icon-only control: the glyph is hidden from assistive technology,
  *  the `aria-label` carries the name, and `data-tip` is the same string for
  *  the CSS-only tooltip. There is deliberately no `aria-describedby`. */
@@ -25,13 +28,18 @@ export function iconButtonHtml(opts: {
   return `<button type="button"${id} class="${opts.className}" aria-label="${escapeHtml(opts.label)}" data-tip="${escapeHtml(opts.label)}"${data}${pressed}>${opts.icon}</button>`;
 }
 
-export function leaveButtonHtml(): string {
+export function leaveButtonHtml(label: string = LEAVE_LABEL): string {
   return iconButtonHtml({
     id: "leave-btn",
     className: "icon-btn leave-btn",
     icon: leaveIcon,
-    label: LEAVE_LABEL,
+    label,
   });
+}
+
+/** The solo leave control, named for the action it takes. */
+export function soloLeaveButtonHtml(): string {
+  return leaveButtonHtml(SOLO_LEAVE_LABEL);
 }
 
 /** Reads one trimmed form field from the screen's current DOM. Create and
