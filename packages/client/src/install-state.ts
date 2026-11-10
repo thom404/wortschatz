@@ -1,16 +1,17 @@
 /**
- * The install state of the app (ADR-0029, #257): whether the browser offers
- * its install prompt, the one request that opens it, whether Safari's manual
- * add-to-home-screen instructions apply, and whether the player already
- * installed or dismissed the card.
+ * The install and update state of the app (ADR-0029, #257, #258): whether the
+ * browser offers its install prompt, the one request that opens it, whether
+ * Safari's manual add-to-home-screen instructions apply, whether the player
+ * already installed or dismissed the card, and whether a new version is
+ * waiting.
  *
- * This is the only client module that touches the browser's install APIs.
- * Screens read this state and call its commands; they never listen for the
- * browser events themselves. The Home card renders only from this state.
- *
- * The update half of the same module (a subscription to a waiting worker and
- * one command to apply it) lands with its own slice.
+ * This is the only client module that touches the browser's install and
+ * service-worker APIs. Screens read this state and call its commands; they
+ * never listen for the browser events themselves. The Home card renders only
+ * from this state, and the app-owned update notice reads the update half.
  */
+
+import { SKIP_WAITING_MESSAGE } from "./app-shell.js";
 
 /** The one client key that keeps a dismissed install card away on later
  *  visits. It follows the guarded-storage pattern of the skin key. */
@@ -44,6 +45,31 @@ export interface InstallStorage {
   setItem(key: string, value: string): void;
 }
 
+/** The slice of one service worker this module talks to: a waiting update
+ *  receives the one take-over message. */
+export interface UpdateWorker {
+  readonly state?: ServiceWorkerState;
+  postMessage(message: unknown): void;
+  addEventListener(type: string, listener: EventListener): void;
+  removeEventListener(type: string, listener: EventListener): void;
+}
+
+/** The slice of a service worker registration that exposes a waiting update. */
+export interface UpdateRegistration {
+  readonly waiting: UpdateWorker | null;
+  readonly installing?: UpdateWorker | null;
+  addEventListener(type: string, listener: EventListener): void;
+  removeEventListener(type: string, listener: EventListener): void;
+}
+
+/** The container event that follows a take-over: the new worker now controls
+ *  the page, so the one reload can happen safely. */
+export interface UpdateContainer {
+  readonly controller?: unknown;
+  addEventListener(type: string, listener: EventListener): void;
+  removeEventListener(type: string, listener: EventListener): void;
+}
+
 /** Everything the module reads, injectable for the tests. */
 export interface InstallStateOptions {
   target?: InstallEventTarget | null;
@@ -52,6 +78,13 @@ export interface InstallStateOptions {
   /** Whether this window is already an installed app. Defaults to the
    *  browser's standalone signals. */
   installed?: boolean;
+  /** The registration that may have a waiting update, or the promise the
+   *  production registration resolves to. */
+  registration?: UpdateRegistration | Promise<UpdateRegistration | null> | null;
+  /** The container whose `controllerchange` follows the take-over. */
+  serviceWorker?: UpdateContainer | null;
+  /** Applies the update; injectable so the tests never navigate. */
+  reload?: () => void;
 }
 
 function defaultTarget(): InstallEventTarget | null {
@@ -60,6 +93,11 @@ function defaultTarget(): InstallEventTarget | null {
 
 function defaultNavigator(): InstallNavigator | null {
   return typeof navigator === "undefined" ? null : navigator;
+}
+
+function defaultServiceWorker(): UpdateContainer | null {
+  if (typeof navigator === "undefined") return null;
+  return (navigator.serviceWorker as UpdateContainer | undefined) ?? null;
 }
 
 function defaultStorage(): InstallStorage | null {
@@ -81,19 +119,33 @@ export class InstallState {
   private prompt: BeforeInstallPromptEvent | null = null;
   private installed: boolean;
   private dismissed: boolean;
+  private waiting: UpdateWorker | null = null;
+  private applying = false;
+  private reloaded = false;
+  private disposed = false;
   private readonly listeners = new Set<() => void>();
+  private readonly updateListeners = new Set<() => void>();
   private readonly target: InstallEventTarget | null;
   private readonly nav: InstallNavigator | null;
   private readonly storage: InstallStorage | null;
+  private readonly serviceWorker: UpdateContainer | null;
+  private readonly reload: () => void;
+  private readonly registrations = new Set<UpdateRegistration>();
+  private readonly updateWorkers = new Map<UpdateWorker, EventListener>();
+  private watchedRegistration: UpdateRegistration | null = null;
 
   constructor(options: InstallStateOptions = {}) {
     this.target = options.target === undefined ? defaultTarget() : options.target;
     this.nav = options.navigator === undefined ? defaultNavigator() : options.navigator;
     this.storage = options.storage === undefined ? defaultStorage() : options.storage;
+    this.serviceWorker = options.serviceWorker === undefined ? defaultServiceWorker() : options.serviceWorker;
+    this.reload = options.reload ?? (() => location.reload());
     this.installed = options.installed ?? this.readInstalled();
     this.dismissed = this.readDismissed();
     this.target?.addEventListener("beforeinstallprompt", this.onBeforeInstallPrompt);
     this.target?.addEventListener("appinstalled", this.onAppInstalled);
+    this.serviceWorker?.addEventListener("controllerchange", this.onControllerChange);
+    this.watchRegistration(options.registration ?? null);
   }
 
   /** Whether `Installieren` can open a real browser prompt. */
@@ -110,6 +162,35 @@ export class InstallState {
   /** Whether Home should render the card at all. */
   get visible(): boolean {
     return this.canInstall || this.iosManual;
+  }
+
+  /** Whether a new version is waiting for the player's one command. */
+  get updateAvailable(): boolean {
+    return this.waiting !== null && !this.applying;
+  }
+
+  /** Notifies when "update available" changes. Returns its unsubscribe. */
+  subscribeUpdate(listener: () => void): () => void {
+    this.updateListeners.add(listener);
+    return () => this.updateListeners.delete(listener);
+  }
+
+  /** Applies the waiting update: the worker may take over, and the page
+   *  reloads once it controls the app. The command is idempotent, so a second
+   *  press cannot reload twice or raise a second prompt. */
+  applyUpdate(): void {
+    if (this.applying || !this.waiting) return;
+    const waiting = this.waiting;
+    this.applying = true;
+    this.waiting = null;
+    this.notifyUpdate();
+    try {
+      waiting.postMessage({ type: SKIP_WAITING_MESSAGE });
+    } catch {
+      /* A worker that vanished cannot take over; no reload is safe. */
+      return;
+    }
+    if (!this.serviceWorker) this.reloadOnce();
   }
 
   /** Opens the browser's install prompt. The one prompt event can be used
@@ -151,9 +232,20 @@ export class InstallState {
 
   /** Removes the browser listeners; call once when the app unmounts. */
   dispose(): void {
+    this.disposed = true;
     this.target?.removeEventListener("beforeinstallprompt", this.onBeforeInstallPrompt);
     this.target?.removeEventListener("appinstalled", this.onAppInstalled);
+    this.serviceWorker?.removeEventListener("controllerchange", this.onControllerChange);
+    for (const registration of this.registrations) {
+      registration.removeEventListener("updatefound", this.onUpdateFound);
+    }
+    for (const [worker, listener] of this.updateWorkers) {
+      worker.removeEventListener("statechange", listener);
+    }
+    this.registrations.clear();
+    this.updateWorkers.clear();
     this.listeners.clear();
+    this.updateListeners.clear();
   }
 
   private readonly onBeforeInstallPrompt = (event: Event): void => {
@@ -168,8 +260,67 @@ export class InstallState {
     this.notify();
   };
 
+  private readonly onControllerChange = (): void => {
+    // Only the update command reloads; a controller change from any other
+    // lifecycle path must never navigate on its own.
+    if (this.applying) this.reloadOnce();
+  };
+
+  private readonly onUpdateFound = (): void => {
+    const registration = this.watchedRegistration;
+    if (!registration) return;
+    // A waiting worker may already be visible when `updatefound` arrives;
+    // otherwise the installing worker crosses `installed` into waiting.
+    this.adoptWaiting(registration);
+    const installing = registration.installing;
+    if (!installing || this.updateWorkers.has(installing)) return;
+    const onStateChange: EventListener = () => {
+      if (installing.state === "installed") this.adoptWaiting(registration);
+    };
+    this.updateWorkers.set(installing, onStateChange);
+    installing.addEventListener("statechange", onStateChange);
+  };
+
+  private watchRegistration(
+    registration: UpdateRegistration | Promise<UpdateRegistration | null> | null
+  ): void {
+    if (!registration) return;
+    const attach = (resolved: UpdateRegistration | null): void => {
+      if (!resolved || this.disposed) return;
+      this.watchedRegistration = resolved;
+      this.registrations.add(resolved);
+      resolved.addEventListener("updatefound", this.onUpdateFound);
+      this.adoptWaiting(resolved);
+    };
+    if (typeof (registration as Promise<UpdateRegistration | null>).then === "function") {
+      void (registration as Promise<UpdateRegistration | null>).then(attach, () => {
+        /* The registration failed; the app simply has no update to offer. */
+      });
+      return;
+    }
+    attach(registration as UpdateRegistration);
+  }
+
+  private adoptWaiting(registration: UpdateRegistration): void {
+    if (this.applying || this.disposed) return;
+    const waiting = registration.waiting;
+    if (!waiting || waiting === this.waiting) return;
+    this.waiting = waiting;
+    this.notifyUpdate();
+  }
+
+  private reloadOnce(): void {
+    if (this.reloaded) return;
+    this.reloaded = true;
+    this.reload();
+  }
+
   private notify(): void {
     for (const listener of this.listeners) listener();
+  }
+
+  private notifyUpdate(): void {
+    for (const listener of this.updateListeners) listener();
   }
 
   private readDismissed(): boolean {

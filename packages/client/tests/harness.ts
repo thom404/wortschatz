@@ -28,6 +28,7 @@ import {
   type RoomConn,
 } from "../src/connection.js";
 import { mount } from "../src/app.js";
+import type { InstallStateOptions } from "../src/install-state.js";
 
 /**
  * The client mount test harness (#18): mounts the real app into a test DOM
@@ -186,7 +187,7 @@ export interface Mounted {
 }
 
 /** Mounts the real app into a fresh root div on `document.body`. */
-export function mountHarness(): Mounted {
+export function mountHarness(installOptions: InstallStateOptions = {}): Mounted {
   installBoardGap();
   document.body.textContent = "";
   const root = document.createElement("div");
@@ -198,7 +199,7 @@ export function mountHarness(): Mounted {
     connections.push(conn);
     return conn;
   };
-  const unmount = mount(root, factory);
+  const unmount = mount(root, factory, installOptions);
 
   return {
     root,

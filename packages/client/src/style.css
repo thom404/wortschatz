@@ -142,13 +142,15 @@ h2 {
 }
 
 /* ------------------------------------------------------------------
- * Floating notification layer (ADR-0018): one viewport-anchored layer
+ * Floating notification layer (ADR-0018): one viewport-anchored stack
  * outside every screen's markup. Bottom centre, above the safe-area
  * inset, content width capped at the sheet width, transparent to
- * pointer/touch input so it never blocks the board or a button. Two
- * slots, status above error; both consume tokens only.
+ * pointer/touch input so it never blocks the board or a button. The
+ * update notice (ADR-0029, #258) sits beside the layer in the same
+ * stack; the layer itself keeps its two slots, status above error.
+ * Every value consumes tokens only.
  * ------------------------------------------------------------------ */
-.notifications {
+.notice-stack {
   position: fixed;
   left: 50%;
   bottom: calc(var(--notice-inset) + env(safe-area-inset-bottom, 0px));
@@ -159,6 +161,37 @@ h2 {
   flex-direction: column;
   gap: var(--notice-gap);
   pointer-events: none;
+}
+.notifications {
+  display: flex;
+  flex-direction: column;
+  gap: var(--notice-gap);
+  pointer-events: none;
+}
+/* The one update notice: its own surface beside the status/error layer,
+ * with exactly one action. It is not a status slot. */
+.update-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-s);
+  margin: 0;
+  padding: var(--notice-pad-y) var(--notice-pad-x);
+  border: 1px solid var(--notice-border);
+  border-radius: var(--notice-radius);
+  background: var(--notice-surface);
+  box-shadow: var(--notice-shadow);
+  font-size: 0.9rem;
+  pointer-events: auto;
+}
+.update-notice[hidden] {
+  display: none;
+}
+.update-notice p {
+  margin: 0;
+}
+.update-notice button {
+  margin-top: 0;
 }
 .notice {
   margin: 0;

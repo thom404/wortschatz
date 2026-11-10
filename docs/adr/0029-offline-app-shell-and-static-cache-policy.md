@@ -104,3 +104,35 @@ leave a browser on a stale shell.
   active **Round**.
 - **Long-lived cache headers on the Home document and worker:** rejected — they
   would let one deploy hide the next.
+
+## Amendment (#258, 2026-11-10): the update notice owns the one reload
+
+Decision 9 deferred the user-facing update step to its own slice. This
+amendment lands it without changing the shell, cache or offline rules.
+
+1. **The install-state module gains the update half.** It watches the
+   production registration for a waiting worker, exposes whether an update is
+   available, notifies subscribers when that changes, and offers one
+   `applyUpdate()` command. Screens do not touch service-worker APIs.
+2. **One app-owned notice beside the Notification layer.** The notice sits
+   outside the screen markup, next to the **Notification layer** in the same
+   bottom-centre stack, and carries `Neue Version verfügbar.` with exactly one
+   action, `Neu laden`. It is not a third notification slot and not a second
+   status surface.
+3. **It waits for a safe phase.** A waiting worker is announced on **Home**
+   and every non-playing screen, but suppressed while the room phase is
+   `playing`. A round ending, returning home or a join that lands in the
+   **Intermission** reveals it. The app never reloads on its own.
+4. **One command, one reload.** `Neu laden` sends the worker the
+   `SKIP_WAITING` message once, hides the notice immediately, and reloads only
+   after the new worker's `controllerchange`. The command is idempotent, so a
+   second press cannot reload again or raise a second prompt. The worker still
+   never calls `skipWaiting` without that message, so decision 9's default is
+   unchanged.
+5. **Storage is untouched.** The reload keeps the stored **Skin** and
+   **Session token**, so the player's **Seat** survives the update; no client
+   key is cleared.
+6. **Tests stay at the existing seams.** Mount tests drive the waiting worker,
+   the playing-phase suppression, the single reload command and the German
+   copy through the rendered DOM; the worker command is covered beside the
+   app-shell tests.

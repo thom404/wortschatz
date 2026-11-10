@@ -31,7 +31,7 @@ import {
 import { qrSvg } from "./qr.js";
 import { applySkin, loadSkin } from "./skins.js";
 import { menuHtml, wireMenu, type MenuSurface } from "./menu.js";
-import { InstallState } from "./install-state.js";
+import { InstallState, type InstallStateOptions } from "./install-state.js";
 import { ViewState, type RevealOrder } from "./view-state.js";
 import type {
   PlayerInfo,
@@ -99,6 +99,9 @@ interface App {
   /** The two app-owned notice slots (ADR-0018), in DOM order. */
   noticeStatus: HTMLElement;
   noticeError: HTMLElement;
+  /** The app-owned update notice, a sibling of the notification layer
+   *  outside every screen (ADR-0029, #258). */
+  noticeUpdate: HTMLElement;
   /** The app-owned Menü surface (ADR-0023), created once outside the screen
    *  markup so a rebuild can neither remove it nor lose its wiring. */
   menu: MenuSurface;
@@ -145,6 +148,10 @@ const INSTALL_IOS_BODY = "Tippe in Safari auf Teilen und dann auf „Zum Startbi
 const INSTALL_ACTION = "Installieren";
 const INSTALL_DISMISS = "Später";
 const INSTALL_DISMISS_LABEL = "Hinweis ausblenden";
+
+/** The update notice's German copy (ADR-0029, #258). */
+const UPDATE_NOTICE = "Neue Version verfügbar.";
+const UPDATE_ACTION = "Neu laden";
 
 /** The German points phrase for a tile: singular at one point, an `oder`
  *  pair when the spellings differ, plural otherwise (issue #142). Equal
@@ -263,17 +270,28 @@ function leaveButtonHtml(): string {
  * popstate listener, unbinds the drag surface and clears the root. Call
  * exactly once per mount.
  */
-export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
+export function mount(
+  rootEl: HTMLElement,
+  connect: ConnFactory,
+  installOptions: InstallStateOptions = {}
+): () => void {
   // The app root is a shell (ADR-0018): one screen container that every
   // render replaces, beside the app-owned Menü (ADR-0023) and the one
-  // notification layer created here once. Neither surface is inside markup a
-  // screen rebuild replaces; unmount removes all three.
+  // notification layer created here once. The update notice is a sibling of
+  // that layer (ADR-0029, #258), so a screen rebuild can never remove it.
+  // Unmount removes all four.
   rootEl.innerHTML = `
     <div id="screen"></div>
     ${menuHtml()}
-    <div id="notifications" class="notifications">
-      <p id="notice-status" class="notice status" role="status" aria-live="polite"></p>
-      <p id="notice-error" class="notice error" role="alert" aria-live="assertive"></p>
+    <div id="notice-stack" class="notice-stack">
+      <div id="update-notice" class="update-notice" hidden>
+        <p>${UPDATE_NOTICE}</p>
+        <button id="update-reload-btn" type="button">${UPDATE_ACTION}</button>
+      </div>
+      <div id="notifications" class="notifications">
+        <p id="notice-status" class="notice status" role="status" aria-live="polite"></p>
+        <p id="notice-error" class="notice error" role="alert" aria-live="assertive"></p>
+      </div>
     </div>`;
   const app: App = {
     root: rootEl.querySelector<HTMLElement>("#screen")!,
@@ -288,8 +306,9 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
     localError: null,
     noticeStatus: rootEl.querySelector<HTMLElement>("#notice-status")!,
     noticeError: rootEl.querySelector<HTMLElement>("#notice-error")!,
+    noticeUpdate: rootEl.querySelector<HTMLElement>("#update-notice")!,
     menu: wireMenu(rootEl),
-    install: new InstallState(),
+    install: new InstallState(installOptions),
     unsub: null,
     view: new ViewState(),
     roomCode: "",
@@ -313,6 +332,11 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
   const unsubscribeInstall = app.install.subscribe(() => {
     if (!app.inRoom && app.screen === "home") home(app);
   });
+  // The update notice is app-owned: a change in waiting-worker state only
+  // refreshes that surface, leaving the current screen untouched.
+  const unsubscribeUpdate = app.install.subscribeUpdate(() => renderUpdateNotice(app));
+  app.noticeUpdate.querySelector<HTMLButtonElement>("#update-reload-btn")!.onclick = () =>
+    app.install.applyUpdate();
   app.stopDrag = wireDrag(app);
   // The skin choice is page-level (ADR-0002): the restored selection
   // rides on the root attribute before the first screen renders, so a
@@ -338,6 +362,7 @@ export function mount(rootEl: HTMLElement, connect: ConnFactory): () => void {
     app.menu.dispose();
     app.install.dispose();
     unsubscribeInstall();
+    unsubscribeUpdate();
     if (app.conn) {
       app.conn.stop();
       app.conn = null;
@@ -1414,11 +1439,19 @@ function errorNoticeText(app: App): string {
   return app.store.lastError ? app.store.errorText : (app.localError ?? "");
 }
 
+/** The update notice waits for a safe phase (ADR-0029, #258): a waiting
+ *  worker is offered only when no Round is running, so a reload can never
+ *  destroy words or points. Home and every non-playing screen see it. */
+function renderUpdateNotice(app: App): void {
+  app.noticeUpdate.hidden = !(app.install.updateAvailable && app.store.phase !== "playing");
+}
+
 /** Refreshes the two app-owned slots from existing state. A slot whose text
  *  is unchanged is left untouched: no re-announcement, no entry animation. */
 function renderNotices(app: App): void {
   setNotice(app.noticeStatus, statusNoticeText(app));
   setNotice(app.noticeError, errorNoticeText(app));
+  renderUpdateNotice(app);
 }
 
 function setNotice(el: HTMLElement, text: string): void {
