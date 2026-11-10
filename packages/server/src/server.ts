@@ -12,6 +12,27 @@ export const MANIFEST_CONTENT_TYPE = "application/manifest+json";
 /** The production service worker's stable public path (ADR-0029). */
 export const SERVICE_WORKER_PATH = "/sw.js";
 
+/**
+ * The worker body served in place of the build worker while the documented
+ * kill switch is on (issue #259, ADR-0029). It takes over, deletes every
+ * cache and unregisters itself, so no browser change is needed to neutralise
+ * a bad worker.
+ */
+export const SERVICE_WORKER_KILL_SWITCH = `self.addEventListener("install", () => {
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    (async () => {
+      const names = await caches.keys();
+      await Promise.all(names.map((name) => caches.delete(name)));
+      await self.registration.unregister();
+    })()
+  );
+});
+`;
+
 /** No-cache for the Home document, the worker and the manifest (ADR-0029). */
 export const NO_CACHE_CONTROL = "no-cache";
 
@@ -144,6 +165,15 @@ export class WordamentServer {
       });
       res.writeHead(200, { "content-type": "application/json" });
       res.end(body);
+      return;
+    }
+    if (this.config.serviceWorkerKillSwitch && url.pathname === SERVICE_WORKER_PATH) {
+      res.writeHead(200, {
+        "content-type": "text/javascript; charset=utf-8",
+        "content-security-policy": CONTENT_SECURITY_POLICY,
+        "cache-control": NO_CACHE_CONTROL,
+      });
+      res.end(SERVICE_WORKER_KILL_SWITCH);
       return;
     }
     const dir = this.config.staticDir;
