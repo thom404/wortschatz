@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@wortschatz/shared": "*",
-    "ws": "^8.18.0",
+    "ws": "^8.22.2",
     "@wortschatz/engine": "*"
   },
   "devDependencies": {
