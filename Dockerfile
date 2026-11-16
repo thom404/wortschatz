@@ -15,6 +15,10 @@ COPY packages/client packages/client
 # The root typecheck compiles the Playwright layer too (#219); the image build
 # only type-checks it and never downloads or launches a browser.
 COPY e2e e2e
+# The Playwright pin test reads the CI workflow and the AGENTS.md recipe it
+# guards (ADR-0032); the image build runs the same fast test layer as CI.
+COPY .github/workflows/ci.yml .github/workflows/ci.yml
+COPY AGENTS.md AGENTS.md
 COPY words words
 COPY COPYING COPYING
 
