@@ -295,3 +295,17 @@ issue): every bot pull request is reviewed and merged by a human.
 - **Node** majors never arrive from the bot. A Node jump touches the engine
   range, the CI Node version, both Dockerfile stages and a local image build;
   do it by hand.
+
+### After merging a bot pull request
+
+Every npm pull request rewrites the same lockfile, so merging one leaves its
+siblings conflicted. Dependabot rebases them at its next check — by default the
+next Monday run — so without an extra step the remaining pull requests show
+`DIRTY` for up to a week.
+
+- After a merge, press **Check for updates** again, or comment
+  `@dependabot rebase` on each remaining pull request.
+- When two pull requests target the same dependency (the first run produced two
+  vitest pull requests), close the duplicate with a note instead of rebasing
+  both. `@dependabot recreate` on the survivor recomputes the transitive set
+  against the current lockfile.
