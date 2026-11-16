@@ -13,7 +13,7 @@
     "@wortschatz/engine": "*"
   },
   "devDependencies": {
-    "vite": "^5.4.0",
+    "vite": "^8.3.5",
     "vite-plugin-pwa": "^1.3.0"
   }
 }
