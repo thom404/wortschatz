@@ -19,6 +19,16 @@ Secret setup is in [`docs/OPERATOR-STEPS.md`](docs/OPERATOR-STEPS.md) §8:
 `OPENCODE_API_KEY` and a fine-grained `AGENT_GITHUB_TOKEN` (contents,
 pull-request, and issue write).
 
+## Dependency updates
+
+Dependabot proposes dependency updates weekly, configured in
+[`.github/dependabot.yml`](.github/dependabot.yml). Patch and minor bumps arrive
+grouped per ecosystem; majors arrive alone. Two rules matter day to day:
+**Playwright** always travels solo behind the lockstep checklist, and **Node**
+majors are a manual job. The policy and its deliberate deferrals are
+[ADR-0032](docs/adr/0032-dependency-update-policy.md); the human-only settings
+are in [`docs/OPERATOR-STEPS.md`](docs/OPERATOR-STEPS.md) §10.
+
 ## German UI copy
 
 All user-facing strings are German and hardcoded inline. Write new copy in the

@@ -1,0 +1,86 @@
+# Dependency update policy (ADR-0032).
+#
+# Weekly version updates arrive as one grouped pull request per ecosystem for
+# patch and minor bumps; majors arrive alone. The Playwright pin is excluded
+# from the npm group so a browser bump is always a solo pull request. Security
+# updates are not scheduled and skip the cooldown by GitHub's own design.
+version: 2
+
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    groups:
+      npm-minor-and-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "@playwright/test"
+        update-types:
+          - "minor"
+          - "patch"
+    labels:
+      - "dependencies"
+    assignees:
+      - "thom404"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 3
+    groups:
+      actions-minor-and-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    labels:
+      - "dependencies"
+    assignees:
+      - "thom404"
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Berlin"
+    cooldown:
+      default-days: 7
+    groups:
+      docker-minor-and-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Node majors are a manual job (engine range, CI Node version, both
+      # Dockerfile stages and a local image build), never a bot proposal.
+      - dependency-name: "node"
+        update-types:
+          - "version-update:semver-major"
+    labels:
+      - "dependencies"
+    assignees:
+      - "thom404"
+    open-pull-requests-limit: 2
