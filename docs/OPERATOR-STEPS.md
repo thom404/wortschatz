@@ -235,3 +235,63 @@ installed app no longer opens offline — without a network the player gets the
 browser's error page instead of Home. Remove the variable and recreate the
 container to serve the real worker again; every player's app registers it
 again on the next visit.
+
+## 10. Dependency updates: Dependabot setup (#297, ADR-0032)
+
+The version-update policy lives in
+[`.github/dependabot.yml`](../.github/dependabot.yml) and
+[ADR-0032](adr/0032-dependency-update-policy.md). The file is committed; the
+following switches and the label are repository settings and must be applied by
+hand (`Settings → …`). The **Issue agent** token has contents, pull-requests and
+issues only, so settings are not its job.
+
+### One-time switches
+
+1. **Dependabot alerts.** `Settings → Code security and analysis → Dependabot
+alerts → Enable`. This surfaces advisories outside the weekly schedule.
+2. **Automated security fixes.** In the same section, enable
+   **Dependabot security updates**. Security pulls skip the cooldown and the
+   weekly window by GitHub's design.
+3. **The `dependencies` label.** `Issues → Labels → New label`, name
+   `dependencies`. Every bot pull request carries it and is assigned to
+   `thom404`; if the label is missing, the pull requests arrive unlabelled.
+
+No repository secret, workflow edit or branch-protection change is needed.
+Auto-merge and required checks are deliberately deferred (ADR-0032, follow-up
+issue): every bot pull request is reviewed and merged by a human.
+
+### Smoke test without waiting a week
+
+1. Open `Insights → Dependency graph → Dependabot` and press
+   **Check for updates** once. This runs the configuration immediately instead
+   of waiting for Monday 06:00 `Europe/Berlin`.
+2. Expected on the first run, given the drift in the ticket:
+   - one solo `@playwright/test` pull request (it is excluded from the npm
+     group);
+   - four solo npm major pull requests (`typescript`, `vitest`, `vite`,
+     `vite-plugin-pwa`);
+   - one grouped npm patch/minor pull request;
+   - one `ws` lock-drift fix.
+3. On each pull request, confirm the `dependencies` label and the `thom404`
+   assignee. A missing label means the label does not exist yet; a missing
+   assignee means the account is not a collaborator.
+4. The Actions and Docker entries should start quiet: workflow actions are
+   floating major tags and the base image is current.
+5. After the check, confirm the first scheduled run in the Dependabot log on
+   the following Monday. A scheduled pull request that never arrives means the
+   schedule block or the repository switch is wrong, not that there were no
+   updates.
+
+### Day-to-day review
+
+- Patch and minor bumps arrive grouped per ecosystem; review the group as one
+  routine pull request.
+- Majors arrive alone; close or postpone one without disturbing the group.
+- **Playwright** is always solo. Do not merge it until the manifest, the CI
+  container tag and the AGENTS.md recipe name the same version (the
+  `npm test` coherence test fails otherwise) and the **Screenshot baselines**
+  were regenerated inside the new pinned image, with every changed PNG
+  reviewed.
+- **Node** majors never arrive from the bot. A Node jump touches the engine
+  range, the CI Node version, both Dockerfile stages and a local image build;
+  do it by hand.
