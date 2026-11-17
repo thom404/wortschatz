@@ -256,9 +256,11 @@ alerts → Enable`. This surfaces advisories outside the weekly schedule.
    `dependencies`. Every bot pull request carries it and is assigned to
    `thom404`; if the label is missing, the pull requests arrive unlabelled.
 
-No repository secret, workflow edit or branch-protection change is needed.
-Auto-merge and required checks are deliberately deferred (ADR-0032, follow-up
-issue): every bot pull request is reviewed and merged by a human.
+No repository secret, workflow edit or branch-protection change is needed. The
+`Protect main` ruleset already requires `checks` and `visual` (ADR-0004);
+selective auto-merge is deliberately deferred
+([#315](https://github.com/thom404/wortschatz/issues/315), ADR-0032), so every
+bot pull request is reviewed and merged by a human.
 
 ### Smoke test without waiting a week
 
