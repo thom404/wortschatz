@@ -60,7 +60,7 @@ full-page screenshots against committed baselines; it never runs as part of
   ```sh
   docker run --rm --ipc=host --user "$(id -u):$(id -g)" -e HOME=/tmp \
     -v "$PWD":/work -w /work \
-    mcr.microsoft.com/playwright:v1.64.1-noble \
+    mcr.microsoft.com/playwright:v1.65.0-noble \
     bash -lc 'npm ci && npm run test:visual:update'
   ```
 

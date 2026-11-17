@@ -72,7 +72,7 @@ at phone and desktop widths in both skins.
 10. **Baselines.** PNGs are committed under `e2e/__screenshots__/`; ARIA
     snapshots under `e2e/__aria__/`. Baselines are updated only with
     `npm run test:visual:update` inside the pinned Playwright container
-    (`mcr.microsoft.com/playwright:v1.64.1-noble`, matching the package
+    (`mcr.microsoft.com/playwright:v1.65.0-noble`, matching the package
     version), so local and CI pixels come from the same image. `npm run
 test:visual` runs the suite.
 11. **CI.** A separate `visual` job runs on pull requests after `npm ci`, in
