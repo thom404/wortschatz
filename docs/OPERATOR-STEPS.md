@@ -236,11 +236,12 @@ browser's error page instead of Home. Remove the variable and recreate the
 container to serve the real worker again; every player's app registers it
 again on the next visit.
 
-## 10. Dependency updates: Dependabot setup (#297, ADR-0032)
+## 10. Dependency updates: Dependabot setup (#297, #315, ADR-0032, ADR-0004)
 
 The version-update policy lives in
 [`.github/dependabot.yml`](../.github/dependabot.yml) and
-[ADR-0032](adr/0032-dependency-update-policy.md). The file is committed; the
+[ADR-0032](adr/0032-dependency-update-policy.md); the merge boundary is
+[ADR-0004](adr/0004-branch-protection-main.md). The files are committed; the
 following switches and the label are repository settings and must be applied by
 hand (`Settings → …`). The **Issue agent** token has contents, pull-requests and
 issues only, so settings are not its job.
@@ -255,10 +256,51 @@ alerts → Enable`. This surfaces advisories outside the weekly schedule.
 3. **The `dependencies` label.** `Issues → Labels → New label`, name
    `dependencies`. Every bot pull request carries it and is assigned to
    `thom404`; if the label is missing, the pull requests arrive unlabelled.
+4. **Allow auto-merge.** `Settings → General → Pull requests` → **Allow
+   auto-merge**. The selective bot merge arms native auto-merge; with the
+   switch off, the auto-merge workflow fails and every bot pull request waits
+   for a human.
 
-No repository secret, workflow edit or branch-protection change is needed.
-Auto-merge and required checks are deliberately deferred (ADR-0032, follow-up
-issue): every bot pull request is reviewed and merged by a human.
+No repository secret is needed for the bot pull requests. The auto-merge
+workflow is committed at
+[`.github/workflows/dependabot-auto-merge.yml`](../.github/workflows/dependabot-auto-merge.yml);
+the `Protect main` ruleset is unchanged and the workflow is not a required
+check.
+
+### Selective auto-merge (#315)
+
+The workflow arms GitHub's native auto-merge (squash). It is eligible only
+when the pull request is authored by `dependabot[bot]`, targets `main`, carries
+patch or minor updates only, and:
+
+- **npm:** every dependency is `direct:development`; no group member may be a
+  production or indirect dependency.
+- **GitHub Actions:** patch and minor updates are in scope. Dependabot
+  classifies actions as `direct:production` because the ecosystem has no
+  development split; they run in CI and never in the production image.
+- **Never:** `@playwright/test`, Docker, majors, npm production dependencies
+  (`ws`), any group containing one, and any branch with a commit by someone
+  other than `dependabot[bot]`.
+
+The issue agent's pull requests are never eligible: the author gate admits only
+`dependabot[bot]`.
+
+Operationally:
+
+- The job is not a required check. If it cannot arm, it fails red in the
+  Actions tab and the pull request simply waits; it never blocks a manual
+  merge.
+- A non-eligible pull request ends green and unarmed, with no comment or label.
+- **Hold a pull request** by disabling auto-merge on it (`Disable auto-merge`
+  in the merge box, or `gh pr merge <n> --disable-auto`). A later push that
+  makes it ineligible disarms it automatically.
+- Auto-merge still waits for the ruleset: `checks` and `visual`, strict.
+- A bot pull request that falls behind `main` waits instead of merging. Its
+  next Dependabot rebase (or `@dependabot rebase`) re-arms the checks.
+- The merge is attributed to `github-actions[bot]`, so the `push`-triggered
+  `Image` workflow does not run: the production image and the poller's deploy
+  stay at the previous commit until the next human merge. That is intended for
+  dev-only changes, which are pruned from the image.
 
 ### Smoke test without waiting a week
 
@@ -285,7 +327,11 @@ issue): every bot pull request is reviewed and merged by a human.
 ### Day-to-day review
 
 - Patch and minor bumps arrive grouped per ecosystem; review the group as one
-  routine pull request.
+  routine pull request. A dev-only npm or Actions group may merge itself once
+  green; a group with a production dependency waits for you.
+- A red **Dependabot auto-merge** run means the workflow could not arm, not
+  that `checks` or `visual` failed. The pull request is still waiting for a
+  human.
 - Majors arrive alone; close or postpone one without disturbing the group.
 - **Playwright** is always solo. Do not merge it until the manifest, the CI
   container tag and the AGENTS.md recipe name the same version (the

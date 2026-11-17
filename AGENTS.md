@@ -23,11 +23,15 @@ pull-request, and issue write).
 
 Dependabot proposes dependency updates weekly, configured in
 [`.github/dependabot.yml`](.github/dependabot.yml). Patch and minor bumps arrive
-grouped per ecosystem; majors arrive alone. Two rules matter day to day:
-**Playwright** always travels solo behind the lockstep checklist, and **Node**
-majors are a manual job. The policy and its deliberate deferrals are
-[ADR-0032](docs/adr/0032-dependency-update-policy.md); the human-only settings
-are in [`docs/OPERATOR-STEPS.md`](docs/OPERATOR-STEPS.md) §10.
+grouped per ecosystem; majors arrive alone. Three rules matter day to day:
+**Playwright** always travels solo behind the lockstep checklist; **Node**
+majors are a manual job; and only patch/minor npm development dependencies and
+GitHub Actions updates may arm auto-merge — never a production dependency,
+Playwright, Docker, or an issue-agent pull request. The policy and its
+deliberate deferrals are [ADR-0032](docs/adr/0032-dependency-update-policy.md),
+the merge boundary is [ADR-0004](docs/adr/0004-branch-protection-main.md), and
+the human-only settings are in
+[`docs/OPERATOR-STEPS.md`](docs/OPERATOR-STEPS.md) §10.
 
 ## German UI copy
 

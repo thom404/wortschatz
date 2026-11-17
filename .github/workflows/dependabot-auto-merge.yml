@@ -1,0 +1,131 @@
+name: Dependabot auto-merge
+
+# Arms GitHub's native auto-merge on the Dependabot pull requests that the
+# merge-boundary decision admits (ADR-0004, ADR-0032, #315). It never merges
+# anything itself: the `Protect main` ruleset still requires `checks` and
+# `visual`, and the job is deliberately not a required check, so a failure
+# here leaves the pull request waiting for a human instead of blocking it.
+#
+# `pull_request_target` is required for a write-capable token on a Dependabot
+# pull request. The workflow never checks out pull-request code; it reads the
+# branch through the API only.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+# A newer commit supersedes the run for the older head: the old run must not
+# arm a pull request that a human has just touched.
+concurrency:
+  group: dependabot-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    # The repository check keeps a copied workflow from acting with this
+    # repository's token. The author check keeps every non-bot pull request —
+    # the issue agent's included — on the human path.
+    if: >-
+      github.repository == 'thom404/wortschatz' &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.ref == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          # The commit guard below also covers human commits, so the metadata
+          # step must not fail on a human-touched bot pull request: a
+          # non-eligible pull request ends green and unarmed.
+          skip-verification: true
+
+      - name: Decide eligibility
+        id: decision
+        env:
+          ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          DEPENDENCIES: ${{ steps.metadata.outputs.updated-dependencies-json }}
+        run: |
+          set -euo pipefail
+
+          ineligible() {
+            echo "Not eligible: $1"
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+
+          # A missing or unparsable metadata array is a failure to decide, not
+          # an ineligible pull request: fail red and let a human look.
+          jq -e 'type == "array" and length > 0' <<<"$DEPENDENCIES" >/dev/null
+
+          case "$UPDATE_TYPE" in
+            version-update:semver-patch|version-update:semver-minor) ;;
+            *) ineligible "update type is ${UPDATE_TYPE:-unknown}" ;;
+          esac
+
+          case "$ECOSYSTEM" in
+            npm_and_yarn)
+              # Production and indirect dependencies stay human, and a group
+              # is admitted only when every member is a development one.
+              jq -e 'all(.[]; .dependencyType == "direct:development")' \
+                <<<"$DEPENDENCIES" >/dev/null \
+                || ineligible "an npm dependency is not direct:development"
+              ;;
+            github_actions)
+              # Dependabot classifies actions as direct:production because the
+              # ecosystem has no development split. They run in CI, never in
+              # the production image, so patch/minor actions are in scope.
+              ;;
+            *)
+              ineligible "ecosystem is ${ECOSYSTEM:-unknown}"
+              ;;
+          esac
+
+          if jq -e 'any(.[]; .dependencyName == "@playwright/test")' \
+            <<<"$DEPENDENCIES" >/dev/null; then
+            ineligible "@playwright/test needs the baseline review"
+          fi
+
+          # Every commit on the branch must still be Dependabot's own. One
+          # human commit — a baseline regeneration, a fix, a rebase — puts the
+          # pull request back on the human path.
+          authors="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR}/commits" \
+            --jq '.[].author.login // "unattributed"')"
+          if printf '%s\n' "$authors" | grep -qvx 'dependabot\[bot\]'; then
+            ineligible "a commit is not authored by dependabot[bot]"
+          fi
+
+          echo "Eligible: $(jq -r '[.[].dependencyName] | join(", ")' <<<"$DEPENDENCIES")"
+          echo "eligible=true" >> "$GITHUB_OUTPUT"
+
+      - name: Arm auto-merge
+        if: steps.decision.outputs.eligible == 'true'
+        run: |
+          set -euo pipefail
+          if [ "$(gh pr view "$PR" --json autoMergeRequest --jq '.autoMergeRequest != null')" = "true" ]; then
+            echo "Auto-merge is already armed."
+            exit 0
+          fi
+          gh pr merge "$PR" --auto --squash --match-head-commit "$HEAD_SHA"
+
+      # A pull request that was armed and then became ineligible (typically a
+      # human commit) must not merge on the old decision.
+      - name: Disarm an ineligible pull request
+        if: steps.decision.outputs.eligible != 'true'
+        run: |
+          set -euo pipefail
+          if [ "$(gh pr view "$PR" --json autoMergeRequest --jq '.autoMergeRequest != null')" = "true" ]; then
+            gh pr merge "$PR" --disable-auto
+          fi
