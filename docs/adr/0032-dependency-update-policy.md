@@ -120,11 +120,11 @@ The entry still maintains patch tags and digests.
 
 ## Deliberately deferred
 
-- **Branch-protection changes and selective auto-merge.** This ticket leaves
-  the existing merge boundary (ADR-0004) untouched and enables no auto-merge.
-  A follow-up issue owns the required-check set and the merge boundary, because
-  it governs the **Issue agent**'s pull requests as much as the bot's; until
-  then every bot pull request is a human review.
+- **Selective auto-merge and any change to the required-check set.** This
+  ticket leaves the existing merge boundary (ADR-0004) untouched and enables no
+  auto-merge. [#315](https://github.com/thom404/wortschatz/issues/315) owns the
+  merge boundary, because it governs the **Issue agent**'s pull requests as
+  much as the bot's; until then every bot pull request is a human review.
 - **Renovate, SHA-pinned actions and any third-party updater app.**
 - **An `npm audit` gate in CI.**
 - **Tightening `engines.node`.** Vitest 5 will demand a narrower range when its
