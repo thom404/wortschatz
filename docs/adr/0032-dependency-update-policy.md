@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-16
+- Amended: 2026-11-17 (#315) — selective Dependabot auto-merge
 - Ticket: [#297](https://github.com/thom404/wortschatz/issues/297)
   (spec: dependency updater — Dependabot with weekly grouped pull requests)
 - Related: [ADR-0004](0004-branch-protection-main.md) (the pull-request-only
@@ -68,17 +69,31 @@ Use **Dependabot version updates**, configured in the repository at
    fixes, and creating the `dependencies` label if it does not exist, are
    settings operations outside the **Issue agent**'s token (contents,
    pull-requests and issues only). They are written into OPERATOR-STEPS.
-9. **No workflow changes and no auto-merge in this ticket.** Workflow files
-   remain human-owned (ADR-0006 §5). The merge boundary stays where it is
-   today: every bot pull request is reviewed and merged by a human.
+9. **No workflow changes in this ticket.** Workflow files remain human-owned
+   (ADR-0006 §5), so this ticket could not touch them. The merge boundary
+   stayed where it was: every bot pull request was reviewed and merged by a
+   human. Selective auto-merge was decided separately in #315 (amendment
+   below).
+
+## Amendment: selective auto-merge (2026-11-17, #315)
+
+The deferred merge-boundary question is settled in
+[#315](https://github.com/thom404/wortschatz/issues/315). The decision lives in
+the amendment to [ADR-0004](0004-branch-protection-main.md): patch and minor
+Dependabot npm development dependencies and GitHub Actions updates may arm
+native auto-merge once the required checks pass. Production npm dependencies,
+indirect npm dependencies, majors, Playwright, Docker, any group containing an
+ineligible dependency, and every pull request the **Issue agent** opens stay
+human-merged. The required-check set and the rest of this policy are unchanged.
 
 ## Why not Renovate
 
 Renovate needs a third-party app installation and a second owned workflow,
 while Dependabot is a first-party service configured by one repository file.
 Renovate's real advantages here — SHA pinning and regex managers — are
-explicitly deferred rather than needed. The smaller surface also keeps the
-change inside the human-owned workflow boundary: no workflow file is edited.
+explicitly deferred rather than needed. The smaller surface also kept the
+original change inside the human-owned workflow boundary: no workflow file was
+edited. The later auto-merge amendment is the boundary's own change.
 
 ## Grouping and cadence
 
@@ -120,11 +135,6 @@ The entry still maintains patch tags and digests.
 
 ## Deliberately deferred
 
-- **Selective auto-merge and any change to the required-check set.** This
-  ticket leaves the existing merge boundary (ADR-0004) untouched and enables no
-  auto-merge. [#315](https://github.com/thom404/wortschatz/issues/315) owns the
-  merge boundary, because it governs the **Issue agent**'s pull requests as
-  much as the bot's; until then every bot pull request is a human review.
 - **Renovate, SHA-pinned actions and any third-party updater app.**
 - **An `npm audit` gate in CI.**
 - **Tightening `engines.node`.** Vitest 5 will demand a narrower range when its
@@ -145,5 +155,6 @@ The entry still maintains patch tags and digests.
   Playwright bump stay isolated.
 - A browser bump cannot go green while the manifest, CI image and AGENTS.md
   recipe disagree.
-- `main` still only moves through a reviewed pull request; no automation gains
-  merge rights.
+- `main` still only moves through a green pull request. A narrow, explicit set
+  of Dependabot pull requests may arm native auto-merge (ADR-0004 amendment);
+  the **Issue agent**'s pull requests remain human-merged.
